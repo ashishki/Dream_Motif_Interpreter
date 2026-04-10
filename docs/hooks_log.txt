@@ -1,0 +1,56 @@
+[2026-04-10T12:20:02Z] [TASK:?] EXIT=?        git status && git diff
+[2026-04-10T12:21:40Z] [TASK:?] EXIT=?        find /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter -name "PROJECT_BRIEF.md" 2>/dev/null
+[2026-04-10T19:04:39Z] [TASK:?] EXIT=?        ls /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/ 2>/dev/null || echo "docs/ not found"
+[2026-04-10T19:06:33Z] [TASK:?] EXIT=?        mkdir -p /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/audit /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/adr /home/ashishki/Documents/dev/
+[2026-04-10T19:16:58Z] [TASK:?] EXIT=?        cat /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/hooks/guard_files.sh
+[2026-04-10T19:18:35Z] [TASK:?] EXIT=?        cat > /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/IMPLEMENTATION_CONTRACT.md << 'HEREDOC'
+# Implementation Contract — Dream Motif Interpreter
+
+Status: **IMMUTABLE** — c
+[2026-04-10T19:21:23Z] [TASK:?] EXIT=?        cat > /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/prompts/ORCHESTRATOR.md << 'HEREDOC'
+# Dream Motif Interpreter — Workflow Orchestrator
+
+<!-- This file is the Orchestr
+[2026-04-10T19:27:49Z] [TASK:?] EXIT=?        cat > /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/audit/AUDIT_INDEX.md << 'HEREDOC'
+# Audit Index — Dream Motif Interpreter
+
+_Append-only. One row per review cycle._
+
+-
+[2026-04-10T19:27:55Z] [TASK:?] EXIT=?        find /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs -type f | sort && echo "---" && ls /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/.github/workf
+[2026-04-10T19:31:07Z] [TASK:?] EXIT=?        grep -n '{{' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/ARCHITECTURE.md | grep -v '\\\\{' | head -30
+[2026-04-10T19:31:08Z] [TASK:?] EXIT=?        grep -n '{{' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/IMPLEMENTATION_CONTRACT.md | head -20
+[2026-04-10T19:31:10Z] [TASK:?] EXIT=?        grep -n '{{' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/CODEX_PROMPT.md | head -20
+[2026-04-10T19:31:19Z] [TASK:?] EXIT=?        # Check for forbidden vague phrases in tasks.md ACs
+grep -n '"works correctly\|handles properly\|is implemented\|functions as expected\|behaves as expected\|properly handles\|should work\|is complete"
+[2026-04-10T19:31:22Z] [TASK:?] EXIT=?        # Check rag:ingestion and rag:query are separate tasks
+grep -n 'Type:.*rag:' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/tasks.md
+echo "---"
+# Verify CODEX_PROMPT state
+[2026-04-10T19:31:24Z] [TASK:?] EXIT=?        # Check CI has all required steps
+grep -n 'ruff check\|ruff format\|pytest\|python-version\|services:\|pgvector' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/.github/workflow
+[2026-04-10T19:31:32Z] [TASK:?] EXIT=?        # Fix the AC count check properly
+python3 -c "
+content = open('/home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/tasks.md').read()
+ac_count = content.count('- id: AC-')
+test_
+[2026-04-10T19:31:36Z] [TASK:?] EXIT=?        # Check dependency chain for T01/T02/T03
+python3 -c "
+import re
+content = open('/home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/tasks.md').read()
+tasks = {}
+for m in re.fin
+[2026-04-10T19:31:39Z] [TASK:?] EXIT=?        # The regex needs adjustment - check the actual format
+grep -n 'Depends-On:' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/tasks.md | head -10
+[2026-04-10T19:31:42Z] [TASK:?] EXIT=?        # Check for T20 AC-3 duplicate test reference
+grep -A3 'AC-3' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/tasks.md | grep -A2 'T20\|test_full\|test_e2e' | tail -20
+# Al
+[2026-04-10T19:34:37Z] [TASK:?] EXIT=?        cat > /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/audit/AUDIT_INDEX.md << 'HEREDOC'
+# Audit Index — Dream Motif Interpreter
+
+_Append-only. One row per review cycle._
+
+-
+[2026-04-10T19:35:39Z] [TASK:?] EXIT=?        grep -n 'T20\|## T20' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/tasks.md | head -5
+[2026-04-10T19:36:06Z] [TASK:?] EXIT=?        grep -n 'A3 tasks' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/audit/PHASE1_AUDIT.md
+[2026-04-10T19:37:20Z] [TASK:?] EXIT=?        git status

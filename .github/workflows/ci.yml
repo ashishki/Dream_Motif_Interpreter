@@ -1,0 +1,141 @@
+# CI — Dream Motif Interpreter
+# Runs on every push and pull request.
+# All steps are required to pass before a PR may be merged.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  # ── Install ──────────────────────────────────────────────────────────────
+  # Install all production and dev dependencies from pinned requirement files.
+  install:
+    name: Install dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt -e .
+
+  # ── Ruff lint ─────────────────────────────────────────────────────────────
+  # Zero violations required. Ruff replaces flake8 + isort + pyupgrade.
+  ruff-check:
+    name: Ruff lint
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt -e .
+
+      - name: Run ruff check
+        run: ruff check app/ tests/
+
+  # ── Ruff format ───────────────────────────────────────────────────────────
+  # Format check only — does not auto-format. Developers run `ruff format` locally.
+  ruff-format:
+    name: Ruff format check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt -e .
+
+      - name: Run ruff format check
+        run: ruff format --check app/ tests/
+
+  # ── Pytest ────────────────────────────────────────────────────────────────
+  # Runs against a real PostgreSQL + pgvector database and a real Redis instance.
+  # Integration tests require the DB and Redis services below.
+  # External API calls (Google Docs, Anthropic, OpenAI) are skipped unless
+  # the corresponding env vars are present (they are not set in CI).
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+    needs: [ruff-check, ruff-format]
+
+    # ── Services ─────────────────────────────────────────────────────────────
+    # PostgreSQL 16 with pgvector extension.
+    # Redis 7 for ARQ task queue.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: dmi_test
+          POSTGRES_PASSWORD: dmi_test
+          POSTGRES_DB: dmi_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt -e .
+
+      # ── Required env vars for tests ──────────────────────────────────────
+      # Real API keys are NOT set here. Tests that require live APIs use
+      # pytest.mark.skipif to skip when the env var is absent.
+      - name: Run pytest
+        env:
+          DATABASE_URL: postgresql+asyncpg://dmi_test:dmi_test@localhost:5432/dmi_test
+          REDIS_URL: redis://localhost:6379/0
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+          GOOGLE_CLIENT_ID: test-client-id
+          GOOGLE_CLIENT_SECRET: test-client-secret
+          GOOGLE_REFRESH_TOKEN: ""
+          GOOGLE_DOC_ID: test-doc-id
+          SECRET_KEY: test-secret-key-32-bytes-minimum-xx
+          ENV: test
+          EMBEDDING_MODEL: text-embedding-3-small
+          RETRIEVAL_THRESHOLD: "0.35"
+          MAX_INDEX_AGE_HOURS: "24"
+        run: pytest -q --tb=short tests/

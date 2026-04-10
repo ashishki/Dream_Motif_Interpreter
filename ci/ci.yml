@@ -1,0 +1,213 @@
+name: CI
+
+# Trigger on pushes and PRs to the main branch.
+# Adjust branch names here if your repo uses a different convention.
+on:
+  push:
+    branches: ["master", "main"]
+  pull_request:
+    branches: ["master", "main"]
+
+jobs:
+  test:
+    name: Tests + Lint
+    runs-on: ubuntu-latest
+
+    # -------------------------------------------------------------------------
+    # SERVICES
+    # Uncomment and configure the services your stack requires.
+    # Remove this block entirely for projects with no external service dependencies.
+    # -------------------------------------------------------------------------
+    # services:
+    #
+    #   postgres:
+    #     # Use pgvector image if you need vector similarity search.
+    #     # Use postgres:16 if you don't need pgvector.
+    #     image: pgvector/pgvector:pg16
+    #     env:
+    #       POSTGRES_USER: testuser
+    #       POSTGRES_PASSWORD: testpassword
+    #       POSTGRES_DB: testdb
+    #     options: >-
+    #       --health-cmd pg_isready
+    #       --health-interval 10s
+    #       --health-timeout 5s
+    #       --health-retries 5
+    #     ports:
+    #       - 5432:5432
+    #
+    #   redis:
+    #     image: redis:7-alpine
+    #     options: >-
+    #       --health-cmd "redis-cli ping"
+    #       --health-interval 10s
+    #       --health-timeout 5s
+    #       --health-retries 5
+    #     ports:
+    #       - 6379:6379
+
+    steps:
+      # -----------------------------------------------------------------------
+      # CHECKOUT
+      # Standard checkout. Always use actions/checkout@v4 or later.
+      # -----------------------------------------------------------------------
+      - uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # PYTHON SETUP
+      # Set {{PYTHON_VERSION}} to your target version (e.g., "3.11", "3.12").
+      # The cache: "pip" option caches the pip dependency cache across runs,
+      # which significantly speeds up CI on cache hits.
+      # -----------------------------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "{{PYTHON_VERSION}}"
+          cache: "pip"
+
+      # -----------------------------------------------------------------------
+      # INSTALL DEPENDENCIES
+      # Use requirements-dev.txt + editable install, NOT pip install -e ".[dev]".
+      # The extras_require approach requires setup.cfg or pyproject.toml to define
+      # the [dev] extra — this is fine if you have it, but requirements-dev.txt
+      # is simpler and more explicit.
+      #
+      # requirements.txt — runtime dependencies only
+      # requirements-dev.txt — includes requirements.txt + test/lint deps:
+      #   -r requirements.txt
+      #   pytest
+      #   pytest-asyncio (if using async tests)
+      #   ruff
+      #   httpx (if testing FastAPI with TestClient)
+      #   ... other dev deps
+      # -----------------------------------------------------------------------
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt -e .
+
+      # -----------------------------------------------------------------------
+      # LINT — RUFF CHECK
+      # ruff check catches style issues, unused imports, and a wide range of
+      # anti-patterns. Adjust the directory arguments to match your project layout.
+      # Common pattern: `ruff check app/ tests/`
+      # -----------------------------------------------------------------------
+      - name: Lint (ruff check)
+        run: ruff check {{APP_DIR}}/ tests/
+
+      # -----------------------------------------------------------------------
+      # FORMAT CHECK — RUFF FORMAT
+      # ruff format --check verifies formatting without modifying files.
+      # This fails CI if code is not formatted correctly, enforcing consistent
+      # formatting across all contributors (human and AI).
+      # -----------------------------------------------------------------------
+      - name: Format check (ruff format)
+        run: ruff format --check {{APP_DIR}}/ tests/
+
+      # -----------------------------------------------------------------------
+      # RUN TESTS
+      # -q: quiet output (summary only, not per-test dots)
+      # --tb=short: short traceback on failure (enough to diagnose, not overwhelming)
+      #
+      # Add required environment variables here. For secrets, use GitHub Actions
+      # secrets (Settings > Secrets and variables > Actions) and reference them
+      # as ${{ secrets.SECRET_NAME }}.
+      #
+      # For test-only values that are not real secrets (e.g., a test API key
+      # placeholder), you can set them inline as shown below.
+      #
+      # If your tests need a DATABASE_URL or REDIS_URL, construct them from
+      # the service configuration above:
+      #   DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+      #   REDIS_URL: redis://localhost:6379/0
+      # -----------------------------------------------------------------------
+      - name: Run tests
+        env:
+          # ---- Placeholder test values (not real secrets) ----
+          # Replace with real secret references for values that must be secret:
+          # SOME_API_KEY: ${{ secrets.SOME_API_KEY }}
+          {{ENV_VAR_1}}: "{{TEST_VALUE_1}}"
+          {{ENV_VAR_2}}: "{{TEST_VALUE_2}}"
+          # ---- Uncomment if using services above ----
+          # DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+          # REDIS_URL: redis://localhost:6379/0
+        run: python -m pytest tests/ -q --tb=short
+
+      # -----------------------------------------------------------------------
+      # CAPABILITY EVALUATION (uncomment when profile is ON)
+      # Each step runs the profile-specific evaluation suite and fails CI
+      # if a metric regression is detected vs. the baseline in docs/CODEX_PROMPT.md.
+      #
+      # Activation: uncomment the step(s) for your active profiles.
+      # Place evaluation fixtures under tests/eval/ (isolated from unit/integration tests).
+      # See IMPLEMENTATION_CONTRACT.md §Observability and §Retrieval Evaluation Gate.
+      # -----------------------------------------------------------------------
+      # - name: Run RAG evaluation          # Profile: RAG
+      #   if: always()
+      #   run: |
+      #     python -m pytest tests/eval/test_retrieval.py -v \
+      #       --junitxml=reports/eval_retrieval.xml
+      #   # Fails CI if retrieval precision, MRR, or answer quality drops below baseline.
+      #   # Baseline stored in docs/retrieval_eval.md §Evaluation History.
+      #
+      # - name: Run Agent evaluation        # Profile: Agentic
+      #   if: always()
+      #   run: python -m pytest tests/eval/test_agent.py -v
+      #   # Fails CI if loop termination rate or handoff integrity rate drops below baseline.
+      #   # Baseline stored in docs/agent_eval.md.
+      #
+      # - name: Run Tool-Use evaluation     # Profile: Tool-Use
+      #   if: always()
+      #   run: python -m pytest tests/eval/test_tools.py -v
+      #   # Fails CI if tool call success rate or schema validation pass rate drops below baseline.
+      #   # Baseline stored in docs/tool_eval.md.
+      #
+      # - name: Run Planning evaluation     # Profile: Planning
+      #   if: always()
+      #   run: python -m pytest tests/eval/test_planning.py -v
+      #   # Fails CI if plan validation gate pass rate drops below baseline.
+      #   # Baseline stored in docs/plan_eval.md.
+      #
+      # - name: Run Compliance checks       # Profile: Compliance
+      #   if: always()
+      #   run: python -m pytest tests/eval/test_compliance.py -v
+      #   # Verifies: audit log format contract, PHI field non-appearance in logs,
+      #   # append-only enforcement, retention policy boundary.
+      #   # Baseline stored in docs/compliance_eval.md.
+
+      # -----------------------------------------------------------------------
+      # NFR LOAD TESTS (uncomment when docs/nfr.md exists with CI gate thresholds)
+      # Runs locust in headless mode against a locally started server.
+      # Fails CI if any metric in docs/nfr.md with a CI gate threshold is breached.
+      #
+      # Prerequisites: add locust to requirements-dev.txt.
+      # Place load test script at tests/load/locustfile.py.
+      # -----------------------------------------------------------------------
+      # - name: Run load tests (NFR)
+      #   if: always()
+      #   run: |
+      #     python -m uvicorn {{APP_MODULE}}:app --host 0.0.0.0 --port 8000 &
+      #     sleep 3
+      #     locust -f tests/load/locustfile.py \
+      #       --headless -u 50 -r 10 --run-time 60s \
+      #       --host http://localhost:8000 \
+      #       --csv reports/load \
+      #       --exit-code-on-error 1
+      #   # Thresholds are defined in docs/nfr.md §SLA Table (CI gate threshold column).
+      #   # A breach at this step is a P0 — do not merge.
+
+# -------------------------------------------------------------------------------
+# HOW TO USE THIS TEMPLATE
+#
+# 1. Replace {{PYTHON_VERSION}} with your Python version (e.g., "3.11").
+# 2. Replace {{APP_DIR}} with your application source directory (e.g., "app").
+# 3. Replace {{APP_MODULE}} with your ASGI app module (e.g., "app.main") if using NFR load tests.
+# 4. Uncomment the services block if your stack requires PostgreSQL, Redis, etc.
+#    Adjust image, env, and ports to match your stack.
+# 5. Add required environment variables to the "Run tests" step.
+# 6. For secrets, use GitHub Actions secrets — never hardcode real credentials.
+# 7. Uncomment capability evaluation steps for active profiles (RAG, Agentic, Tool-Use, Planning, Compliance).
+# 8. Uncomment the NFR load test step if docs/nfr.md defines CI gate thresholds.
+#
+# IMPORTANT: CI is set up in Phase 1 alongside the first tests. Every commit
+# after Phase 1 must pass CI before being merged. This is enforced by
+# IMPLEMENTATION_CONTRACT.md. Never defer CI setup to a later phase.
+# -------------------------------------------------------------------------------

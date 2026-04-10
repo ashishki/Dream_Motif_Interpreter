@@ -1,0 +1,51 @@
+{
+  "_comment": "Copy this file to .claude/settings.json in your project root. Hook scripts must be executable: chmod +x hooks/*.sh",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/guard_files.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "./hooks/enforce_codex_exec.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "./hooks/guard_phase_boundary.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/log_bash.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/save_checkpoint.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

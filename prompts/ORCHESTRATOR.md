@@ -1,4 +1,4 @@
-# {{PROJECT_NAME}} — Workflow Orchestrator
+# Dream Motif Interpreter — Workflow Orchestrator
 
 _v2.0 · Single entry point for the full development cycle._
 _References: docs/WORKFLOW_CANON.md · Implementation Contract · audit workflow_
@@ -32,12 +32,12 @@ The orchestrator reads all state from `docs/CODEX_PROMPT.md` and `docs/tasks.md`
 
 | Role | Tool | Why |
 |---|---|---|
-| Implementer / fixer | `Bash` → `{{CODEX_COMMAND}}` | writes files, runs tests |
+| Implementer / fixer | `Bash` → `codex exec -s workspace-write` | writes files, runs tests |
 | Light reviewer | `Agent tool` (general-purpose) | fast checklist, no docs produced |
 | Deep review agents (META/ARCH/CODE/CONSOLIDATED) | `Agent tool` (general-purpose) | reasoning + file analysis |
 | Strategy reviewer | `Agent tool` (general-purpose) | architectural reasoning |
 
-<!-- {{CODEX_COMMAND}} is the implementation agent invocation.
+<!-- codex exec -s workspace-write is the implementation agent invocation.
      Default and recommended value:
      - Codex CLI: codex exec -s workspace-write
 
@@ -46,14 +46,14 @@ The orchestrator reads all state from `docs/CODEX_PROMPT.md` and `docs/tasks.md`
      a wrapper around the same Codex CLI path.
 
      The command must accept a prompt string as its final argument, be able to read/write
-     files under {{PROJECT_ROOT}}, and execute shell commands (test runner, linter). -->
+     files under /home/gdev/Dream_Motif_Interpreter, and execute shell commands (test runner, linter). -->
 <!-- See reference/CODEX_CLI.md for Codex CLI invocation patterns, known sandbox
      limitations (async test hangs, heavy deps), and prompt engineering guidelines. -->
 
 **Implementer invocation — always via variable, never stdin:**
 ```bash
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd {{PROJECT_ROOT}} && {{CODEX_COMMAND}} "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
 ```
 
 ---
@@ -87,13 +87,13 @@ cd {{PROJECT_ROOT}} && {{CODEX_COMMAND}} "$PROMPT"
 
 ---
 
-You are the **Orchestrator** for the {{PROJECT_NAME}} project.
+You are the **Orchestrator** for the Dream Motif Interpreter project.
 
 Your job: drive the full development cycle autonomously.
 Read current state → decide action → spawn agents → update state → loop.
 
 You do NOT write application code or review code yourself.
-Project root: `{{PROJECT_ROOT}}`
+Project root: `/home/gdev/Dream_Motif_Interpreter`
 
 ---
 
@@ -171,8 +171,8 @@ If Phase 1 validation is needed:
 
 Use **Agent tool** (`general-purpose`):
 ```
-You are the Phase 1 Validator for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the Phase 1 Validator for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 
 Read and execute prompts/PHASE1_VALIDATOR.md exactly as written.
 Inputs: docs/ARCHITECTURE.md, docs/spec.md, docs/tasks.md, docs/CODEX_PROMPT.md, docs/IMPLEMENTATION_CONTRACT.md, .github/workflows/ci.yml
@@ -296,8 +296,8 @@ For each active profile, check whether the next task carries a profile deep-revi
 Use **Agent tool** (`general-purpose`):
 
 ```
-You are the Strategy Reviewer for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the Strategy Reviewer for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 
 Read and execute docs/prompts/PROMPT_S_STRATEGY.md exactly as written.
 Inputs: docs/ARCHITECTURE.md, docs/CODEX_PROMPT.md, docs/adr/ (all), docs/tasks.md (upcoming phase)
@@ -319,8 +319,8 @@ For each FIX-N item in order:
 
 Write to `/tmp/orchestrator_codex_prompt.txt`:
 ```
-You are the implementation agent for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the implementation agent for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 
 Read before writing any code:
 1. docs/CODEX_PROMPT.md (full — IMPLEMENTATION CONTRACT section is mandatory)
@@ -331,7 +331,7 @@ Assignment: [FIX-N] — [Title]
 [paste Fix Queue entry verbatim]
 
 Rules: fix ONLY what is described. Every fix needs a failing→passing test.
-Run: cd {{PROJECT_ROOT}} && [YOUR_TEST_COMMAND]
+Run: cd /home/gdev/Dream_Motif_Interpreter && python -m pytest tests/ -q --tb=short
 
 Return:
 IMPLEMENTATION_RESULT: DONE | BLOCKED
@@ -343,7 +343,7 @@ Baseline: [N passed, N skipped, N failed]
 Execute:
 ```bash
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd {{PROJECT_ROOT}} && {{CODEX_COMMAND}} "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
 ```
 
 - `DONE` + 0 failures → next FIX item
@@ -359,8 +359,8 @@ Read the full task entry from `docs/tasks.md` (AC list + file scope).
 
 Write to `/tmp/orchestrator_codex_prompt.txt`:
 ```
-You are the implementation agent for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the implementation agent for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 
 Read before writing any code:
 1. docs/CODEX_PROMPT.md (full — SESSION HANDOFF + IMPLEMENTATION CONTRACT)
@@ -383,11 +383,11 @@ Architectural constraints to respect:
 - Human approval boundaries: [relevant entries only]
 
 Protocol:
-1. Run [YOUR_TEST_COMMAND] → record baseline BEFORE any changes
+1. Run python -m pytest tests/ -q --tb=short → record baseline BEFORE any changes
 2. Read all Depends-On task entries
 3. Write tests alongside code
-4. Run [YOUR_LINT_COMMAND] → zero errors
-5. Run [YOUR_TEST_COMMAND] after → must not decrease passing count
+4. Run ruff check app/ tests/ → zero errors
+5. Run python -m pytest tests/ -q --tb=short after → must not decrease passing count
 
 Budget: if approaching iteration limit (70 %+ of your context or budget), finish the current file and stop — do not start new files. At 90 %+, commit what is complete and return BLOCKED with progress made and remaining work listed.
 
@@ -406,7 +406,7 @@ Execute:
 ```bash
 export CURRENT_TASK="[T##]"   # replace [T##] with the actual task ID (e.g. T07)
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd {{PROJECT_ROOT}} && {{CODEX_COMMAND}} "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
 ```
 
 - `DONE` + all AC PASS + 0 failures:
@@ -508,8 +508,8 @@ Single agent. Fast. No files produced.
 Use **Agent tool** (`general-purpose`):
 
 ```
-You are the Light Reviewer for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the Light Reviewer for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 
 Phase [N] — task [T##] was just implemented. Verify it doesn't break contracts.
 
@@ -583,8 +583,8 @@ Parse result:
 
 Use **Agent tool** (`general-purpose`):
 ```
-You are the META Analyst for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the META Analyst for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 Read and execute docs/audit/PROMPT_0_META.md exactly.
 Inputs: docs/tasks.md, docs/CODEX_PROMPT.md, docs/audit/REVIEW_REPORT.md (may not exist)
 Output: write docs/audit/META_ANALYSIS.md
@@ -597,8 +597,8 @@ Verify `docs/audit/META_ANALYSIS.md` written.
 
 Use **Agent tool** (`general-purpose`):
 ```
-You are the Architecture Reviewer for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the Architecture Reviewer for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 Read and execute docs/audit/PROMPT_1_ARCH.md exactly.
 Inputs: docs/audit/META_ANALYSIS.md, docs/ARCHITECTURE.md, docs/spec.md, docs/adr/ (all)
 Output: write docs/audit/ARCH_REPORT.md
@@ -611,8 +611,8 @@ Verify `docs/audit/ARCH_REPORT.md` written.
 
 Use **Agent tool** (`general-purpose`):
 ```
-You are the Code Reviewer for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the Code Reviewer for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 Read and execute docs/audit/PROMPT_2_CODE.md exactly.
 Inputs: docs/audit/META_ANALYSIS.md, docs/audit/ARCH_REPORT.md,
         docs/dev-standards.md, docs/data-map.md,
@@ -627,8 +627,8 @@ Capture full findings output — pass to Step 4.3.
 
 Use **Agent tool** (`general-purpose`):
 ```
-You are the Consolidation Agent for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the Consolidation Agent for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 Read and execute docs/audit/PROMPT_3_CONSOLIDATED.md exactly.
 
 CODE review findings (treat as your own — produced this cycle):
@@ -660,8 +660,8 @@ Done:
 
 Write to `/tmp/orchestrator_codex_prompt.txt`:
 ```
-You are the Fixer for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the Fixer for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 Read docs/IMPLEMENTATION_CONTRACT.md.
 
 Light review found issues. Fix them exactly as described. Nothing else.
@@ -670,7 +670,7 @@ ISSUES:
 [paste ISSUES block verbatim from light reviewer]
 
 Rules: fix only what is listed. No refactoring. No extra changes.
-Run: cd {{PROJECT_ROOT}} && [YOUR_TEST_COMMAND]
+Run: cd /home/gdev/Dream_Motif_Interpreter && python -m pytest tests/ -q --tb=short
 
 Return:
 FIXES_RESULT: DONE | PARTIAL
@@ -681,7 +681,7 @@ Baseline: [N passed, N skipped, N failed]
 Execute:
 ```bash
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd {{PROJECT_ROOT}} && {{CODEX_COMMAND}} "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
 ```
 
 Re-run light reviewer on fixed files only.
@@ -694,12 +694,12 @@ Re-run light reviewer on fixed files only.
 
 Write to `/tmp/orchestrator_codex_prompt.txt`:
 ```
-You are the Fix agent for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the Fix agent for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 Read: docs/audit/REVIEW_REPORT.md (P0 section), docs/CODEX_PROMPT.md (Fix Queue), docs/IMPLEMENTATION_CONTRACT.md
 
 Fix every P0. Each fix needs a failing→passing test.
-Run: cd {{PROJECT_ROOT}} && [YOUR_TEST_COMMAND] — must be green.
+Run: cd /home/gdev/Dream_Motif_Interpreter && python -m pytest tests/ -q --tb=short — must be green.
 
 Return:
 FIXES_RESULT: DONE | PARTIAL
@@ -710,7 +710,7 @@ Baseline: [N passed, N skipped, N failed]
 Execute:
 ```bash
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd {{PROJECT_ROOT}} && {{CODEX_COMMAND}} "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
 ```
 
 Re-run Steps 4.2 + 4.3 (targeted at fixed files).
@@ -746,8 +746,8 @@ Only runs after a completed deep review cycle.
 Use **Agent tool** (`general-purpose`):
 
 ```
-You are the Doc Updater for {{PROJECT_NAME}}.
-Project root: {{PROJECT_ROOT}}
+You are the Doc Updater for Dream Motif Interpreter.
+Project root: /home/gdev/Dream_Motif_Interpreter
 
 A phase just completed. Update all project documentation to match current code state.
 
@@ -792,7 +792,7 @@ Student-friendly tone. No length limit.
 
 **2. Notification summary** → max 400 characters, strict.
 
-<!-- {{NOTIFICATION_CHANNEL}} is optional. It represents any out-of-band notification
+<!-- none is optional. It represents any out-of-band notification
      mechanism for phase completion and rate limit alerts. Options:
        - Telegram bot: set env vars and use the curl block below as-is
        - Slack:        replace the curl block with a Slack Incoming Webhook POST
@@ -812,7 +812,7 @@ Health: OK / WARN / RED
 Next: Ph[N+1] [Name]
 ```
 
-Notification delivery (adapt or remove for {{NOTIFICATION_CHANNEL}}):
+Notification delivery (adapt or remove for none):
 ```bash
 # Example: Telegram delivery
 # Adapt to your notification channel, or remove this block entirely.
@@ -851,7 +851,7 @@ Stop when:
 - Task `[!]` → save checkpoint → print blocker → stop.
 - P0 unresolved after 2 attempts → save checkpoint → print findings → stop.
 - API rate limit (429 / "overloaded") → save checkpoint → send notification with suggested restart time (current time + 60 min) → print "RATE_LIMIT_HIT" → stop cleanly.
-  Notification format (adapt to {{NOTIFICATION_CHANNEL}}):
+  Notification format (adapt to none):
   ```
   Rate limit hit. Resume at: [HH:MM UTC]
   Next: [T## — Title]
@@ -905,16 +905,16 @@ Replace every `{{PLACEHOLDER}}` before using this template. The table below list
 
 | Placeholder | What it is | Example |
 |---|---|---|
-| `{{PROJECT_NAME}}` | Human-readable project name used in agent system prompts | `my-api-service` |
-| `{{PROJECT_ROOT}}` | Absolute path to the repository root on disk | `/home/alice/my-api-service` |
-| `{{CODEX_COMMAND}}` | The implementation agent invocation — see note below | `codex exec -s workspace-write` |
-| `{{NOTIFICATION_CHANNEL}}` | Optional out-of-band notification mechanism — see note below | Telegram bot, Slack webhook, or omit |
+| `Dream Motif Interpreter` | Human-readable project name used in agent system prompts | `my-api-service` |
+| `/home/gdev/Dream_Motif_Interpreter` | Absolute path to the repository root on disk | `/home/alice/my-api-service` |
+| `codex exec -s workspace-write` | The implementation agent invocation — see note below | `codex exec -s workspace-write` |
+| `none` | Optional out-of-band notification mechanism — see note below | Telegram bot, Slack webhook, or omit |
 
-**`{{CODEX_COMMAND}}` — implementation agent options:**
+**`codex exec -s workspace-write` — implementation agent options:**
 
 The orchestrator expects a command that:
 1. Accepts a prompt string as its final argument (via shell variable, not stdin)
-2. Can read and write files under `{{PROJECT_ROOT}}`
+2. Can read and write files under `/home/gdev/Dream_Motif_Interpreter`
 3. Can execute shell commands (to run your test suite and linter)
 4. Returns a non-zero exit code on failure
 
@@ -926,9 +926,9 @@ Common choices:
 | Claude Code subagent | Use the `Agent tool` with `general-purpose` instead of the Bash block; adapt Steps 2, 3, and 5 accordingly |
 | Any sandboxed executor | Replace the Bash block with whatever invocation your tool requires |
 
-Also replace `[YOUR_TEST_COMMAND]` and `[YOUR_LINT_COMMAND]` in Steps 2, 3, and 5 with the actual commands for your project (e.g. `pytest tests/ -q` and `ruff check app/ tests/`).
+Also replace `python -m pytest tests/ -q --tb=short` and `ruff check app/ tests/` in Steps 2, 3, and 5 with the actual commands for your project (e.g. `pytest tests/ -q` and `ruff check app/ tests/`).
 
-**`{{NOTIFICATION_CHANNEL}}` — notification options:**
+**`none` — notification options:**
 
 Notifications fire at two points: phase completion (Step 6.6) and rate limit hits (Step 7). They are entirely optional — if you have no notification channel, remove the delivery block in Step 6.6 and the rate limit notification in Step 7. The full phase report is always written to `docs/audit/PHASE_REPORT_LATEST.md` regardless.
 

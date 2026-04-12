@@ -9,7 +9,7 @@ Phase: 1
 ## Current State
 
 - **Phase:** 1
-- **Baseline:** 13 passing tests
+- **Baseline:** 17 passing tests, 1 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
 - **Last updated:** 2026-04-12
@@ -29,9 +29,9 @@ Phase: 1
 
 ## Next Task
 
-**T05: Google Docs Ingestion Client**
+**T06: Dream Segmentation Service**
 
-Read T03 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
+Read T06 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
 
 ---
 
@@ -141,6 +141,7 @@ none
 - **T02** — CI Setup — 2026-04-12 — 5 tests passing — Light review PASS
 - **T03** — Smoke Tests — 2026-04-12 — 8 tests passing — Light review PASS
 - **T04** — Database Schema — 2026-04-12 — 13 tests passing — Light review pending
+- **T05** — Google Docs Ingestion Client — 2026-04-12 — 17 tests passing, 1 skipped — Light review pending
 
 ---
 

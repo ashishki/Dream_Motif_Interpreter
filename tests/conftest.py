@@ -35,6 +35,7 @@ def _set_required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
 
 # ── DB engine fixture for integration tests ─────────────────────────────────
 
+
 @pytest_asyncio.fixture(scope="session")
 async def db_engine() -> AsyncEngine:
     """Async SQLAlchemy engine connected to the test database."""

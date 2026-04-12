@@ -1,0 +1,80 @@
+import logging
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+import pytest
+from google.auth.exceptions import RefreshError
+from googleapiclient.errors import HttpError
+from httplib2 import Response
+
+from app.services.gdocs_client import GDocsAuthError, GDocsClient
+
+
+def _build_settings(**overrides: str) -> SimpleNamespace:
+    defaults = {
+        "GOOGLE_CLIENT_ID": "client-id-123",
+        "GOOGLE_CLIENT_SECRET": "client-secret-456",
+        "GOOGLE_REFRESH_TOKEN": "refresh-token-789",
+        "GOOGLE_DOC_ID": "doc-id-abc",
+    }
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _build_http_error(status_code: int) -> HttpError:
+    return HttpError(Response({"status": str(status_code)}), b'{"error":"auth"}')
+
+
+def test_fetch_document_raises_on_invalid_token() -> None:
+    client = GDocsClient(settings=_build_settings(GOOGLE_REFRESH_TOKEN="invalid-token"))
+
+    with patch(
+        "app.services.gdocs_client.Credentials.refresh",
+        side_effect=RefreshError("invalid_grant"),
+    ):
+        with pytest.raises(GDocsAuthError):
+            client.fetch_document()
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_fetch_document_raises_on_auth_http_errors(status_code: int) -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.side_effect = _build_http_error(
+        status_code
+    )
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        with pytest.raises(GDocsAuthError):
+            client.fetch_document()
+
+
+def test_no_credentials_in_logs(caplog: pytest.LogCaptureFixture) -> None:
+    settings = _build_settings()
+    client = GDocsClient(settings=settings)
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "paragraph": {
+                        "elements": [
+                            {"textRun": {"content": "First paragraph\n"}},
+                            {"textRun": {"content": ""}},
+                        ]
+                    }
+                },
+                {"paragraph": {"elements": [{"textRun": {"content": "\n"}}]}},
+                {"paragraph": {"elements": [{"textRun": {"content": "Second paragraph"}}]}},
+            ]
+        }
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        with caplog.at_level(logging.INFO, logger="app.services.gdocs_client"):
+            paragraphs = client.fetch_document()
+
+    assert paragraphs == ["First paragraph", "Second paragraph"]
+    assert settings.GOOGLE_CLIENT_ID not in caplog.text
+    assert settings.GOOGLE_CLIENT_SECRET not in caplog.text
+    assert settings.GOOGLE_REFRESH_TOKEN not in caplog.text

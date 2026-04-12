@@ -29,7 +29,9 @@ async def _reset_public_schema(engine: AsyncEngine) -> None:
 
 async def _table_names(engine: AsyncEngine) -> list[str]:
     async with engine.connect() as connection:
-        return await connection.run_sync(lambda sync_connection: inspect(sync_connection).get_table_names())
+        return await connection.run_sync(
+            lambda sync_connection: inspect(sync_connection).get_table_names()
+        )
 
 
 async def _columns(engine: AsyncEngine, table_name: str) -> list[dict[str, object]]:
@@ -130,8 +132,12 @@ async def test_dream_chunks_schema(migrated_engine: AsyncEngine) -> None:
 
 @pytest.mark.anyio
 async def test_theme_schema(migrated_engine: AsyncEngine) -> None:
-    category_columns = {column["name"] for column in await _columns(migrated_engine, "theme_categories")}
-    dream_theme_columns = {column["name"] for column in await _columns(migrated_engine, "dream_themes")}
+    category_columns = {
+        column["name"] for column in await _columns(migrated_engine, "theme_categories")
+    }
+    dream_theme_columns = {
+        column["name"] for column in await _columns(migrated_engine, "dream_themes")
+    }
 
     assert category_columns == {"id", "name", "description", "status", "created_at"}
     assert dream_theme_columns == {

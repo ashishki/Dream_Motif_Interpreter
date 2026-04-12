@@ -4,7 +4,17 @@ import uuid
 from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import UserDefinedType
@@ -58,7 +68,9 @@ class DreamEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class DreamChunk(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "dream_chunks"
-    __table_args__ = (UniqueConstraint("dream_id", "chunk_index", name="uq_dream_chunks_dream_id_chunk_index"),)
+    __table_args__ = (
+        UniqueConstraint("dream_id", "chunk_index", name="uq_dream_chunks_dream_id_chunk_index"),
+    )
 
     dream_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

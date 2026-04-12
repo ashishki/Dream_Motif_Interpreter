@@ -32,14 +32,14 @@ The orchestrator reads all state from `docs/CODEX_PROMPT.md` and `docs/tasks.md`
 
 | Role | Tool | Why |
 |---|---|---|
-| Implementer / fixer | `Bash` → `codex exec -s workspace-write` | writes files, runs tests |
+| Implementer / fixer | `Bash` → `codex exec -s danger-full-access` | writes files, runs tests |
 | Light reviewer | `Agent tool` (general-purpose) | fast checklist, no docs produced |
 | Deep review agents (META/ARCH/CODE/CONSOLIDATED) | `Agent tool` (general-purpose) | reasoning + file analysis |
 | Strategy reviewer | `Agent tool` (general-purpose) | architectural reasoning |
 
-<!-- codex exec -s workspace-write is the implementation agent invocation.
+<!-- codex exec -s danger-full-access is the implementation agent invocation.
      Default and recommended value:
-     - Codex CLI: codex exec -s workspace-write
+     - Codex CLI: codex exec -s danger-full-access
 
      This playbook assumes application code is written by Codex via Bash -> codex exec,
      not by Claude subagents. Replace this placeholder only if your environment requires
@@ -53,7 +53,7 @@ The orchestrator reads all state from `docs/CODEX_PROMPT.md` and `docs/tasks.md`
 **Implementer invocation — always via variable, never stdin:**
 ```bash
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s danger-full-access "$PROMPT"
 ```
 
 ---
@@ -343,7 +343,7 @@ Baseline: [N passed, N skipped, N failed]
 Execute:
 ```bash
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s danger-full-access "$PROMPT"
 ```
 
 - `DONE` + 0 failures → next FIX item
@@ -406,7 +406,7 @@ Execute:
 ```bash
 export CURRENT_TASK="[T##]"   # replace [T##] with the actual task ID (e.g. T07)
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s danger-full-access "$PROMPT"
 ```
 
 - `DONE` + all AC PASS + 0 failures:
@@ -681,7 +681,7 @@ Baseline: [N passed, N skipped, N failed]
 Execute:
 ```bash
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s danger-full-access "$PROMPT"
 ```
 
 Re-run light reviewer on fixed files only.
@@ -710,7 +710,7 @@ Baseline: [N passed, N skipped, N failed]
 Execute:
 ```bash
 PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
-cd /home/gdev/Dream_Motif_Interpreter && codex exec -s workspace-write "$PROMPT"
+cd /home/gdev/Dream_Motif_Interpreter && codex exec -s danger-full-access "$PROMPT"
 ```
 
 Re-run Steps 4.2 + 4.3 (targeted at fixed files).
@@ -907,10 +907,10 @@ Replace every `{{PLACEHOLDER}}` before using this template. The table below list
 |---|---|---|
 | `Dream Motif Interpreter` | Human-readable project name used in agent system prompts | `my-api-service` |
 | `/home/gdev/Dream_Motif_Interpreter` | Absolute path to the repository root on disk | `/home/alice/my-api-service` |
-| `codex exec -s workspace-write` | The implementation agent invocation — see note below | `codex exec -s workspace-write` |
+| `codex exec -s danger-full-access` | The implementation agent invocation — see note below | `codex exec -s danger-full-access` |
 | `none` | Optional out-of-band notification mechanism — see note below | Telegram bot, Slack webhook, or omit |
 
-**`codex exec -s workspace-write` — implementation agent options:**
+**`codex exec -s danger-full-access` — implementation agent options:**
 
 The orchestrator expects a command that:
 1. Accepts a prompt string as its final argument (via shell variable, not stdin)
@@ -922,7 +922,7 @@ Common choices:
 
 | Option | Invocation |
 |---|---|
-| Codex CLI | `codex exec -s workspace-write` |
+| Codex CLI | `codex exec -s danger-full-access` |
 | Claude Code subagent | Use the `Agent tool` with `general-purpose` instead of the Bash block; adapt Steps 2, 3, and 5 accordingly |
 | Any sandboxed executor | Replace the Bash block with whatever invocation your tool requires |
 

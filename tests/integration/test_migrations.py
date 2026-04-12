@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -72,7 +73,7 @@ async def migrated_engine() -> AsyncEngine:
     engine = create_async_engine(database_url)
 
     await _reset_public_schema(engine)
-    command.upgrade(_alembic_config(), "head")
+    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
 
     try:
         yield engine

@@ -71,42 +71,11 @@ jobs:
         run: ruff format --check app/ tests/
 
   # ── Pytest ────────────────────────────────────────────────────────────────
-  # Runs against a real PostgreSQL + pgvector database and a real Redis instance.
-  # Integration tests require the DB and Redis services below.
-  # External API calls (Google Docs, Anthropic, OpenAI) are skipped unless
-  # the corresponding env vars are present (they are not set in CI).
+  # Runs the current unit test suite with placeholder runtime configuration.
   pytest:
     name: Pytest
     runs-on: ubuntu-latest
     needs: [ruff-check, ruff-format]
-
-    # ── Services ─────────────────────────────────────────────────────────────
-    # PostgreSQL 16 with pgvector extension.
-    # Redis 7 for ARQ task queue.
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: dmi_test
-          POSTGRES_PASSWORD: dmi_test
-          POSTGRES_DB: dmi_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -121,17 +90,16 @@ jobs:
         run: pip install -r requirements-dev.txt -e .
 
       # ── Required env vars for tests ──────────────────────────────────────
-      # Real API keys are NOT set here. Tests that require live APIs use
-      # pytest.mark.skipif to skip when the env var is absent.
+      # Placeholder values only; CI never injects real credentials.
       - name: Run pytest
         env:
           DATABASE_URL: postgresql+asyncpg://dmi_test:dmi_test@localhost:5432/dmi_test
           REDIS_URL: redis://localhost:6379/0
-          ANTHROPIC_API_KEY: ""
-          OPENAI_API_KEY: ""
+          ANTHROPIC_API_KEY: test-anthropic-key
+          OPENAI_API_KEY: test-openai-key
           GOOGLE_CLIENT_ID: test-client-id
           GOOGLE_CLIENT_SECRET: test-client-secret
-          GOOGLE_REFRESH_TOKEN: ""
+          GOOGLE_REFRESH_TOKEN: test-refresh-token
           GOOGLE_DOC_ID: test-doc-id
           SECRET_KEY: test-secret-key-32-bytes-minimum-xx
           ENV: test

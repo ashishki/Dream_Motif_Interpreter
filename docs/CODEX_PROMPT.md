@@ -9,7 +9,7 @@ Phase: 1
 ## Current State
 
 - **Phase:** 1
-- **Baseline:** 8 passing tests
+- **Baseline:** 13 passing tests
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
 - **Last updated:** 2026-04-12
@@ -29,7 +29,7 @@ Phase: 1
 
 ## Next Task
 
-**T04: Database Schema — Dream Entries, Taxonomy, Annotations**
+**T05: Google Docs Ingestion Client**
 
 Read T03 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
 
@@ -38,13 +38,6 @@ Read T03 in `docs/tasks.md` for the full specification, acceptance criteria, and
 ## Fix Queue
 
 empty
-
-## Blocker
-
-**T04 — BLOCKED: no PostgreSQL/pgvector in environment.**
-All files created (migrations, models, tests). Integration tests require a running PostgreSQL 16 + pgvector.
-
-Action required: `docker-compose up -d` (docker-compose.yml created in project root), then re-run orchestrator to verify T04 integration tests and continue.
 
 ---
 
@@ -147,6 +140,7 @@ none
 - **T01** — Project Skeleton — 2026-04-12 — 3 tests passing — Light review PASS
 - **T02** — CI Setup — 2026-04-12 — 5 tests passing — Light review PASS
 - **T03** — Smoke Tests — 2026-04-12 — 8 tests passing — Light review PASS
+- **T04** — Database Schema — 2026-04-12 — 13 tests passing — Light review pending
 
 ---
 

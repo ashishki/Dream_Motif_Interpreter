@@ -127,7 +127,7 @@ Notes: |
 
 ---
 
-## T04: Database Schema — Dream Entries, Taxonomy, Annotations [!]
+## T04: Database Schema — Dream Entries, Taxonomy, Annotations
 
 Owner:      codex
 Phase:      1

@@ -20,6 +20,7 @@ dependencies = [
     "google-auth>=2.0",
     "google-auth-httplib2>=0.2",
     "google-api-python-client>=2.0",
+    "tiktoken>=0.7",
 ]
 
 [project.optional-dependencies]

@@ -207,6 +207,89 @@ Notes: |
 
 ---
 
+## Fix Tasks — Cycle 3 (resolve before T10 DONE gate)
+
+---
+
+## FIX-C3-1: Add HTTP Error Handling to `OpenAIEmbeddingClient.embed()`
+
+Owner:      codex
+Phase:      3
+Type:       fix
+Depends-On: T10
+Finding:    CODE-19 [P1]
+
+Objective: |
+  Wrap `urllib.request.urlopen()` in `_send_embedding_request()` with a
+  `try/except urllib.error.HTTPError` block. Define a typed
+  `EmbeddingServiceError(status_code, dream_id)` exception. Log the HTTP
+  status code and dream_id on failure before raising. Add unit tests for
+  429 and 500 HTTP responses.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "A mocked 429 response from the OpenAI embeddings endpoint causes `_send_embedding_request()` to raise `EmbeddingServiceError` with `status_code=429` and the correct `dream_id`. Verified by tests/unit/test_rag_ingestion.py::test_embed_raises_on_429."
+    test: "tests/unit/test_rag_ingestion.py::test_embed_raises_on_429"
+  - id: AC-2
+    description: "A mocked 500 response causes `_send_embedding_request()` to raise `EmbeddingServiceError` with `status_code=500`. Verified by tests/unit/test_rag_ingestion.py::test_embed_raises_on_500."
+    test: "tests/unit/test_rag_ingestion.py::test_embed_raises_on_500"
+  - id: AC-3
+    description: "On HTTP error, the error is logged with `dream_id` and `status_code` before the exception is raised. Verified by tests/unit/test_rag_ingestion.py::test_embed_logs_dream_id_on_error."
+    test: "tests/unit/test_rag_ingestion.py::test_embed_logs_dream_id_on_error"
+
+Files:
+  - app/retrieval/ingestion.py
+  - tests/unit/test_rag_ingestion.py
+
+Notes: |
+  `EmbeddingServiceError` may be defined inline in `app/retrieval/ingestion.py`
+  or in a shared `app/shared/exceptions.py` module if one exists.
+  Do NOT allow raw `urllib.error.HTTPError` to propagate beyond the
+  `_send_embedding_request()` boundary.
+
+---
+
+## FIX-C3-2: Replace `_token_count()` Word-Split with tiktoken-Based Token Count
+
+Owner:      codex
+Phase:      3
+Type:       fix
+Depends-On: T10
+Finding:    CODE-20 [P1]
+
+Objective: |
+  Replace the whitespace-split word count in `_token_count()` at
+  `app/retrieval/ingestion.py:238–239` with a tiktoken `cl100k_base`
+  encoder call. Add `tiktoken` to `requirements.txt`. Update
+  `test_chunking_boundary` to use input text with a known real token count
+  rather than an approximate word count.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "`_token_count(text)` returns the same count as `len(tiktoken.get_encoding('cl100k_base').encode(text))` for a 100-word English prose sample. Verified by tests/unit/test_rag_ingestion.py::test_token_count_uses_tiktoken."
+    test: "tests/unit/test_rag_ingestion.py::test_token_count_uses_tiktoken"
+  - id: AC-2
+    description: "All chunks produced by `_chunk_text()` on a 600-real-token prose input have `_token_count(chunk) <= 512`. Verified by tests/unit/test_rag_ingestion.py::test_chunks_do_not_exceed_512_real_tokens."
+    test: "tests/unit/test_rag_ingestion.py::test_chunks_do_not_exceed_512_real_tokens"
+  - id: AC-3
+    description: "`requirements.txt` contains `tiktoken`. Verified by tests/unit/test_rag_ingestion.py::test_tiktoken_in_requirements."
+    test: "tests/unit/test_rag_ingestion.py::test_tiktoken_in_requirements"
+
+Files:
+  - app/retrieval/ingestion.py
+  - requirements.txt
+  - tests/unit/test_rag_ingestion.py
+
+Notes: |
+  Use `tiktoken.get_encoding("cl100k_base")` — same encoder family as
+  `text-embedding-3-small`. Cache the encoder instance at module level
+  to avoid repeated initialisation overhead.
+  The 50-token overlap constant (`CHUNK_OVERLAP_TOKENS`) must also use
+  real token units after this fix — verify it is already applied correctly
+  in the chunking loop.
+
+---
+
 ## Phase 2: Analysis Pipeline
 
 Goal: The system can segment a Google Doc into dream entries, maintain a theme taxonomy, extract per-dream themes using the LLM, and ground each theme to supporting text fragments with a salience score. All outputs are in `draft` status pending user confirmation.
@@ -373,6 +456,49 @@ Notes: |
 
 ---
 
+## Fix Tasks — Cycle 4 (resolve before T12 DONE gate)
+
+---
+
+## FIX-C4-1: Add HTTP Error Handling to `query.py` `_send_embedding_request()`
+
+Owner:      codex
+Phase:      3
+Type:       fix
+Depends-On: T11
+Finding:    CODE-26 [P1]
+
+Objective: |
+  Wrap `urllib.request.urlopen()` in `_send_embedding_request()` in
+  `app/retrieval/query.py` with a `try/except urllib.error.HTTPError` block.
+  Define a typed `QueryEmbeddingError(status_code, query_length)` exception.
+  Log `status_code` and `query_length` (NOT query text — PII policy) on
+  failure before raising. Add unit tests for 429 and 500 HTTP responses.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "A mocked 429 response from the OpenAI embeddings endpoint causes `_send_embedding_request()` in `query.py` to raise `QueryEmbeddingError` with `status_code=429`. Verified by tests/unit/test_rag_query.py::test_query_embed_raises_on_429."
+    test: "tests/unit/test_rag_query.py::test_query_embed_raises_on_429"
+  - id: AC-2
+    description: "A mocked 500 response causes `_send_embedding_request()` to raise `QueryEmbeddingError` with `status_code=500`. Verified by tests/unit/test_rag_query.py::test_query_embed_raises_on_500."
+    test: "tests/unit/test_rag_query.py::test_query_embed_raises_on_500"
+  - id: AC-3
+    description: "On HTTP error, the error is logged with `status_code` and `query_length` (not query text) before the exception is raised. Verified by tests/unit/test_rag_query.py::test_query_embed_logs_on_error."
+    test: "tests/unit/test_rag_query.py::test_query_embed_logs_on_error"
+
+Files:
+  - app/retrieval/query.py
+  - tests/unit/test_rag_query.py
+
+Notes: |
+  `QueryEmbeddingError` may be defined inline in `app/retrieval/query.py`.
+  Do NOT log query text — only `status_code` and `query_length` (integer).
+  Do NOT allow raw `urllib.error.HTTPError` to propagate beyond the
+  `_send_embedding_request()` boundary.
+  This fix mirrors FIX-C3-1 (CODE-19) applied to `ingestion.py`.
+
+---
+
 ## Phase 3: Retrieval (RAG)
 
 Goal: Dream entries and their annotations are embedded, indexed in pgvector, and retrievable via hybrid semantic + lexical search. The `insufficient_evidence` path is tested and mandatory. A retrieval evaluation baseline is established.
@@ -521,6 +647,97 @@ Notes: |
   Eval source for the history row: "scripts/eval.py against §Evaluation Dataset (10 queries), run 2026-04-10"
   hit@3 target: ≥ 0.70 on the seeded corpus (baseline, not production target).
   This task closes the RAG Phase 3 gate.
+
+---
+
+## Fix Tasks — Cycle 5 (resolve before T13 DONE gate)
+
+---
+
+## FIX-C5-1: Remove Dead `except HTTPError` Guard in `embed()` — `query.py` and `ingestion.py`
+
+Owner:      codex
+Phase:      4
+Type:       fix
+Depends-On: T12
+Finding:    CODE-33 [P1]
+
+Objective: |
+  Remove the unreachable `except urllib_error.HTTPError` guard from
+  `OpenAIEmbeddingClient.embed()` in both `app/retrieval/query.py` and
+  `app/retrieval/ingestion.py`. The sync helper `_send_embedding_request()`
+  already converts `HTTPError` into a typed exception; the async caller's
+  guard is dead code that creates false confidence in two-level error handling.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "`OpenAIEmbeddingClient.embed()` in `query.py` contains no `except urllib_error.HTTPError` block. Verified by grep and by tests/unit/test_rag_query.py::test_query_embed_raises_on_429 and test_query_embed_raises_on_500 still passing."
+    test: "tests/unit/test_rag_query.py::test_query_embed_raises_on_429"
+  - id: AC-2
+    description: "`OpenAIEmbeddingClient.embed()` in `ingestion.py` contains no `except urllib_error.HTTPError` block. Verified by grep and by tests/unit/test_rag_ingestion.py::test_embed_raises_on_429 and test_embed_raises_on_500 still passing."
+    test: "tests/unit/test_rag_ingestion.py::test_embed_raises_on_429"
+  - id: AC-3
+    description: "All pre-existing embed HTTP error tests (429 and 500 in both files) continue to pass after the guard removal, confirming the sync helper's typed error propagates correctly."
+    test: "tests/unit/test_rag_ingestion.py::test_embed_raises_on_500"
+
+Files:
+  - app/retrieval/query.py
+  - app/retrieval/ingestion.py
+
+Notes: |
+  This is a deletion-only fix. Do NOT modify `_send_embedding_request()` or
+  its `try/except urllib.error.HTTPError` block — that is the correct,
+  active handler. Only remove the dead guard in the async `embed()` caller.
+  Verify with: grep -n "except urllib_error.HTTPError" app/retrieval/query.py
+  and app/retrieval/ingestion.py — both must return 0 matches in embed().
+
+---
+
+## FIX-C5-2: Close Aging P2 Carry-Forwards — CODE-2, CODE-5/35, CODE-11/36, CODE-12/37
+
+Owner:      codex
+Phase:      4
+Type:       fix
+Depends-On: T12
+Findings:   CODE-2 [P2], CODE-35 [P2] (carry-forward CODE-5), CODE-36 [P2] (carry-forward CODE-11), CODE-37 [P2] (carry-forward CODE-12)
+
+Objective: |
+  Resolve four aging P2 findings that have breached the 3–4 cycle age cap.
+  All four are isolated, low-risk changes that can be addressed in a single commit.
+  1. CODE-2: Add parametrised unit test asserting non-auth `HttpError` (e.g. 500)
+     in `GDocsClient.fetch_document()` is re-raised as-is (not wrapped as `GDocsAuthError`).
+  2. CODE-35 (CODE-5): Add `fragments IS NOT NULL` column assertion and a parametrised
+     positive-domain INSERT test for the CHECK constraint (draft/confirmed/rejected)
+     to `tests/integration/test_migrations.py`.
+  3. CODE-36 (CODE-11): Remove all three `@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), ...)`
+     decorators from `tests/integration/test_analysis.py:167–170, 213–216, 250–253`.
+  4. CODE-37 (CODE-12): Make `StubGrounder` set `verified=False` for the second fragment;
+     add assertion `fragments[1]["verified"] is False` in the integration test.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "A parametrised test in `tests/unit/test_gdocs_client.py` asserts that a non-auth HTTPError (status 500) raised by `urlopen` propagates from `GDocsClient.fetch_document()` as-is, not as `GDocsAuthError`. Verified by tests/unit/test_gdocs_client.py::test_non_auth_http_error_propagates."
+    test: "tests/unit/test_gdocs_client.py::test_non_auth_http_error_propagates"
+  - id: AC-2
+    description: "`tests/integration/test_migrations.py` asserts `is_nullable == 'NO'` for the `fragments` column, and a parametrised INSERT test verifies all three valid CHECK domain values (draft/confirmed/rejected) succeed without IntegrityError. Verified by tests/integration/test_migrations.py::test_fragments_not_null and test_dream_themes_status_check_domain."
+    test: "tests/integration/test_migrations.py::test_fragments_not_null"
+  - id: AC-3
+    description: "All three previously-skipped analysis integration tests run without `@pytest.mark.skipif` guards and pass using stub doubles. Verified by tests/integration/test_analysis.py (three previously-guarded tests now execute unconditionally)."
+    test: "tests/integration/test_analysis.py"
+  - id: AC-4
+    description: "`StubGrounder` sets `verified=False` for the second fragment; integration test asserts `fragments[1]['verified'] is False`. Verified by tests/integration/test_analysis.py::test_grounded_themes_have_fragments."
+    test: "tests/integration/test_analysis.py::test_grounded_themes_have_fragments"
+
+Files:
+  - tests/unit/test_gdocs_client.py
+  - tests/integration/test_migrations.py
+  - tests/integration/test_analysis.py
+
+Notes: |
+  These are all test-only changes with the exception of the one-line StubGrounder
+  edit (test helper, not production code). No production .py files require modification.
+  All four changes are isolated; a single commit is acceptable.
+  After this fix, CODE-2, CODE-5, CODE-11, and CODE-12 are all closed.
 
 ---
 

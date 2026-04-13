@@ -1,7 +1,7 @@
 # Architecture — Dream Motif Interpreter
 
 Version: 1.0
-Last updated: 2026-04-10
+Last updated: 2026-04-12
 Status: Draft
 
 ---
@@ -363,6 +363,12 @@ dream_motif_interpreter/
 ├── alembic/                       # Database migrations
 │   ├── env.py
 │   └── versions/
+│       ├── 001_initial_schema.py  # Initial schema: dream_entries, dream_chunks, theme_categories, dream_themes, annotation_versions
+│       ├── 002_add_deprecated_flag.py  # Add deprecated boolean NOT NULL DEFAULT false to dream_themes
+│       ├── 003_seed_categories.py      # Seed initial theme categories
+│       ├── 004_fix_status_ck.py        # Add ck_dream_themes_status CHECK constraint
+│       ├── 005_add_fragments_default.py  # Add server_default '[]'::jsonb to dream_themes.fragments
+│       └── 006_add_hnsw_index.py         # Add HNSW index on dream_chunks.embedding for pgvector ANN search
 ├── docs/
 │   ├── ARCHITECTURE.md            # This file
 │   ├── spec.md
@@ -381,14 +387,18 @@ dream_motif_interpreter/
 │       ├── PROMPT_1_ARCH.md
 │       ├── PROMPT_2_CODE.md
 │       ├── PROMPT_3_CONSOLIDATED.md
-│       └── AUDIT_INDEX.md
+│       ├── AUDIT_INDEX.md
+│       ├── META_ANALYSIS.md
+│       ├── ARCH_REPORT.md
+│       ├── PHASE1_AUDIT.md
+│       ├── STRATEGY_NOTE.md
+│       └── REVIEW_REPORT.md
 ├── .github/
 │   └── workflows/
 │       └── ci.yml
 ├── requirements.txt
 ├── requirements-dev.txt
-├── pyproject.toml
-└── README.md
+└── pyproject.toml
 ```
 
 ---

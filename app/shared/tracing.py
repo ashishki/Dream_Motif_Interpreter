@@ -1,10 +1,17 @@
-from functools import lru_cache
+from __future__ import annotations
 
+import logging
+from functools import lru_cache
+from typing import Any
+
+import structlog
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult
 
-_tracer_provider: TracerProvider | None = None
+from app.shared.config import get_settings
+
+SERVICE_NAME = "dream-motif-interpreter"
 
 
 class _NoOpSpanExporter(SpanExporter):
@@ -12,18 +19,79 @@ class _NoOpSpanExporter(SpanExporter):
         return SpanExportResult.SUCCESS
 
 
+@lru_cache(maxsize=1)
 def _get_provider() -> TracerProvider:
-    global _tracer_provider
-    if _tracer_provider is None:
-        provider = TracerProvider()
-        provider.add_span_processor(SimpleSpanProcessor(_NoOpSpanExporter()))
-        trace.set_tracer_provider(provider)
-        _tracer_provider = provider
-    return _tracer_provider
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(_NoOpSpanExporter()))
+    trace.set_tracer_provider(provider)
+    return provider
 
 
 @lru_cache(maxsize=None)
-def get_tracer(name: str = "dream_motif_interpreter") -> trace.Tracer:
+def get_tracer(name: str = SERVICE_NAME) -> trace.Tracer:
     """Return the shared tracer. All code that creates spans must import from here."""
-    provider = _get_provider()
-    return provider.get_tracer(name)
+    return _get_provider().get_tracer(name)
+
+
+def _add_service_fields(
+    _logger: Any,
+    _method_name: str,
+    event_dict: dict[str, Any],
+) -> dict[str, Any]:
+    settings = get_settings()
+    event_dict.setdefault("env", settings.ENV)
+    event_dict.setdefault("service", SERVICE_NAME)
+    return event_dict
+
+
+def _add_trace_fields(
+    _logger: Any,
+    _method_name: str,
+    event_dict: dict[str, Any],
+) -> dict[str, Any]:
+    span = trace.get_current_span()
+    span_context = span.get_span_context()
+    if not span_context.is_valid:
+        event_dict.setdefault("trace_id", None)
+        event_dict.setdefault("span_id", None)
+        return event_dict
+
+    event_dict.setdefault("trace_id", f"{span_context.trace_id:032x}")
+    event_dict.setdefault("span_id", f"{span_context.span_id:016x}")
+    return event_dict
+
+
+def _redact_pii(
+    _logger: Any,
+    _method_name: str,
+    event_dict: dict[str, Any],
+) -> dict[str, Any]:
+    event_dict.pop("raw_text", None)
+    return event_dict
+
+
+def configure_logging() -> None:
+    if getattr(configure_logging, "_configured", False):
+        return
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.stdlib.add_log_level,
+            _add_service_fields,
+            _add_trace_fields,
+            _redact_pii,
+            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            structlog.processors.JSONRenderer(),
+        ],
+        logger_factory=structlog.PrintLoggerFactory(),
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        cache_logger_on_first_use=True,
+    )
+    configure_logging._configured = True
+
+
+def get_logger(name: str) -> Any:
+    configure_logging()
+    return structlog.get_logger(name)

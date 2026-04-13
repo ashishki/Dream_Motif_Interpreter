@@ -1,4 +1,3 @@
-import logging
 from collections.abc import Mapping
 from typing import Any
 
@@ -9,12 +8,12 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from app.shared.config import Settings, get_settings
-from app.shared.tracing import get_tracer
+from app.shared.tracing import get_logger, get_tracer
 
 GOOGLE_DOCS_READONLY_SCOPE = "https://www.googleapis.com/auth/documents.readonly"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GDocsAuthError(Exception):
@@ -31,10 +30,12 @@ class GDocsClient:
             logger.info("Fetching Google Docs document")
 
             try:
-                service = self._build_docs_service()
-                document = (
-                    service.documents().get(documentId=self._settings.GOOGLE_DOC_ID).execute()
-                )
+                with self._tracer.start_as_current_span("gdocs.build_service"):
+                    service = self._build_docs_service()
+                with self._tracer.start_as_current_span("gdocs.documents.get"):
+                    document = (
+                        service.documents().get(documentId=self._settings.GOOGLE_DOC_ID).execute()
+                    )
             except RefreshError as exc:
                 logger.warning("Google Docs authentication failed during token refresh")
                 raise GDocsAuthError("Google Docs authentication failed") from exc
@@ -42,11 +43,13 @@ class GDocsClient:
                 status_code = _get_status_code(exc)
                 if status_code in {401, 403}:
                     logger.warning(
-                        "Google Docs authentication failed with HTTP status %s",
-                        status_code,
+                        "Google Docs authentication failed with HTTP status",
+                        status_code=status_code,
                     )
                     raise GDocsAuthError("Google Docs authentication failed") from exc
-                logger.error("Google Docs API request failed with HTTP status %s", status_code)
+                logger.error(
+                    "Google Docs API request failed with HTTP status", status_code=status_code
+                )
                 raise
 
             paragraphs = _extract_paragraphs(document)
@@ -58,16 +61,17 @@ class GDocsClient:
         return build("docs", "v1", credentials=credentials, cache_discovery=False)
 
     def _build_credentials(self) -> Credentials:
-        credentials = Credentials(
-            token=None,
-            refresh_token=self._settings.GOOGLE_REFRESH_TOKEN,
-            token_uri=GOOGLE_TOKEN_URI,
-            client_id=self._settings.GOOGLE_CLIENT_ID,
-            client_secret=self._settings.GOOGLE_CLIENT_SECRET,
-            scopes=[GOOGLE_DOCS_READONLY_SCOPE],
-        )
-        credentials.refresh(Request())
-        return credentials
+        with self._tracer.start_as_current_span("gdocs.refresh_credentials"):
+            credentials = Credentials(
+                token=None,
+                refresh_token=self._settings.GOOGLE_REFRESH_TOKEN,
+                token_uri=GOOGLE_TOKEN_URI,
+                client_id=self._settings.GOOGLE_CLIENT_ID,
+                client_secret=self._settings.GOOGLE_CLIENT_SECRET,
+                scopes=[GOOGLE_DOCS_READONLY_SCOPE],
+            )
+            credentials.refresh(Request())
+            return credentials
 
 
 def _extract_paragraphs(document: Mapping[str, Any]) -> list[str]:

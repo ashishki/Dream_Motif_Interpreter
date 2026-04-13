@@ -1,4 +1,3 @@
-import logging
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -49,7 +48,20 @@ def test_fetch_document_raises_on_auth_http_errors(status_code: int) -> None:
             client.fetch_document()
 
 
-def test_no_credentials_in_logs(caplog: pytest.LogCaptureFixture) -> None:
+def test_non_auth_http_error_propagates() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    http_error = _build_http_error(500)
+    mocked_service.documents.return_value.get.return_value.execute.side_effect = http_error
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        with pytest.raises(HttpError) as exc_info:
+            client.fetch_document()
+
+    assert exc_info.value is http_error
+
+
+def test_no_credentials_in_logs(capsys: pytest.CaptureFixture[str]) -> None:
     settings = _build_settings()
     client = GDocsClient(settings=settings)
     mocked_service = Mock()
@@ -71,10 +83,12 @@ def test_no_credentials_in_logs(caplog: pytest.LogCaptureFixture) -> None:
     }
 
     with patch.object(client, "_build_docs_service", return_value=mocked_service):
-        with caplog.at_level(logging.INFO, logger="app.services.gdocs_client"):
-            paragraphs = client.fetch_document()
+        paragraphs = client.fetch_document()
+
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
 
     assert paragraphs == ["First paragraph", "Second paragraph"]
-    assert settings.GOOGLE_CLIENT_ID not in caplog.text
-    assert settings.GOOGLE_CLIENT_SECRET not in caplog.text
-    assert settings.GOOGLE_REFRESH_TOKEN not in caplog.text
+    assert settings.GOOGLE_CLIENT_ID not in output
+    assert settings.GOOGLE_CLIENT_SECRET not in output
+    assert settings.GOOGLE_REFRESH_TOKEN not in output

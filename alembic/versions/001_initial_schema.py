@@ -43,12 +43,16 @@ def upgrade() -> None:
         sa.Column("raw_text", sa.Text(), nullable=False),
         sa.Column("word_count", sa.Integer(), nullable=False),
         sa.Column("content_hash", sa.String(length=128), nullable=False),
-        sa.Column("segmentation_confidence", sa.Float(), nullable=True),
+        sa.Column("segmentation_confidence", sa.String(length=16), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.CheckConstraint(
+            "segmentation_confidence IN ('high', 'low')",
+            name="ck_dream_entries_segmentation_confidence",
         ),
         sa.UniqueConstraint("content_hash", name="uq_dream_entries_content_hash"),
     )
@@ -143,6 +147,10 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
+        sa.CheckConstraint(
+            "status IN ('active', 'deprecated')",
+            name="ck_dream_themes_status",
+        ),
         sa.ForeignKeyConstraint(["category_id"], ["theme_categories.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["dream_id"], ["dream_entries.id"], ondelete="RESTRICT"),
     )
@@ -152,7 +160,9 @@ def upgrade() -> None:
     op.create_index("ix_dream_chunks_dream_id", "dream_chunks", ["dream_id"])
     op.create_index("ix_dream_themes_dream_id", "dream_themes", ["dream_id"])
     op.create_index("ix_dream_themes_category_id", "dream_themes", ["category_id"])
-    op.create_index("ix_annotation_versions_entity", "annotation_versions", ["entity_type", "entity_id"])
+    op.create_index(
+        "ix_annotation_versions_entity", "annotation_versions", ["entity_type", "entity_id"]
+    )
 
 
 def downgrade() -> None:

@@ -5,9 +5,9 @@ from datetime import date, datetime
 from typing import List, Optional
 
 from sqlalchemy import (
+    CheckConstraint,
     Date,
     DateTime,
-    Float,
     ForeignKey,
     Integer,
     String,
@@ -51,6 +51,12 @@ class UUIDPrimaryKeyMixin:
 
 class DreamEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "dream_entries"
+    __table_args__ = (
+        CheckConstraint(
+            "segmentation_confidence IN ('high', 'low')",
+            name="ck_dream_entries_segmentation_confidence",
+        ),
+    )
 
     source_doc_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     date: Mapped[Optional[date]] = mapped_column(Date(), nullable=True, index=True)
@@ -58,7 +64,7 @@ class DreamEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     raw_text: Mapped[str] = mapped_column(Text(), nullable=False)
     word_count: Mapped[int] = mapped_column(Integer(), nullable=False)
     content_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
-    segmentation_confidence: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
+    segmentation_confidence: Mapped[str] = mapped_column(String(16), nullable=False)
 
     chunks: Mapped[List["DreamChunk"]] = relationship(
         back_populates="dream", cascade="all, delete-orphan"

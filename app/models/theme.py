@@ -3,9 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, List, Literal
 
+import sqlalchemy as sa
 from sqlalchemy import CheckConstraint, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import Boolean
 
 from app.models.dream import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
@@ -30,6 +32,12 @@ class ThemeCategory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class DreamTheme(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "dream_themes"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'confirmed', 'rejected')",
+            name="ck_dream_themes_status",
+        ),
+    )
 
     dream_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -46,7 +54,17 @@ class DreamTheme(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     salience: Mapped[float] = mapped_column(Float(), nullable=False)
     status: Mapped[str] = mapped_column(String(64), nullable=False)
     match_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    fragments: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    fragments: Mapped[List[Dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=sa.text("'[]'::jsonb"),
+    )
+    deprecated: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+    )
 
     dream: Mapped["DreamEntry"] = relationship(back_populates="themes")
     category: Mapped["ThemeCategory"] = relationship(back_populates="dream_themes")

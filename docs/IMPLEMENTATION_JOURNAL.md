@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
 Version: 1.0
-Last updated: 2026-04-10
+Last updated: 2026-04-14
 Status: append-only
 
 ---
@@ -22,6 +22,51 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-04-14 — T18 — Archive-Level Pattern Detection
+
+- Scope: `app/services/patterns.py`, `app/api/patterns.py`, `app/main.py`, `tests/integration/test_patterns_api.py`
+- Why this work happened: Phase 5 T18 required archive-level recurring-pattern, co-occurrence, and timeline APIs framed as computational pattern signals rather than authoritative interpretations
+- Decisions applied: none
+- Evidence collected: `pytest -q tests/integration/test_patterns_api.py` → `4 passed`; `pytest -q` → `87 passed, 9 skipped`; `ruff check app/ tests/` → clean; `ruff format --check app/ tests/` → clean
+- Follow-ups: T19 is next; `ARCH-12`, `ARCH-15`, `CODE-48`, `CODE-49`, and `CODE-50` remain open carry-forwards
+- Notes for next agent: pattern aggregation uses confirmed, non-deprecated themes only; recurring percentages are computed against the distinct dream count represented in the confirmed-theme archive; timeline excludes undated dreams because the response contract requires ISO dates
+
+### 2026-04-14 — T17 — Background Worker Setup with Idempotency
+
+- Scope: `app/workers/ingest.py`, `app/workers/index.py`, worker registration and integration coverage
+- Why this work happened: T17 established Redis-backed worker execution and job status handling for ingestion and indexing with idempotent processing semantics
+- Decisions applied: D-009
+- Evidence collected: `pytest -q` baseline advanced to `83 passed, 9 skipped`; worker integration coverage added for queued, done, and failed job outcomes
+- Follow-ups: worker lifecycle robustness findings remained open for later hardening (`CODE-48`)
+- Notes for next agent: sync jobs and worker status updates are now first-class runtime paths; check Redis error handling before extending the worker surface
+
+### 2026-04-14 — T16 — User Curation API
+
+- Scope: `app/api/themes.py`, curation integration coverage, supporting config and tracing updates
+- Why this work happened: T16 introduced authenticated theme confirmation/rejection, category approval, and the Redis-backed bulk-confirm approval flow with annotation version writes before mutations
+- Decisions applied: D-007, D-008
+- Evidence collected: `pytest -q` baseline advanced to `79 passed, 9 skipped`; curation integration tests cover confirm/reject, bulk approval, auth, and version-write behavior
+- Follow-ups: bulk-confirm token validation hardening (`CODE-50`) and Redis client lifecycle cleanup (`CODE-49`) remained open
+- Notes for next agent: theme and category mutations now rely on append-only `AnnotationVersion` writes; keep that invariant if rollback work changes these paths
+
+### 2026-04-14 — T15 — Dream Browsing and Theme Search API
+
+- Scope: `app/api/search.py`, search integration coverage, retrieval framing
+- Why this work happened: T15 exposed authenticated search and per-dream theme listing on top of the T11 retrieval layer
+- Decisions applied: D-003, D-005
+- Evidence collected: `pytest -q` baseline advanced to `74 passed, 9 skipped`; search integration tests cover ranked results, insufficient-evidence, theme filters, and salience ordering
+- Follow-ups: retrieval contract gaps `ARCH-10` and `ARCH-11` remained open carry-forwards
+- Notes for next agent: search responses already carry interpretation framing; keep new interpretive endpoints aligned with that API-level disclaimer pattern
+
+### 2026-04-14 — T14 — Ingestion and Sync API Endpoints
+
+- Scope: `app/api/dreams.py`, sync/dream listing integration coverage, config validation tests
+- Why this work happened: T14 exposed the authenticated sync trigger, sync job status, dream pagination, and dream detail endpoints
+- Decisions applied: D-009
+- Evidence collected: `pytest -q` baseline advanced to `70 passed, 9 skipped`; integration coverage added for sync, pagination, and missing-dream handling; config fail-fast tests added
+- Follow-ups: T15 was next; session-factory reuse and Redis client lifecycle were still deferred
+- Notes for next agent: `app/api/dreams.py` owns the shared API-key validation path and currently provides the session factory reused by newer routers
 
 ### 2026-04-13 — T13 — Health Endpoint and Observability
 

@@ -1,20 +1,29 @@
 # CODEX_PROMPT.md
 
-Version: 1.14
+Version: 1.15
 Date: 2026-04-14
-Phase: 4
+Phase: 5
 
 ---
 
 ## Current State
 
-- **Phase:** 4
-- **Baseline:** 83 passing tests, 9 skipped
+- **Phase:** 5
+- **Baseline:** 87 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (Cycle 7 Phase 4 boundary review)
+- **Last updated:** 2026-04-14 (T18 complete)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
+
+---
+
+## Summary State
+
+- **Phases completed:** Phase 1 through Phase 4 complete; Phase 5 in progress
+- **Latest completed task:** T18 — Archive-Level Pattern Detection
+- **Current baseline:** 87 passing tests, 9 skipped
+- **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
 
@@ -29,22 +38,22 @@ Phase: 4
 
 ## Next Task
 
-**T18: Archive-Level Pattern Detection**
+**T19: Annotation Versioning and Rollback**
 
-Read T18 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
-Primary focus: implement archive-level recurring patterns, co-occurrence, and timeline APIs with disclaimer framing.
+Read T19 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
+Primary focus: implement annotation history retrieval and rollback APIs while preserving append-only versioning.
 
 ---
 
 ## Fix Queue
 
-─── Fix Queue ─── (empty — no P0/P1 open; proceed to T18)
+─── Fix Queue ─── (empty — no P0/P1 open; proceed to T19)
 
 ---
 
 ## Open Findings
 
-_Cycle 7 — 2026-04-14 · 57 findings total: P1: 3, P2: 33, P3: 14 (45 Closed, 12 Open)_
+_Cycle 7 — 2026-04-14 · 57 findings total: P1: 3, P2: 33, P3: 14 (46 Closed, 11 Open)_
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
@@ -112,7 +121,7 @@ _Cycle 7 — 2026-04-14 · 57 findings total: P1: 3, P2: 33, P3: 14 (45 Closed, 
 | CODE-48 | P2 | `ingest_document` initial Redis status write (status="running") not in try/finally block. Transient Redis failure leaves job ID untracked; subsequent "done"/"failed" writes orphaned. | `app/workers/ingest.py:37` | Open — new Cycle 7 |
 | CODE-49 | P2 | Redis client in `themes.py` and `dreams.py` uses `lru_cache(maxsize=1)` but is never closed. No connection pool configured. Potential connection leak in long-running processes. | `app/api/themes.py:259-262`, `app/api/dreams.py:308-315` | Open — new Cycle 7 |
 | CODE-50 | P2 | Bulk confirm token parsing in `themes.py` lacks explicit `isinstance(..., list)` type guard on `parsed_payload["dream_ids"]`. Non-list value raises unhandled `TypeError`. | `app/api/themes.py:117-121` | Open — new Cycle 7 |
-| DOC-1 | P2 | `docs/IMPLEMENTATION_JOURNAL.md` last entry is T13 (2026-04-13); entries for T14, T15, T16, T17 absent. Retrieval continuity degraded for future agents. | `docs/IMPLEMENTATION_JOURNAL.md` | Open — new Cycle 7 |
+| DOC-1 | P2 | `docs/IMPLEMENTATION_JOURNAL.md` last entry is T13 (2026-04-13); entries for T14, T15, T16, T17 absent. Retrieval continuity degraded for future agents. | `docs/IMPLEMENTATION_JOURNAL.md` | **Closed** — T14/T15/T16/T17/T18 journal entries added 2026-04-14 |
 
 ---
 
@@ -124,7 +133,7 @@ _Cycle 7 — 2026-04-14 · 57 findings total: P1: 3, P2: 33, P3: 14 (45 Closed, 
 - Open retrieval findings: ARCH-10 (P3, query expansion not wired), ARCH-11 (P3, evidence fragment metadata incomplete); CODE-39 closed (T14)
 - Index schema version: v1 (implemented in ingestion.py; HNSW index migration 006 applied)
 - Pending reindex actions: none
-- Retrieval-related next tasks: T18 (pattern detection)
+- Retrieval-related next tasks: none
 - Retrieval-driven tasks: none
 
 ---
@@ -209,6 +218,16 @@ none
 
 ## Completed Tasks
 
+- **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed
+- **T15** — Dream Browsing and Theme Search API — 2026-04-14 — 74 tests passing, 9 skipped — GET /search and GET /dreams/{id}/themes implemented; authenticated search returns ranked evidence with theme matches; insufficient_evidence and theme filter paths covered
+- **T16** — User Curation API — Theme Confirmation and Taxonomy Management — 2026-04-14 — 79 tests passing, 9 skipped — confirm/reject theme mutations, Redis-backed bulk confirm approval flow, category approval auth gate, and write-ahead AnnotationVersion coverage implemented
+- **T17** — Background Worker Setup with Idempotency — 2026-04-14 — 83 tests passing, 9 skipped — Redis-backed sync job status, idempotent ingest/index workers, and integration coverage for done/failed worker outcomes implemented
+- **T18** — Archive-Level Pattern Detection — 2026-04-14 — 87 tests passing, 9 skipped — `/patterns/recurring`, `/patterns/co-occurrence`, and `/patterns/timeline` implemented with computational-pattern disclaimer framing and generated timestamps
+
+---
+
+## Archived Tasks
+
 - **T01** — Project Skeleton — 2026-04-12 — 3 tests passing — Light review PASS
 - **T02** — CI Setup — 2026-04-12 — 5 tests passing — Light review PASS
 - **T03** — Smoke Tests — 2026-04-12 — 8 tests passing — Light review PASS
@@ -225,10 +244,6 @@ none
 - **FIX-C5** — Dead HTTPError guard + aging P2 group (CODE-2/5/11/12/33) — 2026-04-13 — 55 tests passing, 9 skipped
 - **Cycle 5 consolidation** — 2026-04-13 — FIX-C5-1 (CODE-33, P1) and FIX-C5-2 (CODE-2/5/11/12 aging group) assigned; CODE-3/CODE-6/ARCH-7 closed by T13 implementation; REVIEW_REPORT.md Cycle 4 archived to docs/audit/archive/PHASE3_CYCLE4_REVIEW.md; CODEX_PROMPT.md bumped to v1.7; Phase 4 begins
 - **T13** — Health Endpoint and Observability — 2026-04-13 — 57 tests passing, 9 skipped — health freshness semantics finalized; request JSON logs include trace metadata; CODE-10/15/24/32/34 closed
-- **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed
-- **T15** — Dream Browsing and Theme Search API — 2026-04-14 — 74 tests passing, 9 skipped — GET /search and GET /dreams/{id}/themes implemented; authenticated search returns ranked evidence with theme matches; insufficient_evidence and theme filter paths covered
-- **T16** — User Curation API — Theme Confirmation and Taxonomy Management — 2026-04-14 — 79 tests passing, 9 skipped — confirm/reject theme mutations, Redis-backed bulk confirm approval flow, category approval auth gate, and write-ahead AnnotationVersion coverage implemented
-- **T17** — Background Worker Setup with Idempotency — 2026-04-14 — 83 tests passing, 9 skipped — Redis-backed sync job status, idempotent ingest/index workers, and integration coverage for done/failed worker outcomes implemented
 
 ---
 

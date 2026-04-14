@@ -24,7 +24,7 @@ def test_app_starts(monkeypatch: pytest.MonkeyPatch) -> None:
     module.main()
 
     assert captured["app"] is module.app
-    assert captured["host"] == "0.0.0.0"
+    assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 8000
     assert captured["reload"] is False
 

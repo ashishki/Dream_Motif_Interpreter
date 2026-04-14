@@ -7,8 +7,8 @@ from typing import Literal
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from app.api.dreams import _get_session_factory
 from app.services.patterns import PatternService
+from app.shared.database import get_session_factory
 
 router = APIRouter()
 
@@ -54,7 +54,7 @@ class ThemeTimelineResponse(PatternResponseEnvelope):
 
 @router.get("/patterns/recurring", response_model=RecurringPatternsResponse)
 async def get_recurring_patterns() -> RecurringPatternsResponse:
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         patterns = await PatternService.list_recurring_patterns(session)
 
     return RecurringPatternsResponse(
@@ -73,7 +73,7 @@ async def get_recurring_patterns() -> RecurringPatternsResponse:
 
 @router.get("/patterns/co-occurrence", response_model=CoOccurrencePatternsResponse)
 async def get_co_occurrence_patterns() -> CoOccurrencePatternsResponse:
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         patterns = await PatternService.list_co_occurrence_patterns(session)
 
     return CoOccurrencePatternsResponse(
@@ -92,7 +92,7 @@ async def get_co_occurrence_patterns() -> CoOccurrencePatternsResponse:
 async def get_theme_timeline(
     theme_id: uuid.UUID = Query(...),
 ) -> ThemeTimelineResponse:
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         timeline = await PatternService.get_theme_timeline(session, category_id=theme_id)
 
     return ThemeTimelineResponse(

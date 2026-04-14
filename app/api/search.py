@@ -8,17 +8,12 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dream import DreamEntry
 from app.models.theme import DreamTheme
-from app.retrieval.query import InsufficientEvidence, RagQueryService
-from app.shared.config import get_settings
+from app.retrieval.query import FragmentMatch, InsufficientEvidence, RagQueryService
+from app.shared.database import get_session_factory
 from app.shared.tracing import get_tracer
 
 router = APIRouter()
@@ -36,12 +31,18 @@ class SearchThemeMatch(BaseModel):
 class SearchResultItem(BaseModel):
     dream_id: uuid.UUID
     date: str | None
-    matched_fragments: list[str]
+    matched_fragments: list["FragmentMatchItem"]
     relevance_score: float
     theme_matches: list[SearchThemeMatch]
     interpretation_note: Literal[
         "These theme assignments are computational interpretations, not authoritative conclusions."
     ] = INTERPRETATION_NOTE
+
+
+class FragmentMatchItem(BaseModel):
+    text: str
+    match_type: str
+    char_offset: int
 
 
 class SearchResultsResponse(BaseModel):
@@ -96,7 +97,7 @@ async def search(
     theme_filter_ids = set(theme_ids or [])
     tracer = get_tracer(__name__)
 
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         theme_map = await _load_theme_matches(
             session,
             [block.dream_id for block in retrieval],
@@ -107,7 +108,7 @@ async def search(
         SearchResultItem(
             dream_id=block.dream_id,
             date=block.date.isoformat() if block.date is not None else None,
-            matched_fragments=block.matched_fragments,
+            matched_fragments=_serialize_fragment_matches(block.matched_fragments),
             relevance_score=block.relevance_score,
             theme_matches=theme_map.get(block.dream_id, []),
             interpretation_note=INTERPRETATION_NOTE,
@@ -136,7 +137,7 @@ async def search(
 async def get_dream_themes(dream_id: uuid.UUID) -> DreamThemesResponse:
     tracer = get_tracer(__name__)
 
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         with tracer.start_as_current_span("db.query.search.dream_exists"):
             dream = await session.get(DreamEntry, dream_id)
 
@@ -171,18 +172,8 @@ async def get_dream_themes(dream_id: uuid.UUID) -> DreamThemesResponse:
 
 
 @lru_cache(maxsize=1)
-def _get_engine() -> AsyncEngine:
-    return create_async_engine(get_settings().DATABASE_URL)
-
-
-@lru_cache(maxsize=1)
-def _get_session_factory() -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(_get_engine(), expire_on_commit=False)
-
-
-@lru_cache(maxsize=1)
 def _get_rag_query_service() -> RagQueryService:
-    return RagQueryService(session_factory=_get_session_factory())
+    return RagQueryService(session_factory=get_session_factory())
 
 
 async def _load_theme_matches(
@@ -250,3 +241,14 @@ def _coerce_theme_fragments(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
     return [fragment for fragment in value if isinstance(fragment, dict)]
+
+
+def _serialize_fragment_matches(matches: list[FragmentMatch]) -> list[FragmentMatchItem]:
+    return [
+        FragmentMatchItem(
+            text=match.text,
+            match_type=match.match_type,
+            char_offset=match.char_offset,
+        )
+        for match in matches
+    ]

@@ -42,6 +42,9 @@ async def _reset_public_schema(engine: AsyncEngine) -> None:
 def _load_app():
     sys.modules.pop("app.api.dreams", None)
     sys.modules.pop("app.main", None)
+    from app.shared.database import get_session_factory
+
+    get_session_factory.cache_clear()
 
     from app.main import app
 

@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.19
+Version: 1.20
 Date: 2026-04-14
 Phase: 5
 
@@ -9,10 +9,10 @@ Phase: 5
 ## Current State
 
 - **Phase:** 5
-- **Baseline:** 95 passing tests, 9 skipped
+- **Baseline:** 98 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (FIX-C8 closure)
+- **Last updated:** 2026-04-14 (FIX-C9 closure)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,8 +21,8 @@ Phase: 5
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 5 complete — all tasks done; maintenance mode
-- **Latest completed task:** FIX-C8 — Technical Debt — P2 Findings
-- **Current baseline:** 95 passing tests, 9 skipped
+- **Latest completed task:** FIX-C9 — Technical Debt — P3 Findings
+- **Current baseline:** 98 passing tests, 9 skipped
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -38,19 +38,113 @@ Phase: 5
 
 ## Next Task
 
-No next task — maintenance complete.
+No open findings — project complete.
 
 ---
 
 ## Fix Queue
 
-FIX-C8 completed 2026-04-14. No open fix batch is queued.
+### FIX-C9: Closed
+
+All 9 carry-forward P3 findings are now closed. No new tasks remain.
+
+---
+
+**CODE-7** — `app/main.py`
+`uvicorn.run()` binds `host="0.0.0.0"` unconditionally. Change to bind `127.0.0.1` when `ENV != "production"` and `0.0.0.0` otherwise. Read `get_settings().ENV` to decide. No new tests required (existing smoke tests cover the app startup path).
+
+**CODE-13** — `app/services/segmentation.py`
+`_segment_with_llm_fallback()` raises `NotImplementedError` with a stale comment referencing "T08". Replace the comment and `type: ignore` with: `# TODO(future): implement LLM-based boundary detection fallback; T08 is complete but this path was deferred`. Remove the `type: ignore` annotation if it is no longer needed. No behaviour change; no new tests.
+
+**CODE-16** — `alembic/versions/003_seed_categories.py`
+The `status='active'` insert at the bootstrap seed has no governance exception comment. Add the inline comment before the insert block:
+```python
+# Bootstrap exception: migration-time seed bypasses the approval gate.
+# Single-user system; AnnotationVersion records are not written for seed data.
+# This is intentional and documented in IMPLEMENTATION_CONTRACT.md §Taxonomy Mutation Gate.
+```
+No behaviour change; no new tests.
+
+**CODE-40** — `scripts/eval.py`
+`TASK_ID = "T12"` is hardcoded. Replace with a CLI argument:
+```python
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--task-id", default="T12", help="Task ID to tag this eval run")
+args = parser.parse_args()
+TASK_ID = args.task_id
+```
+Keep the `default="T12"` so existing usage without arguments is unchanged. No new tests required.
+
+**CODE-41** — `scripts/eval.py`
+`_evaluation_history_table()` (or equivalent) overwrites the full history on every run. Change it to append the new row instead of rebuilding the table from scratch. Read the existing `## Evaluation History` section from `docs/retrieval_eval.md`, append the new row, and write back only the updated section. Do not lose prior rows. Add a unit test `tests/unit/test_eval_script.py::test_eval_history_appends` that verifies calling the append function twice results in two rows, not one.
+
+**ARCH-10** — `app/retrieval/query.py`
+LLM query expansion is declared in ARCHITECTURE.md §RAG Architecture but not wired. Wire it:
+1. Add a method `_expand_query_terms(query: str) -> str` to `RagQueryService` that calls the Anthropic client (`claude-haiku-4-5-20251001`) with a short system prompt: `"Expand the following dream search query with related symbolic and thematic synonyms. Return only the expanded query, no explanation."` and the user query as the message. Use `max_tokens=100`.
+2. Call `_expand_query_terms` at the top of `retrieve()` before embedding, replacing the original query text for embedding purposes only. The original query string must still be logged/spanned as `query_length` (not the expanded version).
+3. Guard against API failure: if the Anthropic call raises any exception, log a structured warning and fall back to the original query. Do not propagate the expansion failure to the caller.
+4. The Anthropic client should use `get_settings().ANTHROPIC_API_KEY`. Import `anthropic` (already a dependency via `anthropic` package used in `app/services/analysis.py`).
+5. Add a unit test `tests/unit/test_rag_query_expansion.py::test_query_expansion_fallback` that verifies: when the Anthropic client raises an exception, `retrieve()` still returns a result using the original query (mock the embedding call to return a fixed vector).
+6. Skip tests that make real Anthropic API calls (use `pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY") or os.getenv("ENV") == "test", ...)` or mock the client entirely).
+
+**ARCH-11** — `app/retrieval/query.py`, `app/api/search.py`
+`EvidenceBlock.matched_fragments` is `list[str]`; spec requires `match_type` and `char_offset` per fragment. Change the type:
+1. In `app/retrieval/query.py`, define a new dataclass:
+```python
+@dataclass(frozen=True)
+class FragmentMatch:
+    text: str
+    match_type: str  # "keyword" | "semantic"
+    char_offset: int  # character offset of the match start within the chunk
+```
+2. Change `EvidenceBlock.matched_fragments: list[str]` → `matched_fragments: list[FragmentMatch]`.
+3. In the retrieval logic, populate `match_type="semantic"` and `char_offset=0` (stub values — exact offsets require full-text alignment which is out of scope; stub is acceptable and honest).
+4. Update `app/api/search.py` response models: `matched_fragments` in `SearchResultItem` becomes `list[dict]` (serialised `FragmentMatch`). Or add a `FragmentMatchItem` Pydantic model.
+5. Update any test that asserts on `matched_fragments` to use the new structure.
+6. No new tests required beyond fixing existing ones.
+
+**ARCH-12 / ARCH-12-E** — Session factory duplication
+Extract `_get_session_factory()` to a single shared function. Steps:
+1. Create `app/shared/database.py` with:
+```python
+from functools import lru_cache
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from app.shared.config import get_settings
+
+@lru_cache(maxsize=1)
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    engine = create_async_engine(get_settings().DATABASE_URL)
+    return async_sessionmaker(engine, expire_on_commit=False)
+```
+2. Replace the private `_get_session_factory()` definitions in `app/api/dreams.py`, `app/api/search.py`, `app/api/patterns.py`, and `app/api/versioning.py` with imports of `get_session_factory` from `app.shared.database`.
+3. Remove the now-unused local definitions. Ensure `themes.py` (which imported from `dreams.py`) is also updated.
+4. Run all tests to verify nothing broke. No new tests required.
+
+**ARCH-15** — `docs/adr/`
+Create the ADR directory and write the first ADR:
+1. Create `docs/adr/README.md` with a one-paragraph description of the ADR convention (title, date, status, context, decision, consequences).
+2. Create `docs/adr/ADR-001-append-only-annotation-versioning.md` documenting decision D-007 (append-only AnnotationVersion). Use the standard ADR format.
+3. Create `docs/adr/ADR-002-single-user-api-key-auth.md` documenting the API key auth approach (decision D-005 or equivalent from DECISION_LOG.md).
+No code changes; no tests required.
+
+---
+
+After all fixes:
+1. `pytest -q` → baseline ≥ 95 passing, 9 skipped.
+2. `ruff check app/ tests/ scripts/` and `ruff format --check app/ tests/ scripts/` → clean.
+3. Update `docs/CODEX_PROMPT.md`:
+   - Close all 9 P3 findings.
+   - Update findings header count.
+   - Set Next Task: "No open findings — project complete."
+   - Bump version to 1.20.
+4. Commit: `fix(debt): FIX-C9 — close all P3 technical debt`
 
 ---
 
 ## Open Findings
 
-_Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (49 Closed, 9 Open)_
+_Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (58 Closed, 0 Open)_
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
@@ -60,16 +154,16 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (49 Closed, 
 | CODE-4 | P2 | Config fail-fast test covers only `DATABASE_URL`; `tests/unit/test_config.py` absent; other 8 required secrets untested. Create file with parametrised `ValidationError` test for all 9 required secrets. | `tests/unit/test_config.py` (absent) | **Closed** — T14 applied 2026-04-14; `tests/unit/test_config.py` created with parametrised test for all required secrets |
 | CODE-5 | P2 | Migration test missing `fragments IS NOT NULL` + CHECK domain assertions. | `tests/integration/test_migrations.py` | **Closed** — FIX-C5-2 applied 2026-04-13; NOT NULL assertion + positive-domain INSERT test added |
 | CODE-6 | P2 | `test_health_index_last_updated_is_none` has no `# TODO(T13): update to assert ISO8601 timestamp` comment. | `tests/integration/test_health.py:38–49` | **Closed** — T13 resolves underlying stub; health tests updated to assert ISO8601 timestamp (closed with CODE-3) |
-| CODE-7 | P3 | `app/main.py` binds `host="0.0.0.0"` unconditionally. Should default to `127.0.0.1` for non-production ENV. | `app/main.py` | Open — carry-forward Cycle 1/2/3 |
+| CODE-7 | P3 | `app/main.py` binds `host="0.0.0.0"` unconditionally. Should default to `127.0.0.1` for non-production ENV. | `app/main.py` | **Closed** — FIX-C9 applied 2026-04-14; startup host now depends on `get_settings().ENV` |
 | CODE-8 | P2 | `dream_themes.fragments` missing `server_default='[]'::jsonb` in migration 001. | `alembic/versions/001_initial_schema.py:143` | **Partially Closed** — migration 005 applied 2026-04-12; model-level `server_default` confirmed; migration test assertion (CODE-5) still absent |
 | CODE-9 | P3 | `dream_themes` missing `deprecated` boolean column. | `app/models/theme.py`, `alembic/versions/001_initial_schema.py` | **Closed** — FIX-2 applied 2026-04-12; `002_add_deprecated_flag.py` migration added; column present |
 | CODE-10 | P3 | `app/shared/tracing.py` dual-path singleton: `_get_provider()` uses mutable global; `get_tracer()` uses `lru_cache`. Inconsistent thread-safety semantics. Resolve at T13. | `app/shared/tracing.py` | **Closed** — T13 applied 2026-04-13; tracing provider now uses a single cached initialization path |
 | CODE-11 | P2 | Three integration tests in `test_analysis.py` gated on `ANTHROPIC_API_KEY` despite using stubs. | `tests/integration/test_analysis.py` | **Closed** — FIX-C5-2 applied 2026-04-13; skipif guards removed; all 3 tests pass |
 | CODE-12 | P2 | `StubGrounder` hardcodes `verified=True`; no `verified=False` path tested. | `tests/integration/test_analysis.py` | **Closed** — FIX-C5-2 applied 2026-04-13; second fragment set `verified=False`; assertion added |
-| CODE-13 | P3 | `_segment_with_llm_fallback` in `segmentation.py` raises `NotImplementedError` referencing "T08" (now complete). Comment stale; no LLM fallback path test. Remove `type:ignore`; update comment to reference correct future task. | `app/services/segmentation.py:214–222` | Open — new Cycle 2 |
+| CODE-13 | P3 | `_segment_with_llm_fallback` in `segmentation.py` raises `NotImplementedError` referencing "T08" (now complete). Comment stale; no LLM fallback path test. Remove `type:ignore`; update comment to reference correct future task. | `app/services/segmentation.py:214–222` | **Closed** — FIX-C9 applied 2026-04-14; stale T08 reference removed and future-work TODO updated |
 | CODE-14 | P2 | `docs/retrieval_eval.md` §Evaluation Dataset contains only placeholder rows; §Baseline Metrics all empty. Initialised from template (Cycle 3 partial fix); zero-corpus placeholder row acceptable for T10 gate; dataset must be populated before T12. | `docs/retrieval_eval.md` | **Closed** — T12 applied 2026-04-13; 10-query dataset and baseline metrics recorded |
 | CODE-15 | P2 | DB calls in `analysis.py` and `taxonomy.py` not individually spanned (OBS-1 drift). Add per-call child spans for `session.get`, `session.execute`, `session.commit`. Resolve at T13. | `app/services/analysis.py:33–125`, `app/services/taxonomy.py:80–121` | **Closed** — T13 applied 2026-04-13; per-call DB child spans added for query and commit boundaries |
-| CODE-16 | P3 | `003_seed_categories.py` inserts with `status='active'` with no governance exception comment. Add inline: "Bootstrap exception: migration-time seed bypasses approval gate; single-user system; AnnotationVersion records written." | `alembic/versions/003_seed_categories.py:46` | Open — new Cycle 2 |
+| CODE-16 | P3 | `003_seed_categories.py` inserts with `status='active'` with no governance exception comment. Add inline: "Bootstrap exception: migration-time seed bypasses approval gate; single-user system; AnnotationVersion records written." | `alembic/versions/003_seed_categories.py:46` | **Closed** — FIX-C9 applied 2026-04-14; governance exception comment added above the bootstrap seed insert |
 | CODE-17 | P2 | `docs/CODEX_PROMPT.md` baseline and Next Task stale (was: 32 pass, 4 skip / T10 next). Updated to 35 pass, 6 skip by Cycle 3 consolidation. | `docs/CODEX_PROMPT.md` | **Closed** — baseline updated to 35 pass, 6 skip; Next Task updated; version bumped to v1.4 by Cycle 3 consolidation |
 | CODE-18 | P2 | `docs/retrieval_eval.md §Evaluation Dataset` uses placeholder rows (Q01–Q03, Q-NA-01 with `{{query}}`). T12-AC-1 requires at least 10 real queries covering all four query types. | `docs/retrieval_eval.md` | **Closed** — T12 applied 2026-04-13; dataset now covers simple, multi-doc, multi-hop, and no-answer |
 | CODE-19 | P1 | `OpenAIEmbeddingClient.embed()` has no HTTP error handling — uncaught `urllib.error.HTTPError` propagates to caller. No typed `EmbeddingServiceError`. No 429/500 tests. | `app/retrieval/ingestion.py:58–66` | **Closed** — FIX-C3-1 applied 2026-04-13; `EmbeddingServiceError` defined; 429/500 tests passing |
@@ -92,8 +186,8 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (49 Closed, 
 | ARCH-7 | P3 | `app/api/health.py` missing `# TODO(T13): instrument _fetch_index_last_updated with a dedicated OTel span and p95 latency tracking` comment before the DB call in the `health()` handler. | `app/api/health.py:27–61` | **Closed** — T13 implementation confirmed; OTel span present in `health.py`; instrumentation wired |
 | ARCH-8 | P2 | `retrieval_ms` span attribute and `insufficient_evidence` rate counter absent from `query.py` — OBS-2 RAG violation. **RAG P2 age cap: 1 cycle.** (Same root as CODE-27; tracked together.) | `app/retrieval/query.py:84–110` | **Closed** — resolved with CODE-27 in T12 on 2026-04-13 |
 | ARCH-9 | P3 | `ARCHITECTURE.md §File Layout` migration listing ends at `004_fix_status_ck.py`; `005_add_fragments_default.py` and `006_add_hnsw_index.py` absent from diagram. | `docs/ARCHITECTURE.md:366–370` | **Closed** — migrations 005 and 006 now correctly listed in ARCHITECTURE.md §File Layout (verified Cycle 6 ARCH_REPORT) |
-| ARCH-10 | P3 | Query expansion (LLM call to `claude-haiku-4-5`) not wired in `query.py`; declared in ARCHITECTURE.md §RAG Architecture and spec.md §6 AC-5. Not a T11 AC violation. | `app/retrieval/query.py:84–110` | Open — new Cycle 4; resolves at search API task |
-| ARCH-11 | P3 | `EvidenceBlock.matched_fragments` is `list[str]`; spec.md §Retrieval requires `match_type` labels and character offsets per fragment. Partial contract. | `app/retrieval/query.py:28–34` | Open — new Cycle 4; resolves before `app/api/search.py` |
+| ARCH-10 | P3 | Query expansion (LLM call to `claude-haiku-4-5`) not wired in `query.py`; declared in ARCHITECTURE.md §RAG Architecture and spec.md §6 AC-5. Not a T11 AC violation. | `app/retrieval/query.py:84–110` | **Closed** — FIX-C9 applied 2026-04-14; retrieval now attempts Anthropic query expansion and falls back to the original query on failure |
+| ARCH-11 | P3 | `EvidenceBlock.matched_fragments` is `list[str]`; spec.md §Retrieval requires `match_type` labels and character offsets per fragment. Partial contract. | `app/retrieval/query.py:28–34` | **Closed** — FIX-C9 applied 2026-04-14; `FragmentMatch` metadata now flows through retrieval and search responses |
 | CODE-33 | P1 | `_send_embedding_request` double-raises; async `except HTTPError` is dead code in both `query.py` and `ingestion.py`. The sync helper already converts HTTPError to typed error; the async guard can never fire. Remove `except urllib_error.HTTPError` from `embed()` in both files. | `app/retrieval/query.py:77–81`, `app/retrieval/ingestion.py:73–77` | **Closed** — FIX-C5-1 applied 2026-04-13; dead guard removed; typed errors propagate correctly |
 | CODE-34 | P2 | `health.py` bare `except Exception` without logging; silently swallows DB failure; health reports ok/null instead of degraded. Add `logger.warning("health.fetch_index_last_updated failed", exc_info=True)` before `return None`. | `app/api/health.py:56–61` | **Closed** — T13 applied 2026-04-13; failure path now logs with `exc_info=True` before returning `None` |
 | CODE-35 | P2 | Migration test missing `fragments IS NOT NULL` assertion and positive CHECK domain INSERT test (draft/confirmed/rejected). Supersedes CODE-5. | `tests/integration/test_migrations.py` | **Closed** — FIX-C5-2 applied 2026-04-13 (same fix batch as CODE-5) |
@@ -101,21 +195,21 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (49 Closed, 
 | CODE-37 | P2 | `StubGrounder verified=True` hardcoded; no `verified=False` path. Set `verified=False` for second fragment; assert it. Supersedes CODE-12. | `tests/integration/test_analysis.py:110, 118` | **Closed** — FIX-C5-2 applied 2026-04-13 (same fix batch as CODE-12) |
 | CODE-38 | P2 | `tests/unit/test_config.py` absent; 8 required secrets untested for `ValidationError`. Create parametrised test for all 8 required secrets. Supersedes CODE-4. | `tests/unit/test_config.py` (absent) | **Closed** — T14 applied 2026-04-14; parametrised config test created (same fix batch as CODE-4) |
 | CODE-39 | P2 | `docs/retrieval_eval.md §Answer Quality Metrics` all rows show `—`; no completed answer quality eval run against synthetic corpus. Run before T14. | `docs/retrieval_eval.md` | **Closed** — T14 applied 2026-04-14; answer quality metrics populated in retrieval_eval.md |
-| CODE-40 | P3 | `scripts/eval.py` hard-codes `TASK_ID = "T12"`. Should be a runtime argument or derived from context. | `scripts/eval.py` | Open — new Cycle 5 |
-| CODE-41 | P3 | `_evaluation_history_table` overwrites full history on every write run instead of appending. | `scripts/eval.py` | Open — new Cycle 5 |
+| CODE-40 | P3 | `scripts/eval.py` hard-codes `TASK_ID = "T12"`. Should be a runtime argument or derived from context. | `scripts/eval.py` | **Closed** — FIX-C9 applied 2026-04-14; eval runs now accept `--task-id` with `T12` as the default |
+| CODE-41 | P3 | `_evaluation_history_table` overwrites full history on every write run instead of appending. | `scripts/eval.py` | **Closed** — FIX-C9 applied 2026-04-14; evaluation history rows are appended in place and covered by a unit test |
 | CODE-42 | P2 | T16 primary deliverable `app/api/themes.py` absent — pre-implementation expected; assigned to T16. | `app/api/themes.py` | **Closed** — T16 applied 2026-04-14; curation router implemented and registered in `app/main.py` |
 | CODE-43 | P2 | `BULK_CONFIRM_TOKEN_TTL_SECONDS` config slot absent from `app/shared/config.py`; T16 bulk-confirm TTL has no config home. Must add before T16. | `app/shared/config.py` | **Closed** — T16 verified config slot present and bulk confirm flow uses it for Redis token TTL |
 | CODE-44 | P2 | `interpretation_note` absent from all API response Pydantic models (`SearchResultItem`, `SearchResultsResponse`, `DreamThemeResponseItem`). ARCH-6 carry-forward. Assign to T16; escalates to P1 if not closed Cycle 7. | `app/api/search.py:27–57`, `app/llm/theme_extractor.py:63`, `app/llm/grounder.py:67` | **Closed** — T16 applied 2026-04-14; literal framing field added to the affected API response models |
 | CODE-45 | P2 | `tests/integration/test_curation_api.py` absent — T16 integration test file does not yet exist. | `tests/integration/test_curation_api.py` | **Closed** — T16 applied 2026-04-14; curation integration suite added with AC coverage for confirm/reject, bulk approval, auth, and version writes |
 | CODE-46 | P2 | `_redact_pii` strips only `raw_text`; `chunk_text` and `justification` not stripped. PII policy gap. | `app/api/search.py` (redact helper) | **Closed** — T16 applied 2026-04-14; shared tracing redaction now strips `raw_text`, `chunk_text`, and `justification` |
 | CODE-47 | P2 | CODE-22 explicit disposition absent — formally closed as superseded by CODE-30. | `tests/integration/test_rag_ingestion.py` | **Closed** — superseded by CODE-30 (Cycle 6 disposition) |
-| ARCH-10 | P3 | LLM query expansion not wired in `query.py`; declared in ARCHITECTURE.md §RAG Architecture. | `app/retrieval/query.py:84–110` | Open — carry-forward Cycles 4–6 |
-| ARCH-11 | P3 | `EvidenceBlock.matched_fragments` is `list[str]`; spec requires `match_type` labels and character offsets. Partial contract. | `app/retrieval/query.py:28–34` | Open — carry-forward Cycles 4–6; T15 shipped without closure |
-| ARCH-12 | P3 | Session factory duplicated in `search.py` and `dreams.py` — private `lru_cache` per module; no shared DB module. | `app/api/search.py:151–163`, `app/api/dreams.py:166–173` | Open — new Cycle 6 |
+| ARCH-10 | P3 | LLM query expansion not wired in `query.py`; declared in ARCHITECTURE.md §RAG Architecture. | `app/retrieval/query.py:84–110` | **Closed** — FIX-C9 applied 2026-04-14; query expansion is wired with graceful fallback semantics |
+| ARCH-11 | P3 | `EvidenceBlock.matched_fragments` is `list[str]`; spec requires `match_type` labels and character offsets. Partial contract. | `app/retrieval/query.py:28–34` | **Closed** — FIX-C9 applied 2026-04-14; evidence fragments now include `text`, `match_type`, and `char_offset` |
+| ARCH-12 | P3 | Session factory duplicated in `search.py` and `dreams.py` — private `lru_cache` per module; no shared DB module. | `app/api/search.py:151–163`, `app/api/dreams.py:166–173` | **Closed** — FIX-C9 applied 2026-04-14; shared session factory extracted to `app/shared/database.py` |
 | ARCH-13 | P2 | `BULK_CONFIRM_TOKEN_TTL_SECONDS` absent from `app/shared/config.py` (same root as CODE-43). | `app/shared/config.py` | **Closed** — resolved with CODE-43 in T16 on 2026-04-14 |
 | ARCH-14 | P3 | Worker files `app/workers/ingest.py` and `app/workers/index.py` declared in ARCHITECTURE.md but absent. | `app/workers/` | **Closed** — T17 applied 2026-04-14; both worker files created and registered in ARCHITECTURE.md §File Layout |
-| ARCH-15 | P3 | `docs/adr/` directory does not exist; IMPLEMENTATION_CONTRACT requires ADRs for schema changes and runtime tier expansion. | `docs/adr/` | Open — new Cycle 6 |
-| ARCH-12-E | P3 | Session factory `_get_session_factory()` now imported into 4 API modules (dreams, search, patterns, versioning). Should be extracted to `app/shared/database.py`. Worsened by T18/T19. | `app/api/patterns.py:10`, `app/api/versioning.py:9`, `app/api/search.py:179`, `app/api/dreams.py:201` | Open — new Cycle 8 |
+| ARCH-15 | P3 | `docs/adr/` directory does not exist; IMPLEMENTATION_CONTRACT requires ADRs for schema changes and runtime tier expansion. | `docs/adr/` | **Closed** — FIX-C9 applied 2026-04-14; ADR directory, README, and initial ADRs were added |
+| ARCH-12-E | P3 | Session factory `_get_session_factory()` now imported into 4 API modules (dreams, search, patterns, versioning). Should be extracted to `app/shared/database.py`. Worsened by T18/T19. | `app/api/patterns.py:10`, `app/api/versioning.py:9`, `app/api/search.py:179`, `app/api/dreams.py:201` | **Closed** — FIX-C9 applied 2026-04-14; all affected routers now import the shared `get_session_factory()` helper |
 | CODE-48 | P2 | `ingest_document` initial Redis status write (status="running") not in try/finally block. Transient Redis failure leaves job ID untracked; subsequent "done"/"failed" writes orphaned. | `app/workers/ingest.py:37` | **Closed** — FIX-C8 applied 2026-04-14; initial Redis write now logs and continues on failure; worker completion test added |
 | CODE-49 | P2 | Redis client in `themes.py` and `dreams.py` uses `lru_cache(maxsize=1)` but is never closed. No connection pool configured. Potential connection leak in long-running processes. | `app/api/themes.py:259-262`, `app/api/dreams.py:308-315` | **Closed** — FIX-C8 applied 2026-04-14; Redis client is now a shared module-level singleton with FastAPI shutdown close path |
 | CODE-50 | P2 | Bulk confirm token parsing in `themes.py` lacks explicit `isinstance(..., list)` type guard on `parsed_payload["dream_ids"]`. Non-list value raises unhandled `TypeError`. | `app/api/themes.py:117-121` | **Closed** — FIX-C8 applied 2026-04-14; non-list `dream_ids` now returns HTTP 410; malformed-token integration test added |
@@ -128,7 +222,7 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (49 Closed, 
 - RAG Status: ON
 - Active corpora: dream_entries (full pipeline implemented — ingestion, chunking, embedding, pgvector indexing complete at T10; hybrid query pipeline complete at T11; HNSW index live)
 - Retrieval baseline: synthetic-20-entries baseline established at T12 (`hit@3=1.00`, `MRR=1.00`, `no-answer accuracy=1.00`)
-- Open retrieval findings: ARCH-10 (P3, query expansion not wired), ARCH-11 (P3, evidence fragment metadata incomplete); CODE-39 closed (T14)
+- Open retrieval findings: none
 - Index schema version: v1 (implemented in ingestion.py; HNSW index migration 006 applied)
 - Pending reindex actions: none
 - Retrieval-related next tasks: none
@@ -216,16 +310,17 @@ none
 
 ## Completed Tasks
 
+- **FIX-C9** — Technical Debt — P3 Findings — 2026-04-14 — 98 tests passing, 9 skipped — CODE-7/13/16/40/41 and ARCH-10/11/12/12-E/15 closed via environment-aware host binding, retrieval query expansion fallback, structured fragment metadata, shared DB session factory extraction, eval history append logic, and ADR documentation
 - **FIX-C8** — Technical Debt — P2 Findings — 2026-04-14 — 95 tests passing, 9 skipped — CODE-48/49/50 closed via guarded initial Redis status writes, shared Redis client shutdown, and malformed bulk-confirm token handling; prompt continuity refreshed
 - **T20** — End-to-End Integration Test — 2026-04-14 — 93 tests passing, 9 skipped — end-to-end sync-to-search coverage added with test-only pipeline orchestration; flow now exercises sync, analysis, search, bulk curation approval, pattern APIs, rollback history, and cleanup assertions
 - **T19** — Annotation Versioning and Rollback — 2026-04-14 — 91 tests passing, 9 skipped — authenticated theme history and rollback APIs implemented; rollback appends a new AnnotationVersion; append-only guard coverage added
 - **T18** — Archive-Level Pattern Detection — 2026-04-14 — 87 tests passing, 9 skipped — `/patterns/recurring`, `/patterns/co-occurrence`, and `/patterns/timeline` implemented with computational-pattern disclaimer framing and generated timestamps
-- **T17** — Background Worker Setup with Idempotency — 2026-04-14 — 83 tests passing, 9 skipped — Redis-backed sync job status, idempotent ingest/index workers, and integration coverage for done/failed worker outcomes implemented
 
 ---
 
 ## Archived Tasks
 
+- **T17** — Background Worker Setup with Idempotency — 2026-04-14 — 83 tests passing, 9 skipped — Redis-backed sync job status, idempotent ingest/index workers, and integration coverage for done/failed worker outcomes implemented
 - **T16** — User Curation API — Theme Confirmation and Taxonomy Management — 2026-04-14 — 79 tests passing, 9 skipped — confirm/reject theme mutations, Redis-backed bulk confirm approval flow, category approval auth gate, and write-ahead AnnotationVersion coverage implemented
 - **T15** — Dream Browsing and Theme Search API — 2026-04-14 — 74 tests passing, 9 skipped — GET /search and GET /dreams/{id}/themes implemented; authenticated search returns ranked evidence with theme matches; insufficient_evidence and theme filter paths covered
 - **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed

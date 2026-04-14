@@ -12,6 +12,9 @@ from httpx import ASGITransport, AsyncClient
 
 def _reload_app():
     sys.modules.pop("app.main", None)
+    from app.shared.database import get_session_factory
+
+    get_session_factory.cache_clear()
 
     return importlib.import_module("app.main").app
 

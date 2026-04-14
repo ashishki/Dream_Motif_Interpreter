@@ -9,11 +9,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.dreams import _get_redis_client as _get_shared_redis_client
-from app.api.dreams import _get_session_factory
 from app.models.theme import DreamTheme, ThemeCategory
 from app.services.taxonomy import TaxonomyService
 from app.services.versioning import build_dream_theme_transition_version
 from app.shared.config import get_settings
+from app.shared.database import get_session_factory
 from app.shared.tracing import get_tracer
 
 router = APIRouter()
@@ -136,7 +136,7 @@ async def approve_bulk_confirm(token: str) -> BulkConfirmResponse:
 
 @router.patch("/themes/categories/{category_id}/approve", response_model=ThemeCategoryResponse)
 async def approve_theme_category(category_id: uuid.UUID) -> ThemeCategoryResponse:
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         try:
             await TaxonomyService.approve_category(
                 session,
@@ -169,7 +169,7 @@ async def _transition_theme_status(
     to_status: str,
 ) -> DreamTheme:
     tracer = get_tracer(__name__)
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         with tracer.start_as_current_span("db.query.themes.load_theme"):
             result = await session.execute(
                 select(DreamTheme).where(
@@ -206,7 +206,7 @@ async def _confirm_draft_themes(dream_ids: list[uuid.UUID]) -> int:
         return 0
 
     tracer = get_tracer(__name__)
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         with tracer.start_as_current_span("db.query.themes.load_bulk_confirm"):
             result = await session.execute(
                 select(DreamTheme).where(

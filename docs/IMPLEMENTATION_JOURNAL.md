@@ -23,6 +23,15 @@ Status: append-only
 
 ## Entries
 
+### 2026-04-14 — FIX-C9 — Technical Debt — P3 Findings
+
+- Scope: `app/main.py`, `app/services/segmentation.py`, `alembic/versions/003_seed_categories.py`, `scripts/eval.py`, `app/retrieval/query.py`, `app/api/search.py`, `app/api/dreams.py`, `app/api/patterns.py`, `app/api/versioning.py`, `app/api/themes.py`, `app/shared/database.py`, ADR docs, and targeted retrieval/eval/API tests
+- Why this work happened: Maintenance closure required resolving all remaining P3 findings around localhost binding defaults, stale comments, eval history persistence, retrieval query expansion, fragment citation metadata, duplicated session-factory wiring, and missing ADR documentation
+- Decisions applied: D-005, D-007, ADR-001, ADR-002
+- Evidence collected: `pytest -q tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_eval_script.py tests/integration/test_search_api.py tests/integration/test_workers.py` → `17 passed`; `pytest -q` → `98 passed, 9 skipped`; `ruff check app/ tests/ scripts/` → clean; `ruff format --check app/ tests/ scripts/` → clean
+- Follow-ups: none; all carry-forward P3 findings are closed
+- Notes for next agent: async session-factory ownership now lives in `app/shared/database.py`; ASGI tests that reload the app need `get_session_factory.cache_clear()` to avoid reusing cached async engines across event loops; query expansion is best-effort and falls back cleanly when Anthropic is unavailable
+
 ### 2026-04-14 — FIX-C8 — Technical Debt — P2 Findings
 
 - Scope: `app/workers/ingest.py`, `app/api/dreams.py`, `app/api/themes.py`, `app/main.py`, targeted integration tests, and prompt continuity updates

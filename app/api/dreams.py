@@ -11,17 +11,13 @@ from typing import Any, Protocol
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.dream import DreamEntry
 from app.models.theme import DreamTheme
 from app.services.gdocs_client import GDocsClient
 from app.shared.config import get_settings
+from app.shared.database import get_session_factory
 from app.shared.tracing import get_logger, get_tracer
 
 router = APIRouter()
@@ -146,7 +142,7 @@ async def list_dreams(
     tracer = get_tracer(__name__)
     offset = (page - 1) * page_size
 
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         with tracer.start_as_current_span("db.query.dreams.list.total"):
             total = await session.scalar(select(func.count()).select_from(DreamEntry))
 
@@ -176,7 +172,7 @@ async def list_dreams(
 async def get_dream(dream_id: uuid.UUID) -> DreamDetailResponse:
     tracer = get_tracer(__name__)
 
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         dream = await _load_dream(session, dream_id, tracer=tracer)
         theme_count = await _count_themes(session, dream_id, tracer=tracer)
 
@@ -193,16 +189,6 @@ async def get_dream(dream_id: uuid.UUID) -> DreamDetailResponse:
             theme_count=theme_count,
         ),
     )
-
-
-@lru_cache(maxsize=1)
-def _get_engine() -> AsyncEngine:
-    return create_async_engine(get_settings().DATABASE_URL)
-
-
-@lru_cache(maxsize=1)
-def _get_session_factory() -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(_get_engine(), expire_on_commit=False)
 
 
 @lru_cache(maxsize=1)
@@ -308,7 +294,7 @@ class LocalAsyncJobEnqueuer:
 def _get_job_enqueuer() -> JobEnqueuer:
     return LocalAsyncJobEnqueuer(
         redis_client=_get_redis_client(),
-        session_factory=_get_session_factory(),
+        session_factory=get_session_factory(),
     )
 
 

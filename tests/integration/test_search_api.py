@@ -22,7 +22,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models.dream import DreamEntry
 from app.models.theme import DreamTheme, ThemeCategory
-from app.retrieval.query import EvidenceBlock, InsufficientEvidence
+from app.retrieval.query import EvidenceBlock, FragmentMatch, InsufficientEvidence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INTERPRETATION_NOTE = (
@@ -47,6 +47,9 @@ def _load_app():
     sys.modules.pop("app.api.search", None)
     sys.modules.pop("app.api.dreams", None)
     sys.modules.pop("app.main", None)
+    from app.shared.database import get_session_factory
+
+    get_session_factory.cache_clear()
 
     from app.main import app
 
@@ -210,7 +213,13 @@ async def test_search_returns_ranked_results(
                 date=dream.date,
                 chunk_text=dream.raw_text,
                 relevance_score=0.95 - (index * 0.05),
-                matched_fragments=["flying through bright air"],
+                matched_fragments=[
+                    FragmentMatch(
+                        text="flying through bright air",
+                        match_type="semantic",
+                        char_offset=0,
+                    )
+                ],
             )
             for index, dream in enumerate(dreams)
         ],
@@ -238,7 +247,13 @@ async def test_search_returns_ranked_results(
             "theme_matches",
             "interpretation_note",
         }
-        assert item["matched_fragments"] == ["flying through bright air"]
+        assert item["matched_fragments"] == [
+            {
+                "text": "flying through bright air",
+                "match_type": "semantic",
+                "char_offset": 0,
+            }
+        ]
         assert item["interpretation_note"] == INTERPRETATION_NOTE
         assert item["theme_matches"] == [
             {
@@ -332,14 +347,26 @@ async def test_search_with_theme_filter(
                 date=confirmed_dream.date,
                 chunk_text=confirmed_dream.raw_text,
                 relevance_score=0.92,
-                matched_fragments=["train platform goodbye"],
+                matched_fragments=[
+                    FragmentMatch(
+                        text="train platform goodbye",
+                        match_type="semantic",
+                        char_offset=0,
+                    )
+                ],
             ),
             EvidenceBlock(
                 dream_id=draft_dream.id,
                 date=draft_dream.date,
                 chunk_text=draft_dream.raw_text,
                 relevance_score=0.89,
-                matched_fragments=["train platform goodbye"],
+                matched_fragments=[
+                    FragmentMatch(
+                        text="train platform goodbye",
+                        match_type="semantic",
+                        char_offset=0,
+                    )
+                ],
             ),
         ],
     )

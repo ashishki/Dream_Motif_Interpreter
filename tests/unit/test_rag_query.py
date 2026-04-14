@@ -95,3 +95,17 @@ async def test_retrieve_returns_insufficient_evidence_on_empty_query() -> None:
     result = await service.retrieve("")
 
     assert result == query.InsufficientEvidence(reason="Query is empty")
+
+
+def test_coerce_fragments_returns_fragment_matches() -> None:
+    fragments = query._coerce_fragments(
+        [{"text": "spiral staircase", "match_type": "semantic", "char_offset": 0}]
+    )
+
+    assert fragments == [
+        query.FragmentMatch(
+            text="spiral staircase",
+            match_type="semantic",
+            char_offset=0,
+        )
+    ]

@@ -399,8 +399,10 @@ def _load_app(
         sys.modules.pop(module_name, None)
 
     from app.shared.config import get_settings
+    from app.shared.database import get_session_factory
 
     get_settings.cache_clear()
+    get_session_factory.cache_clear()
 
     import app.api.dreams as dreams_module
     import app.api.search as search_module

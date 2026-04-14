@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 import hashlib
 import json
@@ -16,7 +17,12 @@ from typing import Any
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
 from app.models.dream import DreamChunk, DreamEntry
@@ -29,7 +35,7 @@ DEFAULT_DOCS_PATH = PROJECT_ROOT / "docs" / "retrieval_eval.md"
 DEFAULT_FIXTURE_PATH = PROJECT_ROOT / "tests" / "fixtures" / "seed_dreams.json"
 EVAL_DATE = "2026-04-13"
 CORPUS_VERSION = "synthetic-20-entries"
-TASK_ID = "T12"
+DEFAULT_TASK_ID = "T12"
 EVAL_SOURCE = f"scripts/eval.py against §Evaluation Dataset (10 queries), run {EVAL_DATE}"
 QUERY_SECTION = "## Evaluation Dataset"
 BASELINE_SECTION = "## Baseline Metrics"
@@ -187,14 +193,18 @@ def calculate_metrics(outcomes: list[QueryOutcome]) -> EvaluationMetrics:
         _has_expected_title(outcome.result, outcome.query.expected_titles, limit=5)
         for outcome in answerable
     )
-    mrr = _mean(_reciprocal_rank(outcome.result, outcome.query.expected_titles) for outcome in answerable)
+    mrr = _mean(
+        _reciprocal_rank(outcome.result, outcome.query.expected_titles) for outcome in answerable
+    )
     citation_precision = _citation_precision(answerable)
     no_answer_accuracy = _mean(
         isinstance(outcome.result, InsufficientEvidence) for outcome in no_answer
     )
     latencies = [outcome.latency_ms for outcome in outcomes]
     median_latency = int(statistics.median(latencies)) if latencies else 0
-    p95_latency = max(latencies) if len(latencies) < 2 else int(statistics.quantiles(latencies, n=100)[94])
+    p95_latency = (
+        max(latencies) if len(latencies) < 2 else int(statistics.quantiles(latencies, n=100)[94])
+    )
 
     return EvaluationMetrics(
         hit_at_3=hit_at_3,
@@ -212,6 +222,7 @@ async def run_evaluation(
     docs_path: Path = DEFAULT_DOCS_PATH,
     fixture_path: Path = DEFAULT_FIXTURE_PATH,
     write_markdown: bool = True,
+    task_id: str = DEFAULT_TASK_ID,
 ) -> tuple[EvaluationMetrics, list[QueryOutcome]]:
     session_factory = await _prepare_seeded_session_factory(fixture_path)
     try:
@@ -226,7 +237,12 @@ async def run_evaluation(
         metrics = calculate_metrics(outcomes)
 
         if write_markdown:
-            _write_retrieval_eval_doc(docs_path=docs_path, metrics=metrics, outcomes=outcomes)
+            _write_retrieval_eval_doc(
+                docs_path=docs_path,
+                metrics=metrics,
+                outcomes=outcomes,
+                task_id=task_id,
+            )
 
         return metrics, outcomes
     finally:
@@ -289,7 +305,9 @@ async def _prepare_seeded_session_factory(
 ) -> async_sessionmaker[AsyncSession]:
     database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not database_url:
-        raise RuntimeError("TEST_DATABASE_URL or DATABASE_URL is required to run retrieval evaluation")
+        raise RuntimeError(
+            "TEST_DATABASE_URL or DATABASE_URL is required to run retrieval evaluation"
+        )
 
     os.environ["DATABASE_URL"] = database_url
     get_settings.cache_clear()
@@ -339,7 +357,9 @@ async def _seed_corpus(
         ids = list(
             (
                 await session.execute(
-                    select(DreamEntry.id).order_by(DreamEntry.date.asc(), DreamEntry.created_at.asc())
+                    select(DreamEntry.id).order_by(
+                        DreamEntry.date.asc(), DreamEntry.created_at.asc()
+                    )
                 )
             ).scalars()
         )
@@ -379,9 +399,12 @@ def _write_retrieval_eval_doc(
     docs_path: Path,
     metrics: EvaluationMetrics,
     outcomes: list[QueryOutcome],
+    task_id: str,
 ) -> None:
     content = docs_path.read_text(encoding="utf-8")
-    content = re.sub(r"Last updated: \d{4}-\d{2}-\d{2}", f"Last updated: {EVAL_DATE}", content, count=1)
+    content = re.sub(
+        r"Last updated: \d{4}-\d{2}-\d{2}", f"Last updated: {EVAL_DATE}", content, count=1
+    )
     content = re.sub(
         r"Changed by: .+",
         "Changed by: T12 — Retrieval Evaluation Baseline",
@@ -397,7 +420,7 @@ def _write_retrieval_eval_doc(
     content = _replace_section_table(content, BASELINE_SECTION, _baseline_metrics_table(metrics))
     content = _replace_section_table(content, CURRENT_SECTION, _current_metrics_table(metrics))
     content = _replace_section_table(content, NO_ANSWER_SECTION, _no_answer_table(outcomes))
-    content = _replace_section_table(content, HISTORY_SECTION, _evaluation_history_table(metrics))
+    content = _append_evaluation_history(content, metrics=metrics, task_id=task_id)
     content = re.sub(
         r"## Regression Notes\n\n.*?\n\n---",
         (
@@ -461,15 +484,47 @@ def _no_answer_table(outcomes: list[QueryOutcome]) -> str:
     return "\n".join(rows)
 
 
-def _evaluation_history_table(metrics: EvaluationMetrics) -> str:
-    rows = [
+def _append_evaluation_history(markdown: str, *, metrics: EvaluationMetrics, task_id: str) -> str:
+    rows = _extract_table(markdown, HISTORY_SECTION)
+    rows.append(_evaluation_history_row(metrics=metrics, task_id=task_id))
+    return _replace_section_table(markdown, HISTORY_SECTION, _render_history_table(rows))
+
+
+def _evaluation_history_row(metrics: EvaluationMetrics, *, task_id: str) -> dict[str, str]:
+    return {
+        "Date": EVAL_DATE,
+        "Task": task_id,
+        "Corpus Version": CORPUS_VERSION,
+        "Eval Source": EVAL_SOURCE,
+        "hit@3": _fmt(metrics.hit_at_3),
+        "MRR": _fmt(metrics.mrr),
+        "No-answer acc.": _fmt(metrics.no_answer_accuracy),
+        "Faithfulness": "—",
+        "Completeness": "—",
+        "Note": "synthetic seeded baseline established",
+    }
+
+
+def _render_history_table(rows: list[dict[str, str]]) -> str:
+    headers = [
+        "Date",
+        "Task",
+        "Corpus Version",
+        "Eval Source",
+        "hit@3",
+        "MRR",
+        "No-answer acc.",
+        "Faithfulness",
+        "Completeness",
+        "Note",
+    ]
+    rendered_rows = [
         "| Date | Task | Corpus Version | Eval Source | hit@3 | MRR | No-answer acc. | Faithfulness | Completeness | Note |",
         "|------|------|----------------|-------------|-------|-----|----------------|--------------|--------------|------|",
-        "| 2026-04-12 | T10 | 0 indexed dream_entries | pre-T11 synthetic baseline — no corpus indexed yet | N/A | N/A | — | — | — | zero-corpus placeholder |",
-        "| 2026-04-13 | T11 | local-test-db-fixtures-2026-04-13 | `pytest tests/ -q --tb=short` and `pytest tests/integration/test_rag_query.py -q --tb=short`, run 2026-04-13; retrieval cases requiring real OpenAI embeddings skipped by env gate | SKIPPED | SKIPPED | SKIPPED | — | — | query path implemented; metric run deferred until real-key environment |",
-        f"| {EVAL_DATE} | {TASK_ID} | {CORPUS_VERSION} | {EVAL_SOURCE} | {_fmt(metrics.hit_at_3)} | {_fmt(metrics.mrr)} | {_fmt(metrics.no_answer_accuracy)} | — | — | synthetic seeded baseline established |",
     ]
-    return "\n".join(rows)
+    for row in rows:
+        rendered_rows.append("| " + " | ".join(row.get(header, "") for header in headers) + " |")
+    return "\n".join(rendered_rows)
 
 
 def _extract_table(markdown: str, heading: str) -> list[dict[str, str]]:
@@ -499,20 +554,18 @@ def _extract_section(markdown: str, heading: str) -> str:
 
 def _replace_section_table(markdown: str, heading: str, new_table: str) -> str:
     section = _extract_section(markdown, heading)
-    table_match = re.search(r"\|.*?(?=\n\n(?:Notes:|Rules:|Scoring:|<!--)|\Z)", section, flags=re.DOTALL)
+    table_match = re.search(
+        r"\|.*?(?=\n\n(?:Notes:|Rules:|Scoring:|<!--)|\Z)", section, flags=re.DOTALL
+    )
     if table_match is None:
         raise ValueError(f"Unable to replace table for section: {heading}")
-    updated_section = (
-        section[: table_match.start()] + new_table + section[table_match.end() :]
-    )
+    updated_section = section[: table_match.start()] + new_table + section[table_match.end() :]
     return markdown.replace(section, updated_section, 1)
 
 
 def _tokenize(text_value: str) -> list[str]:
     return [
-        token
-        for token in re.findall(r"[a-z0-9]+", text_value.lower())
-        if token not in _STOPWORDS
+        token for token in re.findall(r"[a-z0-9]+", text_value.lower()) if token not in _STOPWORDS
     ]
 
 
@@ -524,7 +577,9 @@ def _lexical_score(query: str, query_terms: list[str], haystack: str) -> float:
 
     overlap = sum(1 for term in query_terms if term in haystack_terms)
     phrase_bonus = 1.0 if query.lower() in haystack_lower else 0.0
-    title_bonus = 0.5 if any(term in haystack_lower.split(" dream")[0] for term in query_terms) else 0.0
+    title_bonus = (
+        0.5 if any(term in haystack_lower.split(" dream")[0] for term in query_terms) else 0.0
+    )
     return overlap + phrase_bonus + title_bonus
 
 
@@ -594,7 +649,10 @@ async def _reset_public_schema(engine: AsyncEngine) -> None:
 
 
 def main() -> None:
-    asyncio.run(run_evaluation())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--task-id", default=DEFAULT_TASK_ID, help="Task ID to tag this eval run")
+    args = parser.parse_args()
+    asyncio.run(run_evaluation(task_id=args.task_id))
 
 
 if __name__ == "__main__":

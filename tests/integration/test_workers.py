@@ -106,8 +106,10 @@ def _load_app(
     sys.modules.pop("app.main", None)
 
     from app.shared.config import get_settings
+    from app.shared.database import get_session_factory
 
     get_settings.cache_clear()
+    get_session_factory.cache_clear()
 
     import app.api.dreams as dreams_module
 
@@ -116,7 +118,7 @@ def _load_app(
         job_enqueuer=job_enqueuer,
         doc_id=os.environ["GOOGLE_DOC_ID"],
     )
-    monkeypatch.setattr(dreams_module, "_get_session_factory", lambda: session_factory)
+    monkeypatch.setattr(dreams_module, "get_session_factory", lambda: session_factory)
     monkeypatch.setattr(dreams_module, "_get_redis_client", lambda: redis_client)
     monkeypatch.setattr(dreams_module, "_get_job_enqueuer", lambda: job_enqueuer)
     monkeypatch.setattr(dreams_module, "_get_sync_backend", lambda: backend)

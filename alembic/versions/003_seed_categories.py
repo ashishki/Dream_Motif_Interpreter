@@ -40,6 +40,9 @@ def upgrade() -> None:
         sa.column("status", sa.String(length=32)),
     )
 
+    # Bootstrap exception: migration-time seed bypasses the approval gate.
+    # Single-user system; AnnotationVersion records are not written for seed data.
+    # This is intentional and documented in IMPLEMENTATION_CONTRACT.md §Taxonomy Mutation Gate.
     op.bulk_insert(
         theme_categories,
         [

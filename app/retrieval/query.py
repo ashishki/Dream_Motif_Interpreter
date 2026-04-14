@@ -24,6 +24,18 @@ FTS_CANDIDATE_LIMIT = 20
 RESULT_LIMIT = 5
 
 logger = logging.getLogger(__name__)
+QUERY_EXPANSION_MODEL = "claude-haiku-4-5-20251001"
+QUERY_EXPANSION_SYSTEM_PROMPT = (
+    "Expand the following dream search query with related symbolic and thematic synonyms. "
+    "Return only the expanded query, no explanation."
+)
+
+
+@dataclass(frozen=True)
+class FragmentMatch:
+    text: str
+    match_type: str
+    char_offset: int
 
 
 @dataclass(frozen=True)
@@ -32,7 +44,7 @@ class EvidenceBlock:
     date: date | None
     chunk_text: str
     relevance_score: float
-    matched_fragments: list[str]
+    matched_fragments: list[FragmentMatch]
 
 
 @dataclass(frozen=True)
@@ -92,7 +104,8 @@ class RagQueryService:
             span.set_attribute("query_length", len(cleaned_query))
             span.set_attribute("relevance_threshold", self._relevance_threshold)
 
-            query_embedding = await self._embed_query(cleaned_query)
+            expanded_query = await self._expand_query_terms(cleaned_query)
+            query_embedding = await self._embed_query(expanded_query)
             rows = await self._search(cleaned_query, query_embedding)
             elapsed_ms = int((time.monotonic() - start) * 1000)
             span.set_attribute("retrieval_ms", elapsed_ms)
@@ -112,6 +125,36 @@ class RagQueryService:
             )
             for row in rows
         ]
+
+    async def _expand_query_terms(self, query: str) -> str:
+        tracer = get_tracer(__name__)
+
+        try:
+            with tracer.start_as_current_span("rag_query.expand_query") as span:
+                span.set_attribute("query_length", len(query))
+                client = _get_anthropic_client_cls()(api_key=get_settings().ANTHROPIC_API_KEY)
+                with tracer.start_as_current_span("anthropic.messages.create"):
+                    response = await client.messages.create(
+                        model=QUERY_EXPANSION_MODEL,
+                        max_tokens=100,
+                        system=QUERY_EXPANSION_SYSTEM_PROMPT,
+                        messages=[{"role": "user", "content": query}],
+                    )
+        except Exception as exc:
+            logger.warning(
+                "query_expansion_failed",
+                extra={"query_length": len(query), "error_type": type(exc).__name__},
+            )
+            return query
+
+        content = getattr(response, "content", [])
+        text_blocks = [
+            block.text
+            for block in content
+            if getattr(block, "type", None) == "text" and getattr(block, "text", None)
+        ]
+        expanded_query = "\n".join(text_blocks).strip()
+        return expanded_query or query
 
     async def _embed_query(self, query: str) -> list[float]:
         tracer = get_tracer(__name__)
@@ -201,7 +244,17 @@ class RagQueryService:
                 ) AS relevance_score,
                 COALESCE(
                     (
-                        SELECT jsonb_agg(fragment_text ORDER BY fragment_text)
+                        SELECT jsonb_agg(
+                            jsonb_build_object(
+                                'text',
+                                fragment_text,
+                                'match_type',
+                                'semantic',
+                                'char_offset',
+                                0
+                            )
+                            ORDER BY fragment_text
+                        )
                         FROM (
                             SELECT DISTINCT fragment->>'text' AS fragment_text
                             FROM dream_themes AS dt
@@ -245,13 +298,37 @@ class RagQueryService:
         return [dict(row) for row in result.mappings().all()]
 
 
-def _coerce_fragments(value: Any) -> list[str]:
+def _coerce_fragments(value: Any) -> list[FragmentMatch]:
     if value is None:
         return []
     if isinstance(value, list):
-        return [fragment for fragment in value if isinstance(fragment, str)]
+        fragments: list[FragmentMatch] = []
+        for fragment in value:
+            if not isinstance(fragment, dict):
+                continue
+            text_value = fragment.get("text")
+            match_type = fragment.get("match_type")
+            char_offset = fragment.get("char_offset")
+            if not isinstance(text_value, str) or not isinstance(match_type, str):
+                continue
+            if not isinstance(char_offset, int):
+                char_offset = 0
+            fragments.append(
+                FragmentMatch(
+                    text=text_value,
+                    match_type=match_type,
+                    char_offset=char_offset,
+                )
+            )
+        return fragments
     return []
 
 
 def _embedding_to_vector_literal(embedding: list[float]) -> str:
     return "[" + ",".join(f"{value:.8f}" for value in embedding) + "]"
+
+
+def _get_anthropic_client_cls():
+    from anthropic import AsyncAnthropic
+
+    return AsyncAnthropic

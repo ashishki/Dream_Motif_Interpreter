@@ -6,8 +6,8 @@ from typing import Any, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.api.dreams import _get_session_factory
 from app.services.versioning import VersioningService
+from app.shared.database import get_session_factory
 
 router = APIRouter()
 
@@ -45,7 +45,7 @@ class ThemeRollbackResponse(BaseModel):
 
 @router.get("/dreams/{dream_id}/themes/history", response_model=DreamThemeHistoryResponse)
 async def get_theme_history(dream_id: uuid.UUID) -> DreamThemeHistoryResponse:
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         dream, versions = await VersioningService.list_theme_history(session, dream_id=dream_id)
 
     return DreamThemeHistoryResponse(
@@ -72,7 +72,7 @@ async def rollback_theme(
     theme_id: uuid.UUID,
     version_id: uuid.UUID,
 ) -> ThemeRollbackResponse:
-    async with _get_session_factory()() as session:
+    async with get_session_factory()() as session:
         theme = await VersioningService.rollback_theme(
             session,
             dream_id=dream_id,

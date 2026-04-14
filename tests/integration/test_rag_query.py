@@ -22,7 +22,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models.dream import DreamEntry
 from app.retrieval.ingestion import RagIngestionService
-from app.retrieval.query import EvidenceBlock, InsufficientEvidence, RagQueryService
+from app.retrieval.query import EvidenceBlock, FragmentMatch, InsufficientEvidence, RagQueryService
 from app.shared.config import get_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -196,7 +196,14 @@ async def test_retrieve_returns_evidence_blocks(
     assert result[0].dream_id == dream_id
     assert result[0].chunk_text == dream_text
     assert result[0].relevance_score >= 0.35
-    assert "spiral staircase" in result[0].matched_fragments
+    assert (
+        FragmentMatch(
+            text="spiral staircase",
+            match_type="semantic",
+            char_offset=0,
+        )
+        in result[0].matched_fragments
+    )
 
 
 @pytest.mark.skipif(

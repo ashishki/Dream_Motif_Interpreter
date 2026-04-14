@@ -215,10 +215,11 @@ def _word_count(text: str) -> int:
 
 def _segment_with_llm_fallback(paragraphs: list[str]) -> list[_SegmentDraft]:
     try:
-        from app.llm.client import segment_dream_boundaries  # type: ignore[attr-defined]
+        from app.llm.client import segment_dream_boundaries
     except ImportError as exc:
         raise NotImplementedError(
-            "LLM segmentation fallback is reserved for T08 when app/llm/client.py exists"
+            "LLM segmentation fallback is deferred for future boundary detection work"
         ) from exc
 
+    # TODO(future): implement LLM-based boundary detection fallback; T08 is complete but this path was deferred
     return segment_dream_boundaries(paragraphs)

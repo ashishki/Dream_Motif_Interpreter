@@ -5,9 +5,12 @@ import uuid
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.annotation import AnnotationVersion
 from app.models.theme import ThemeCategory
 from app.shared.tracing import get_tracer
+from app.services.versioning import (
+    build_theme_category_creation_version,
+    build_theme_category_transition_version,
+)
 
 
 class TaxonomyService:
@@ -22,16 +25,11 @@ class TaxonomyService:
 
         with tracer.start_as_current_span("taxonomy.create_category"):
             session.add(
-                AnnotationVersion(
-                    entity_type="theme_category",
-                    entity_id=category_id,
-                    snapshot={
-                        "entity_type": "theme_category",
-                        "entity_id": str(category_id),
-                        "status_before": None,
-                        "status_after": "suggested",
-                        "changed_by": "system",
-                    },
+                build_theme_category_creation_version(
+                    category_id=category_id,
+                    name=name,
+                    description=description,
+                    status="suggested",
                     changed_by="system",
                 )
             )
@@ -106,16 +104,9 @@ class TaxonomyService:
                 )
 
             session.add(
-                AnnotationVersion(
-                    entity_type="theme_category",
-                    entity_id=category_id,
-                    snapshot={
-                        "entity_type": "theme_category",
-                        "entity_id": str(category_id),
-                        "status_before": category.status,
-                        "status_after": to_status,
-                        "changed_by": changed_by,
-                    },
+                build_theme_category_transition_version(
+                    category=category,
+                    to_status=to_status,
                     changed_by=changed_by,
                 )
             )

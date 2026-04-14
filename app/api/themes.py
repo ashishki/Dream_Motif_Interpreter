@@ -3,16 +3,16 @@ from __future__ import annotations
 import json
 import uuid
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.dreams import _get_session_factory
-from app.models.annotation import AnnotationVersion
 from app.models.theme import DreamTheme, ThemeCategory
 from app.services.taxonomy import TaxonomyService
+from app.services.versioning import build_dream_theme_transition_version
 from app.shared.config import get_settings
 from app.shared.tracing import get_tracer
 
@@ -183,7 +183,13 @@ async def _transition_theme_status(
         if theme.status != "draft":
             raise HTTPException(status_code=409, detail="Theme must be draft before curation")
 
-        session.add(_theme_annotation_version(theme=theme, to_status=to_status))
+        session.add(
+            build_dream_theme_transition_version(
+                theme=theme,
+                to_status=to_status,
+                changed_by="user",
+            )
+        )
         with tracer.start_as_current_span("db.query.themes.flush_annotation_version"):
             await session.flush()
 
@@ -210,7 +216,13 @@ async def _confirm_draft_themes(dream_ids: list[uuid.UUID]) -> int:
         themes = list(result.scalars().all())
 
         for theme in themes:
-            session.add(_theme_annotation_version(theme=theme, to_status="confirmed"))
+            session.add(
+                build_dream_theme_transition_version(
+                    theme=theme,
+                    to_status="confirmed",
+                    changed_by="user",
+                )
+            )
 
         if themes:
             with tracer.start_as_current_span("db.query.themes.flush_bulk_annotation_versions"):
@@ -222,33 +234,6 @@ async def _confirm_draft_themes(dream_ids: list[uuid.UUID]) -> int:
         with tracer.start_as_current_span("db.query.themes.commit_bulk_confirm"):
             await session.commit()
         return len(themes)
-
-
-def _theme_annotation_version(*, theme: DreamTheme, to_status: str) -> AnnotationVersion:
-    return AnnotationVersion(
-        entity_type="dream_theme",
-        entity_id=theme.id,
-        snapshot={
-            "entity_type": "dream_theme",
-            "entity_id": str(theme.id),
-            "dream_id": str(theme.dream_id),
-            "category_id": str(theme.category_id),
-            "status_before": theme.status,
-            "status_after": to_status,
-            "salience_before": theme.salience,
-            "match_type_before": theme.match_type,
-            "fragments_before": _coerce_fragments(theme.fragments),
-            "deprecated_before": theme.deprecated,
-            "changed_by": "user",
-        },
-        changed_by="user",
-    )
-
-
-def _coerce_fragments(value: object) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [fragment for fragment in value if isinstance(fragment, dict)]
 
 
 def _bulk_confirm_key(token: str) -> str:

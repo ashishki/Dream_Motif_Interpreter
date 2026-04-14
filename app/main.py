@@ -8,6 +8,7 @@ from app.api.health import router as health_router
 from app.api.patterns import router as patterns_router
 from app.api.search import router as search_router
 from app.api.themes import router as themes_router
+from app.api.versioning import router as versioning_router
 from app.shared.config import get_settings
 from app.shared.tracing import configure_logging, get_logger, get_tracer
 
@@ -24,6 +25,7 @@ def create_app() -> FastAPI:
     application.include_router(patterns_router)
     application.include_router(search_router)
     application.include_router(themes_router)
+    application.include_router(versioning_router)
 
     @application.middleware("http")
     async def require_authentication(request: Request, call_next):

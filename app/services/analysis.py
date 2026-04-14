@@ -7,10 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.grounder import GroundedTheme, Grounder
 from app.llm.theme_extractor import ThemeAssignment, ThemeExtractor
-from app.models.annotation import AnnotationVersion
 from app.models.dream import DreamEntry
 from app.models.theme import DreamTheme, ThemeCategory
 from app.shared.tracing import get_tracer
+from app.services.versioning import (
+    build_dream_theme_creation_version,
+    build_dream_theme_update_version,
+)
 
 
 class AnalysisService:
@@ -71,18 +74,15 @@ class AnalysisService:
                 if existing_theme is None:
                     dream_theme_id = uuid.uuid4()
                     session.add(
-                        AnnotationVersion(
-                            entity_type="dream_theme",
-                            entity_id=dream_theme_id,
-                            snapshot={
-                                "entity_type": "dream_theme",
-                                "entity_id": str(dream_theme_id),
-                                "dream_id": str(dream_entry.id),
-                                "category_id": str(assignment.category_id),
-                                "status_before": None,
-                                "status_after": "draft",
-                                "changed_by": "system",
-                            },
+                        build_dream_theme_creation_version(
+                            theme_id=dream_theme_id,
+                            dream_id=dream_entry.id,
+                            category_id=assignment.category_id,
+                            salience=grounded_theme.salience,
+                            status="draft",
+                            match_type=assignment.match_type,
+                            fragments=grounded_theme.fragments,
+                            deprecated=False,
                             changed_by="system",
                         )
                     )
@@ -101,22 +101,11 @@ class AnalysisService:
                     continue
 
                 session.add(
-                    AnnotationVersion(
-                        entity_type="dream_theme",
-                        entity_id=existing_theme.id,
-                        snapshot={
-                            "entity_type": "dream_theme",
-                            "entity_id": str(existing_theme.id),
-                            "dream_id": str(existing_theme.dream_id),
-                            "category_id": str(existing_theme.category_id),
-                            "status_before": existing_theme.status,
-                            "status_after": existing_theme.status,
-                            "salience_before": existing_theme.salience,
-                            "match_type_before": existing_theme.match_type,
-                            "fragments_before": existing_theme.fragments,
-                            "deprecated_before": existing_theme.deprecated,
-                            "changed_by": "system",
-                        },
+                    build_dream_theme_update_version(
+                        theme=existing_theme,
+                        next_salience=grounded_theme.salience,
+                        next_match_type=assignment.match_type,
+                        next_fragments=grounded_theme.fragments,
                         changed_by="system",
                     )
                 )

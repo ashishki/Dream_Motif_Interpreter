@@ -110,13 +110,14 @@ async def test_approve_category_writes_annotation_version(
     assert category is not None
     assert category.status == "active"
     assert len(versions) == 2
-    assert versions[-1].snapshot == {
-        "entity_type": "theme_category",
-        "entity_id": str(category_id),
-        "status_before": "suggested",
-        "status_after": "active",
-        "changed_by": "system",
-    }
+    assert versions[-1].snapshot["entity_type"] == "theme_category"
+    assert versions[-1].snapshot["entity_id"] == str(category_id)
+    assert versions[-1].snapshot["name"] == "ancestor"
+    assert versions[-1].snapshot["description"] == "Ancestral presence or inherited memory."
+    assert versions[-1].snapshot["status"] == "suggested"
+    assert versions[-1].snapshot["status_before"] == "suggested"
+    assert versions[-1].snapshot["status_after"] == "active"
+    assert versions[-1].snapshot["changed_by"] == "system"
     assert versions[-1].changed_by == "system"
 
 

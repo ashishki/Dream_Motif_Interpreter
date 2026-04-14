@@ -24,6 +24,7 @@ Lookup table for proof artifacts across review cycles, retrieval evaluations, an
 | EV-006 | test-coverage | T13 | 2026-04-13 | `tests/integration/test_health.py::test_health_returns_ok_with_fresh_index` | Health endpoint returns 200 with ISO8601 freshness timestamp for a fresh index | Active |
 | EV-007 | test-coverage | T13 | 2026-04-13 | `tests/unit/test_tracing.py::test_log_fields_present_and_no_pii` | Request logs include trace metadata and exclude `raw_text` PII | Active |
 | EV-008 | test-coverage | T18 | 2026-04-14 | `tests/integration/test_patterns_api.py::test_patterns_include_disclaimer` | Pattern endpoints include the required computational-pattern disclaimer and generation timestamp | Active |
+| EV-009 | test-coverage | T20 | 2026-04-14 | `tests/integration/test_e2e.py::test_full_ingestion_to_search_flow` | Sync, analysis, search, curation approval, pattern APIs, rollback, and cleanup all interoperate in one end-to-end workflow | Active |
 
 ---
 

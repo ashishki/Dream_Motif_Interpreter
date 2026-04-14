@@ -23,6 +23,15 @@ Status: append-only
 
 ## Entries
 
+### 2026-04-14 — T20 — End-to-End Integration Test
+
+- Scope: `tests/integration/test_e2e.py` and seeded fixture-driven pipeline test coverage
+- Why this work happened: Phase 5 T20 required a final gate test that drives the archive through sync, analysis, retrieval, curation approval, pattern inspection, rollback, and cleanup in one integrated workflow
+- Decisions applied: D-003, D-007, D-009
+- Evidence collected: `pytest -q tests/integration/test_e2e.py` → `2 passed`; `pytest -q` → `93 passed, 9 skipped`; `ruff check app/ tests/` → clean; `ruff format --check app/ tests/` → clean
+- Follow-ups: no new findings from T20; existing carry-forward findings remain (`CODE-7`, `CODE-13`, `CODE-16`, `CODE-40`, `CODE-41`, `ARCH-10`, `ARCH-11`, `ARCH-12`, `ARCH-15`, `CODE-48`, `CODE-49`, `CODE-50`)
+- Notes for next agent: the e2e harness uses a test-only job enqueuer that preserves production behavior while exercising the real ingest, analysis, indexing, curation, versioning, and pattern service stack through the public API surface
+
 ### 2026-04-14 — T19 — Annotation Versioning and Rollback
 
 - Scope: `app/services/versioning.py`, `app/api/versioning.py`, versioning-related refactors in analysis/taxonomy/theme mutation paths, and T19 integration/unit coverage

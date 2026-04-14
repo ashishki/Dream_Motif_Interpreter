@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.9
+Version: 1.11
 Date: 2026-04-14
 Phase: 4
 
@@ -9,10 +9,10 @@ Phase: 4
 ## Current State
 
 - **Phase:** 4
-- **Baseline:** 70 passing tests, 9 skipped
+- **Baseline:** 74 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (T14 complete)
+- **Last updated:** 2026-04-14 (Cycle 6 consolidation)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -29,22 +29,22 @@ Phase: 4
 
 ## Next Task
 
-**T15: Dream Browsing and Theme Search API**
+**T16: User Curation API — Theme Confirmation and Taxonomy Management**
 
-Read T15 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
-Primary focus: implement GET /search (hybrid retrieval) and GET /dreams/{id}/themes endpoints.
+Read T16 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
+Primary focus: implement theme confirmation/rejection, taxonomy approval, and bulk confirmation flows with AnnotationVersion writes.
 
 ---
 
 ## Fix Queue
 
-─── Fix Queue ─── (no P0/P1 open; FIX-C5-1/FIX-C5-2 closed 2026-04-13)
+─── Fix Queue ─── (empty — no P0/P1 open; proceed to T16 implementation queue)
 
 ---
 
 ## Open Findings
 
-_Cycle 5 — 2026-04-13 · 48 findings total: P1: 3, P2: 26, P3: 11 (32 Closed, 16 Open)_
+_Cycle 6 — 2026-04-14 · 53 findings total: P1: 3, P2: 30, P3: 13 (34 Closed, 19 Open)_
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
@@ -69,13 +69,13 @@ _Cycle 5 — 2026-04-13 · 48 findings total: P1: 3, P2: 26, P3: 11 (32 Closed, 
 | CODE-19 | P1 | `OpenAIEmbeddingClient.embed()` has no HTTP error handling — uncaught `urllib.error.HTTPError` propagates to caller. No typed `EmbeddingServiceError`. No 429/500 tests. | `app/retrieval/ingestion.py:58–66` | **Closed** — FIX-C3-1 applied 2026-04-13; `EmbeddingServiceError` defined; 429/500 tests passing |
 | CODE-20 | P1 | `_token_count()` uses `len(text.split())` (word count) instead of tiktoken token count. 512-token boundary contract violated; chunks can exceed context window by ~33%. | `app/retrieval/ingestion.py:238–239` | **Closed** — FIX-C3-2 applied 2026-04-13; tiktoken cl100k_base encoder; tests passing |
 | CODE-21 | P2 | `EMBEDDING_MODEL = "text-embedding-ada-002"` contradicts ARCHITECTURE.md §Index Strategy (`text-embedding-3-small`). Must be fixed before any corpus embeddings are generated. | `app/retrieval/ingestion.py:19` | **Closed** — FIX-C3 applied 2026-04-13; model changed to `text-embedding-3-small` |
-| CODE-22 | P2 | Integration RAG tests skip only on missing `OPENAI_API_KEY`; should also guard on DB availability. | `tests/integration/test_rag_ingestion.py:85–88, 117–120` | Open — new Cycle 3 |
+| CODE-22 | P2 | Integration RAG tests skip only on missing `OPENAI_API_KEY`; should also guard on DB availability. | `tests/integration/test_rag_ingestion.py:85–88, 117–120` | **Closed** — superseded by CODE-30 (DB guard added FIX-C4); formally closed Cycle 6 |
 | CODE-23 | P2 | `test_chunking_boundary` missing 0-based `chunk_index` assertions for each produced chunk. | `tests/unit/test_rag_ingestion.py:13–27` | **Closed** — FIX-C3 applied 2026-04-13; chunk_index assertions added |
 | CODE-24 | P2 | No per-request HTTP span on OpenAI call; OTel context not propagated into `asyncio.to_thread`. | `app/retrieval/ingestion.py:64–66, 122–126` | **Closed** — T13 applied 2026-04-13; shared OpenAI client adds request spans and propagates context into worker threads |
 | CODE-25 | P2 | AC-4 cross-import test uses relative path — brittle in non-root CWD. Use `Path(__file__).resolve().parents[2] / "app/retrieval/ingestion.py"`. | `tests/unit/test_rag_ingestion.py:31` | **Closed** — FIX-C3 applied 2026-04-13; absolute path used |
 | ARCH-1 | P2 | `app/retrieval/query.py` absent — T11 blocked; T10-AC-4 cross-import test cannot fully validate query-side. | `app/retrieval/query.py` | **Closed** — T11 complete 2026-04-13; `query.py` exists; cross-import tests passing |
 | ARCH-2 | P2 | No HNSW index on `dream_chunks.embedding` — `006_add_hnsw_index.py` absent. T11 hard dependency for p95 < 3 s retrieval latency. | `alembic/versions/` | **Closed** — T11 pre-patch complete 2026-04-13; `006_add_hnsw_index.py` present; `autocommit_block()` pattern confirmed |
-| ARCH-6 | P2 | LLM output framing at prompt level only; `"interpretation_note"` literal field not enforced in API response Pydantic models. | `app/llm/grounder.py:67`, `app/llm/theme_extractor.py:63` | Open — new Cycle 2; resolves at T15/T16 |
+| ARCH-6 | P2 | LLM output framing at prompt level only; `"interpretation_note"` literal field not enforced in API response Pydantic models. | `app/llm/grounder.py:67`, `app/llm/theme_extractor.py:63` | Open — tracked as CODE-44 Cycle 6; T15 shipped without closure; escalates to P1 if not closed Cycle 7 |
 | CODE-26 | P1 | `query.py` `_send_embedding_request()` has no `try/except urllib.error.HTTPError`; no typed `QueryEmbeddingError`; raw HTTP errors propagate to caller. Log policy: log `status_code` and `query_length`, NOT query text. | `app/retrieval/query.py:9, 256–258, 63` | **Closed** — FIX-C4-1 applied 2026-04-13; `QueryEmbeddingError` defined; 429/500 tests passing |
 | CODE-27 | P2 | `query.py` missing `retrieval_ms` span attribute on `rag_query.retrieve` and `insufficient_evidence` structured log counter (OBS-2 RAG violation). **RAG P2 age cap: 1 cycle — must resolve in Cycle 5.** | `app/retrieval/query.py:84–110` | **Closed** — T12 applied 2026-04-13; `retrieval_ms` span attribute and structured insufficient-evidence logs added |
 | CODE-28 | P2 | `CODEX_PROMPT.md` stale after T11: baseline 41/6, Next Task T11, version v1.4. | `docs/CODEX_PROMPT.md:12,32` | **Closed** — resolved by Cycle 4 consolidation 2026-04-13; baseline → 42/10, Next Task → T12, version → v1.5 |
@@ -85,7 +85,7 @@ _Cycle 5 — 2026-04-13 · 48 findings total: P1: 3, P2: 26, P3: 11 (32 Closed, 
 | CODE-32 | P2 | `OpenAIEmbeddingClient` duplicated across `ingestion.py` and `query.py` with diverging implementations. Create `app/retrieval/types.py` shared client. | `app/retrieval/query.py:23–66`, `app/retrieval/ingestion.py:32–80` | **Closed** — T13 applied 2026-04-13; shared OpenAI embedding client moved to `app/retrieval/types.py` |
 | ARCH-7 | P3 | `app/api/health.py` missing `# TODO(T13): instrument _fetch_index_last_updated with a dedicated OTel span and p95 latency tracking` comment before the DB call in the `health()` handler. | `app/api/health.py:27–61` | **Closed** — T13 implementation confirmed; OTel span present in `health.py`; instrumentation wired |
 | ARCH-8 | P2 | `retrieval_ms` span attribute and `insufficient_evidence` rate counter absent from `query.py` — OBS-2 RAG violation. **RAG P2 age cap: 1 cycle.** (Same root as CODE-27; tracked together.) | `app/retrieval/query.py:84–110` | **Closed** — resolved with CODE-27 in T12 on 2026-04-13 |
-| ARCH-9 | P3 | `ARCHITECTURE.md §File Layout` migration listing ends at `004_fix_status_ck.py`; `005_add_fragments_default.py` and `006_add_hnsw_index.py` absent from diagram. | `docs/ARCHITECTURE.md:366–370` | Open — new Cycle 4; doc drift only |
+| ARCH-9 | P3 | `ARCHITECTURE.md §File Layout` migration listing ends at `004_fix_status_ck.py`; `005_add_fragments_default.py` and `006_add_hnsw_index.py` absent from diagram. | `docs/ARCHITECTURE.md:366–370` | **Closed** — migrations 005 and 006 now correctly listed in ARCHITECTURE.md §File Layout (verified Cycle 6 ARCH_REPORT) |
 | ARCH-10 | P3 | Query expansion (LLM call to `claude-haiku-4-5`) not wired in `query.py`; declared in ARCHITECTURE.md §RAG Architecture and spec.md §6 AC-5. Not a T11 AC violation. | `app/retrieval/query.py:84–110` | Open — new Cycle 4; resolves at search API task |
 | ARCH-11 | P3 | `EvidenceBlock.matched_fragments` is `list[str]`; spec.md §Retrieval requires `match_type` labels and character offsets per fragment. Partial contract. | `app/retrieval/query.py:28–34` | Open — new Cycle 4; resolves before `app/api/search.py` |
 | CODE-33 | P1 | `_send_embedding_request` double-raises; async `except HTTPError` is dead code in both `query.py` and `ingestion.py`. The sync helper already converts HTTPError to typed error; the async guard can never fire. Remove `except urllib_error.HTTPError` from `embed()` in both files. | `app/retrieval/query.py:77–81`, `app/retrieval/ingestion.py:73–77` | **Closed** — FIX-C5-1 applied 2026-04-13; dead guard removed; typed errors propagate correctly |
@@ -97,6 +97,18 @@ _Cycle 5 — 2026-04-13 · 48 findings total: P1: 3, P2: 26, P3: 11 (32 Closed, 
 | CODE-39 | P2 | `docs/retrieval_eval.md §Answer Quality Metrics` all rows show `—`; no completed answer quality eval run against synthetic corpus. Run before T14. | `docs/retrieval_eval.md` | **Closed** — T14 applied 2026-04-14; answer quality metrics populated in retrieval_eval.md |
 | CODE-40 | P3 | `scripts/eval.py` hard-codes `TASK_ID = "T12"`. Should be a runtime argument or derived from context. | `scripts/eval.py` | Open — new Cycle 5 |
 | CODE-41 | P3 | `_evaluation_history_table` overwrites full history on every write run instead of appending. | `scripts/eval.py` | Open — new Cycle 5 |
+| CODE-42 | P2 | T16 primary deliverable `app/api/themes.py` absent — pre-implementation expected; assigned to T16. | `app/api/themes.py` | Open — new Cycle 6; assigned to T16 |
+| CODE-43 | P2 | `BULK_CONFIRM_TOKEN_TTL_SECONDS` config slot absent from `app/shared/config.py`; T16 bulk-confirm TTL has no config home. Must add before T16. | `app/shared/config.py` | Open — new Cycle 6; pre-T16 blocker |
+| CODE-44 | P2 | `interpretation_note` absent from all API response Pydantic models (`SearchResultItem`, `SearchResultsResponse`, `DreamThemeResponseItem`). ARCH-6 carry-forward. Assign to T16; escalates to P1 if not closed Cycle 7. | `app/api/search.py:27–57`, `app/llm/theme_extractor.py:63`, `app/llm/grounder.py:67` | Open — new Cycle 6 |
+| CODE-45 | P2 | `tests/integration/test_curation_api.py` absent — T16 integration test file does not yet exist. | `tests/integration/test_curation_api.py` | Open — new Cycle 6; assigned to T16 |
+| CODE-46 | P2 | `_redact_pii` strips only `raw_text`; `chunk_text` and `justification` not stripped. PII policy gap. | `app/api/search.py` (redact helper) | Open — new Cycle 6; code change required |
+| CODE-47 | P2 | CODE-22 explicit disposition absent — formally closed as superseded by CODE-30. | `tests/integration/test_rag_ingestion.py` | **Closed** — superseded by CODE-30 (Cycle 6 disposition) |
+| ARCH-10 | P3 | LLM query expansion not wired in `query.py`; declared in ARCHITECTURE.md §RAG Architecture. | `app/retrieval/query.py:84–110` | Open — carry-forward Cycles 4–6 |
+| ARCH-11 | P3 | `EvidenceBlock.matched_fragments` is `list[str]`; spec requires `match_type` labels and character offsets. Partial contract. | `app/retrieval/query.py:28–34` | Open — carry-forward Cycles 4–6; T15 shipped without closure |
+| ARCH-12 | P3 | Session factory duplicated in `search.py` and `dreams.py` — private `lru_cache` per module; no shared DB module. | `app/api/search.py:151–163`, `app/api/dreams.py:166–173` | Open — new Cycle 6 |
+| ARCH-13 | P2 | `BULK_CONFIRM_TOKEN_TTL_SECONDS` absent from `app/shared/config.py` (same root as CODE-43). | `app/shared/config.py` | Open — new Cycle 6; tracked as CODE-43 |
+| ARCH-14 | P3 | Worker files `app/workers/ingest.py` and `app/workers/index.py` declared in ARCHITECTURE.md but absent. | `app/workers/` | Open — new Cycle 6 |
+| ARCH-15 | P3 | `docs/adr/` directory does not exist; IMPLEMENTATION_CONTRACT requires ADRs for schema changes and runtime tier expansion. | `docs/adr/` | Open — new Cycle 6 |
 
 ---
 
@@ -105,10 +117,10 @@ _Cycle 5 — 2026-04-13 · 48 findings total: P1: 3, P2: 26, P3: 11 (32 Closed, 
 - RAG Status: ON
 - Active corpora: dream_entries (full pipeline implemented — ingestion, chunking, embedding, pgvector indexing complete at T10; hybrid query pipeline complete at T11; HNSW index live)
 - Retrieval baseline: synthetic-20-entries baseline established at T12 (`hit@3=1.00`, `MRR=1.00`, `no-answer accuracy=1.00`)
-- Open retrieval findings: CODE-39 (P2, answer quality eval not run), ARCH-10 (P3, query expansion not wired), ARCH-11 (P3, evidence fragment metadata incomplete)
+- Open retrieval findings: ARCH-10 (P3, query expansion not wired), ARCH-11 (P3, evidence fragment metadata incomplete); CODE-39 closed (T14)
 - Index schema version: v1 (implemented in ingestion.py; HNSW index migration 006 applied)
 - Pending reindex actions: none
-- Retrieval-related next tasks: T15 (search API), T16 (pattern summaries)
+- Retrieval-related next tasks: T16 (curation API), T17 (background workers)
 - Retrieval-driven tasks: none
 
 ---
@@ -168,13 +180,13 @@ _Cycle 5 — 2026-04-13 · 48 findings total: P1: 3, P2: 26, P3: 11 (32 Closed, 
 ### Last Evaluation
 
 - Profile: RAG
-- Task: T12
-- Date: 2026-04-13
-- Eval Source: `scripts/eval.py` against `docs/retrieval_eval.md §Evaluation Dataset` (10 queries), run 2026-04-13 against `synthetic-20-entries`
+- Task: T15
+- Date: 2026-04-14
+- Eval Source: `scripts/eval.py` against `docs/retrieval_eval.md §Evaluation Dataset` (10 queries), run 2026-04-14 against `synthetic-20-entries`; stub embeddings (test-key)
 - Metric(s): hit@3, MRR, no-answer accuracy
 - Score: `hit@3=1.00`, `MRR=1.00`, `no-answer accuracy=1.00`
-- Baseline: initial seeded retrieval baseline
-- Delta: N/A
+- Baseline: T12 baseline (1.00 / 1.00 / 1.00)
+- Delta: 0 (no change — search API layer does not modify retrieval semantics)
 - Regression: No
 
 ### Open Evaluation Issues
@@ -187,6 +199,7 @@ none
 |------|------|---------|------------|-------|----------|-------|-------------|
 | 2026-04-12 | T10 | RAG | hit@3, MRR | N/A (zero corpus) | N/A | N/A | No |
 | 2026-04-13 | T12 | RAG | hit@3, MRR, no-answer accuracy | 1.00 / 1.00 / 1.00 | initial seeded baseline | N/A | No |
+| 2026-04-14 | T15 | RAG | hit@3, MRR, no-answer accuracy | 1.00 / 1.00 / 1.00 | T12 baseline | 0 | No |
 
 ---
 
@@ -209,6 +222,7 @@ none
 - **Cycle 5 consolidation** — 2026-04-13 — FIX-C5-1 (CODE-33, P1) and FIX-C5-2 (CODE-2/5/11/12 aging group) assigned; CODE-3/CODE-6/ARCH-7 closed by T13 implementation; REVIEW_REPORT.md Cycle 4 archived to docs/audit/archive/PHASE3_CYCLE4_REVIEW.md; CODEX_PROMPT.md bumped to v1.7; Phase 4 begins
 - **T13** — Health Endpoint and Observability — 2026-04-13 — 57 tests passing, 9 skipped — health freshness semantics finalized; request JSON logs include trace metadata; CODE-10/15/24/32/34 closed
 - **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed
+- **T15** — Dream Browsing and Theme Search API — 2026-04-14 — 74 tests passing, 9 skipped — GET /search and GET /dreams/{id}/themes implemented; authenticated search returns ranked evidence with theme matches; insufficient_evidence and theme filter paths covered
 
 ---
 

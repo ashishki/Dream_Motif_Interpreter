@@ -1,6 +1,6 @@
 ---
-# ARCH_REPORT — Cycle 5
-_Date: 2026-04-13_
+# ARCH_REPORT — Cycle 6
+_Date: 2026-04-14_
 
 ---
 
@@ -8,21 +8,26 @@ _Date: 2026-04-13_
 
 | Component | Verdict | Note |
 |-----------|---------|------|
-| `app/api/health.py` | PASS | Thin handler; delegates to `_fetch_index_last_updated()`; 503 on staleness wired; OTel span present; public-route comment cites OBS-3 correctly |
-| `app/shared/tracing.py` | DRIFT | Dual-path singleton persists: `_get_provider()` uses mutable global + `trace.set_tracer_provider()`; `get_tracer()` uses `lru_cache`. Not thread-safe under concurrent initialization — CODE-10 unresolved; resolves T13 |
-| `app/retrieval/ingestion.py` | PASS | Layer boundary respected; no cross-import from `query.py`; OTel spans on `index_dream`, `load_dream`, `embed`, `upsert_chunk`. `INDEX_SCHEMA_VERSION = "v1"` declared. CODE-24 (no per-HTTP-request span inside `asyncio.to_thread`) and CODE-32 (duplicated `OpenAIEmbeddingClient`) remain open |
-| `app/retrieval/query.py` | DRIFT | Layer boundary respected; no cross-import from `ingestion.py`. Query expansion (LLM call, ARCH-10) absent. `EvidenceBlock.matched_fragments` is `list[str]`; spec requires character offsets + `match_type` per fragment (ARCH-11). CODE-32 (`OpenAIEmbeddingClient` duplicated) unresolved |
-| `app/services/analysis.py` | DRIFT | Business logic only; no HTTP imports. DB calls not individually OTel-spanned below the parent `analysis.analyse_dream` span — CODE-15 unresolved; resolves T13 |
-| `app/services/taxonomy.py` | DRIFT | Business logic only; correct layer. DB calls inside `_transition_category` share a single parent span with no per-call child spans — CODE-15 unresolved; resolves T13 |
-| `app/services/segmentation.py` | DRIFT | `_segment_with_llm_fallback` raises `NotImplementedError` with stale "T08" comment; T08 was completed cycles ago — CODE-13 unresolved |
-| `app/main.py` | DRIFT | `host="0.0.0.0"` unconditional; should default to `127.0.0.1` for non-production `ENV` — CODE-7 unresolved |
-| `app/api/dreams.py` | N/A | File absent; not yet implemented |
-| `app/workers/ingest.py`, `app/workers/index.py` | N/A | Worker files absent; only `__init__.py` present. No conflicting stubs found that would constrain T14 |
-| `app/retrieval/types.py` | N/A | File absent; CODE-32 shared-client refactor deferred. No cross-import violation yet, but diverging implementations will compound when search API and workers are wired at T14/T15 |
-| `app/llm/theme_extractor.py` | DRIFT | System prompt carries framing ("draft suggestion, not a fact") but `ThemeAssignment` response model has no `interpretation_note` literal field — ARCH-6 unresolved |
-| `app/llm/grounder.py` | DRIFT | Same framing gap; `GroundedTheme` model has no `interpretation_note` literal field — ARCH-6 unresolved |
-| `alembic/versions/` | DRIFT | Migrations 005 and 006 present on disk but absent from `docs/ARCHITECTURE.md §File Layout` — ARCH-9 unresolved |
-| `docs/adr/` | VIOLATION | Directory absent; no ADR governance records exist — ARCH-4 unresolved |
+| `app/api/dreams.py` | PASS | Thin handler; delegates to `InMemorySyncBackend` and DB via session factory; no business logic inline; auth middleware enforced via `app/main.py` |
+| `app/api/search.py` | DRIFT | Layer-boundary drift: creates own `AsyncEngine` and `async_sessionmaker` via private `lru_cache` functions, duplicating infrastructure that should be shared (ARCH-12). Also: `interpretation_note` absent from all response models (ARCH-6 unresolved). |
+| `app/api/health.py` | PASS | Thin handler; reads index age via parameterized query; staleness check uses `MAX_INDEX_AGE_HOURS` from config; OTel span present; public-route comment cites OBS-3 correctly |
+| `app/api/themes.py` | N/A | File does not yet exist — T16 primary deliverable. Absence is expected pre-T16. Component is correctly declared in ARCHITECTURE.md §Component Table. |
+| `app/services/segmentation.py` | DRIFT | `_segment_with_llm_fallback` comment still references "T08" (now completed). `type: ignore` comment on import. Stale reference violates FORBIDDEN ACTIONS (stale task ref / dead code). Open as CODE-13 carry-forward. |
+| `app/services/taxonomy.py` | PASS | Service file present; no HTTP imports; correct layer boundary |
+| `app/services/analysis.py` | PASS | Business logic layer; no HTTP dependencies |
+| `app/llm/theme_extractor.py` | DRIFT | No `interpretation_note` literal field in `ThemeAssignment` dataclass or API response schema. Framing exists only in prompt text. ARCH-6 carry-forward. |
+| `app/llm/grounder.py` | DRIFT | Same as theme_extractor: framing present in system prompt string but not enforced as a Pydantic literal field at the API schema level. ARCH-6 carry-forward. |
+| `app/retrieval/ingestion.py` | PASS | No import of `app/retrieval/query.py`; responsibilities are chunking, embedding, upsert only; `INDEX_SCHEMA_VERSION = "v1"` declared; OTel spans present |
+| `app/retrieval/query.py` | DRIFT | No import of `app/retrieval/ingestion.py` — separation rule PASS. Query expansion (LLM call) not wired — ARCH-10 carry-forward. `EvidenceBlock.matched_fragments` is `list[str]`; spec requires offsets and `match_type` — ARCH-11 carry-forward. |
+| `app/retrieval/types.py` | PASS | Shared `EmbeddingClient` Protocol and `OpenAIEmbeddingClient` now present; both `ingestion.py` and `query.py` import from here. NEW-ARCH-1 from Cycle 5 is resolved. |
+| `app/models/theme.py` | PASS | `DreamTheme` and `ThemeCategory` models present; CHECK constraints on both status columns; `fragments` JSONB with `server_default '[]'::jsonb`; `deprecated` boolean with `server_default false` |
+| `app/models/annotation.py` | PASS | `AnnotationVersion` model present with `entity_type`, `entity_id`, `snapshot`, `changed_by`; no DELETE or UPDATE paths found |
+| `app/models/dream.py` | PASS | Base models `DreamEntry`, `DreamChunk` present |
+| `app/shared/config.py` | DRIFT | No `BULK_CONFIRM_TOKEN_TTL_SECONDS` config slot. T16 bulk-confirm token TTL will have no config home; hardcoding risks policy violation. See ARCH-13. |
+| `app/shared/tracing.py` | PASS | Single `get_tracer()` shared module; all spans observed importing from here; no inline noop implementations |
+| `app/main.py` | DRIFT | `host="0.0.0.0"` unconditional in `main()` function — CODE-7 carry-forward. `themes_router` not yet registered — expected pre-T16. `InMemorySyncBackend` in `dreams.py` (not ARQ-backed) inconsistent with declared architecture. |
+| `app/workers/` | DRIFT | Only `__init__.py` present; `ingest.py` and `index.py` declared in ARCHITECTURE.md §File Layout are absent. Background job execution is not wired. Session factory pattern required for T17 cannot be assessed. See ARCH-14. |
+| `alembic/versions/` | PASS | Migrations 001–006 present on disk and now correctly listed in ARCHITECTURE.md §File Layout. ARCH-9 is resolved. |
 
 ---
 
@@ -30,24 +35,26 @@ _Date: 2026-04-13_
 
 | Rule | Verdict | Note |
 |------|---------|------|
-| SQL Safety — parameterized queries only | PASS | All `text()` calls use named parameters; no string interpolation found in scoped files |
-| Async Redis — `redis.asyncio` only | N/A | Redis not yet wired; ARQ worker scaffolding absent |
-| Authorization — every route enforces auth; public routes documented | PASS (partial) | `health.py` correctly documents unauthenticated access citing OBS-3. Other routers not yet implemented; no bypass introduced |
-| PII Policy — no sensitive data in logs, spans, or errors | PASS | No `raw_text`, `chunk_text`, or `fragment_text` found in span attributes or log `extra` dicts in scoped files. `theme_extractor.py` passes `raw_text` to LLM prompt (not a log/span); `justification` field may contain dream content but is not written to spans |
-| Shared Tracing Module — single `get_tracer()`, no inline noop | PASS | All scoped modules import `get_tracer` from `app/shared/tracing`; no inline noop implementations found |
-| CI Gate | PASS | Baseline 48 pass, 12 skip, 0 fail |
-| OBS-1 — every external call wrapped in a span | DRIFT | DB calls in `analysis.py` and `taxonomy.py` lack per-call child spans (CODE-15). OpenAI HTTP call in `ingestion.py` inside `asyncio.to_thread` lacks a per-request HTTP span (CODE-24) |
-| OBS-2 — success/error counters + latency histograms; RAG `insufficient_evidence` counter | DRIFT | `retrieval_ms` span attribute present in `query.py`. `insufficient_evidence` emitted as `logger.info` only — no labeled counter. Prometheus metrics not yet wired (v1 scope) |
-| OBS-3 — health endpoint contract | PASS | Returns `{"status": "ok"|"degraded", "index_last_updated": ISO8601|null}`; HTTP 503 on staleness; no auth; OTel span present |
-| Dream Content Isolation | PASS | No classified PII fields found in span attributes or log `extra` dicts |
-| LLM Output Framing | DRIFT | Framing present in LLM system prompt strings; absent as structural `interpretation_note` literal field in Pydantic response models — ARCH-6 open |
-| Annotation Versioning | PASS | `AnnotationVersion` written before every mutation in `analysis.py` and `taxonomy.py`; append-only; no DELETE/UPDATE against `annotation_versions` found |
-| Taxonomy Mutation Gate | PASS | `approve_category` and `deprecate_category` require explicit API calls; no automated LLM path calls these directly |
-| Idempotent Workers | PASS (partial) | `_upsert_chunk` uses `on_conflict_do_nothing` on `(dream_id, chunk_index)`; worker job handlers not yet implemented; no conflicting code found |
-| Ingestion/Query Separation | PASS | No cross-imports between `app/retrieval/ingestion.py` and `app/retrieval/query.py` confirmed |
-| Index Schema Versioning | PASS | `INDEX_SCHEMA_VERSION = "v1"` in `ingestion.py:21`; documented in ARCHITECTURE.md |
-| Max Index Age (24h, health endpoint) | PASS | `MAX_INDEX_AGE_HOURS` from settings; staleness check and HTTP 503 wired in `health.py:31–34` |
-| P2 Age Cap — CODE-2, CODE-5, CODE-11, CODE-12 (3–4 cycles) | VIOLATION | Four P2 findings exceed the 3-cycle age cap per IMPLEMENTATION_CONTRACT §P2 Age Cap. Must be closed, escalated to P1, or formally deferred before Phase 4 |
+| SQL Safety — parameterized queries only | PASS | All `text()` calls use named parameters; no f-strings or string concatenation in query paths observed in any scoped file |
+| Async Redis — `redis.asyncio` only | N/A | No Redis client code present in reviewed files; T16 will introduce Redis use for bulk-confirm tokens; rule applies at T16 implementation time |
+| Authorization — every route enforces auth; public routes documented | PASS | Middleware in `app/main.py:25-30` enforces auth before all non-PUBLIC_PATHS routes; `GET /health` documented with inline comment citing OBS-3 design decision |
+| PII Policy — no sensitive data in logs, spans, or errors | PASS | Observed spans use `dream_id` only; no `raw_text`, `chunk_text`, `fragment_text`, or `justification` in span attributes or structlog `extra` dicts |
+| Credentials and Secrets — env vars only | PASS | No hardcoded credentials found; all secrets via `app/shared/config.py` `Settings`; `.env` pattern confirmed |
+| Shared Tracing Module — single `get_tracer()` | PASS | All span creation in scoped modules imports `get_tracer` from `app/shared/tracing`; no inline noop implementations found |
+| CI Gate | N/A | Cannot verify from static review; carry-forward assumption: CI is passing per Cycle 6 baseline (74 pass / 9 skip) |
+| OBS-1 — every external call wrapped in a span | PASS | DB queries, embedding API calls, RAG retrieval all wrapped in spans via `get_tracer()` |
+| OBS-2 — `insufficient_evidence` counter; `retrieval_ms` span | PASS | `retrieval_ms` set as span attribute at `app/retrieval/query.py:98`; `insufficient_evidence` emitted via `logger.info` with reason context at lines 87 and 102. Meets v1 structlog-based counter expectation per ARCHITECTURE.md §Observability |
+| OBS-3 — health endpoint contract | PASS | Returns `{"status": "ok"\|"degraded", "index_last_updated": ISO8601\|null}`; HTTP 503 when stale; no auth required; PII not logged |
+| LLM Output Framing (`interpretation_note` at API schema level) | VIOLATION | `SearchResultItem`, `SearchResultsResponse`, `DreamThemeResponseItem` in `app/api/search.py` contain no `interpretation_note` field. Framing is in LLM prompt strings only. IMPLEMENTATION_CONTRACT §LLM Output Framing requires schema-level enforcement. Open as ARCH-6 (P2, age cap approaching). |
+| Annotation Versioning — write-ahead before every mutation | DRIFT | `AnnotationVersion` model is correct and present. T16 mutation endpoints do not yet exist; write-ahead enforcement cannot be confirmed until `app/api/themes.py` is implemented. This is a pre-implementation risk gate for T16, not a current violation. |
+| Taxonomy Mutation Gate — no automated promotion path | PASS | No automated promotion code path found; taxonomy service requires explicit API call; no LLM output directly mutates `ThemeCategory.status` |
+| Idempotent Workers — content hash + composite key | PASS (partial) | `_upsert_chunk` uses `on_conflict_do_nothing` on `(dream_id, chunk_index)` — correct for chunking idempotency. Worker job handlers (`ingest.py`, `index.py`) absent; cannot assess full idempotency of the background pipeline. |
+| Ingestion/Query Separation — no cross-import | PASS | Confirmed by direct file inspection: neither `ingestion.py` nor `query.py` imports the other |
+| Dream Content Isolation (Redis keys/values) | N/A | No Redis client in scope; rule applies when T16 token code is written |
+| `annotation_versions` append-only | PASS | No DELETE or UPDATE against `annotation_versions` found anywhere in reviewed scope |
+| `BULK_CONFIRM_TOKEN_TTL_SECONDS` config slot | VIOLATION | Missing from `app/shared/config.py`. T16 bulk-confirm token TTL must be config-driven, not hardcoded. See ARCH-13. |
+| Secrets scope — no secrets in source, migrations, fixtures | PASS | No credentials observed |
+| Runtime mutation boundary (T1) | PASS | No shell mutation, no ad-hoc package installs in any runtime path |
 
 ---
 
@@ -55,67 +62,60 @@ _Date: 2026-04-13_
 
 | ADR | Verdict | Note |
 |-----|---------|------|
-| `docs/adr/` directory | VIOLATION | Directory absent; no ADRs have been filed. IMPLEMENTATION_CONTRACT states changes to the contract require an ADR; ARCHITECTURE.md lists `docs/adr/` as a canonical authority source. Index schema v1 protection and contract immutability both depend on ADR governance (ARCH-4) |
+| (No ADR files found — `docs/adr/` directory absent) | VIOLATION | `docs/adr/` directory does not exist. IMPLEMENTATION_CONTRACT declares ADRs required for schema changes, runtime tier expansion, and contract modifications. No formal decisions have been filed. The directory itself must exist to operationalize the ADR governance process. ARCH-15 / carry-forward of ARCH-4 from Cycle 5. |
 
 ---
 
 ## Architecture Findings
 
-### ARCH-4 [P3] — No ADR directory or governance records
-Symptom: `docs/adr/` directory absent; no ADR files exist.
-Evidence: `docs/adr/` (absent — confirmed by glob search)
-Root cause: ADR governance was never bootstrapped; no task assigned.
-Impact: Cannot verify any architecture-change decisions have been formally recorded. Index schema versioning, contract immutability, and any future runtime-tier changes all require ADRs, with no place to file them. Entering Phase 4 (API layer, auth, worker wiring) without ADR governance increases risk of undocumented boundary changes.
-Fix: Create `docs/adr/` directory; file ADR-001 backfilling index schema v1 decision. Can be a single `docs` commit in Cycle 5 without a dedicated task slot.
-Status: Open — carry-forward; no assigned task.
+### ARCH-6 [P2] — `interpretation_note` Not Enforced at API Response Schema Level
+Symptom: LLM output framing is present in system prompt text only; API response Pydantic models contain no `interpretation_note` literal field.
+Evidence: `app/api/search.py:27-38` (`SearchResultItem`, `SearchResultsResponse` — no `interpretation_note`); `app/api/search.py:47-57` (`DreamThemeResponseItem` — no `interpretation_note`); `app/llm/theme_extractor.py:58-64` (framing in prompt string only); `app/llm/grounder.py:63-68` (framing in prompt string only).
+Root cause: IMPLEMENTATION_CONTRACT §LLM Output Framing requires enforcement at the API response schema level (Pydantic model with a literal field), not only at the prompt level. T15 shipped without closing this gap.
+Impact: API responses carry no machine-readable framing. Any downstream consumer receives interpretation data without a structured disclaimer. P2 finding; approaching age cap (open since Cycle 2+).
+Fix: Add `interpretation_note: Literal["These are AI-generated draft interpretations, not authoritative conclusions."]` as a constant field to `DreamThemeResponseItem`, `SearchResultItem`, `SearchResultsResponse`, and any T16 theme-curation response models. Assign to T16 scope or create FIX-C6 item. Must close in Cycle 6 or escalate to P1.
 
-### ARCH-6 [P2] — `interpretation_note` not structurally enforced in response models
-Symptom: LLM output framing exists in system prompt strings only; not enforced as a Pydantic literal field in `ThemeAssignment` or `GroundedTheme`.
-Evidence: `app/llm/theme_extractor.py:58–64` (system prompt framing only); `app/llm/grounder.py:64–68` (system prompt framing only); no `interpretation_note` field in either response model.
-Root cause: Framing rule from IMPLEMENTATION_CONTRACT §LLM Output Framing was applied at the prompt level, not the schema level.
-Impact: API responses downstream of theme extraction and grounding may not carry the framing requirement through to the client. Contract requires either an `interpretation_note` field or schema-level enforcement.
-Fix: Add `interpretation_note: Literal["These are computational patterns, not authoritative interpretations."]` to `ThemeAssignment` and `GroundedTheme` Pydantic models, or enforce at the API response schema level.
-Status: Open — resolves at T15/T16.
+### ARCH-10 [P3] — LLM Query Expansion Not Wired in `query.py`
+Symptom: ARCHITECTURE.md §RAG Architecture declares query expansion via `claude-haiku-4-5` as a pipeline stage ("Query analyze → expanded_terms[]"). `app/api/search.py::_expand_terms()` is a deterministic regex tokenizer, not an LLM call.
+Evidence: `app/api/search.py:207-223` (`_expand_terms` — regex tokenizer); `app/retrieval/query.py` — no LLM client import; ARCHITECTURE.md §Query-time pipeline declares LLM expansion as a required stage; spec.md §6 AC-5 requires `expanded_terms` in the response.
+Root cause: LLM-based query expansion was deferred from T11 through T15. The `expanded_terms` field returned to clients is populated by a tokenizer, satisfying the schema shape but not the semantic intent.
+Impact: Metaphor-aware retrieval (a first-class requirement per spec.md §Retrieval) is non-operational. The `expanded_terms` response field is misleading — it contains tokenized query words, not LLM-expanded metaphor synonyms. Deferred to post-T15 search API task per META_ANALYSIS.
+Fix: Wire `claude-haiku-4-5` query expansion in `app/retrieval/query.py::retrieve()` before the embedding call. Confirm a task exists in `docs/tasks.md` for this work; if not, create one.
 
-### ARCH-9 [P3] — ARCHITECTURE.md §File Layout migration listing incomplete
-Symptom: `docs/ARCHITECTURE.md §File Layout` lists migrations through `004_fix_status_ck.py`; migrations `005_add_fragments_default.py` and `006_add_hnsw_index.py` are absent.
-Evidence: `docs/ARCHITECTURE.md:366–370`; `alembic/versions/005_add_fragments_default.py` and `alembic/versions/006_add_hnsw_index.py` present on disk.
-Root cause: Doc not updated when T10/T11 added migrations 005 and 006.
-Impact: Low — doc drift only; does not affect runtime behavior. Misleading to reviewers.
-Fix: Update `docs/ARCHITECTURE.md §File Layout` to add both missing migration entries.
-Status: Open — carry-forward.
+### ARCH-11 [P3] — `EvidenceBlock.matched_fragments` Partial Citation Contract
+Symptom: `EvidenceBlock.matched_fragments` is `list[str]`; spec.md §Retrieval requires matched_fragments to include character offsets and `match_type` label per fragment.
+Evidence: `app/retrieval/query.py:35` (`matched_fragments: list[str]`); spec.md §Retrieval: "a list of text spans from the original dream entry that matched the query, with character offsets and a `match_type` label (`literal` / `semantic`)". Note: the grounding layer in `app/llm/grounder.py:125-161` correctly stores `{text, start_offset, end_offset, match_type, verified}` in `DreamTheme.fragments` (JSONB) — the data exists in DB but is stripped to bare strings in the retrieval path.
+Root cause: Fragment metadata was not plumbed from the `dream_themes.fragments` JSONB column through the SQL assembly sub-query and into `EvidenceBlock` when `query.py` was built.
+Impact: API search responses cannot satisfy spec.md §6 AC-1 citation format. T16 theme responses will also be affected if this is not resolved before the curation surface is built. The `matched_fragments` in `SearchResultItem` are bare strings with no position or type metadata.
+Fix: Extend `EvidenceBlock` with per-fragment objects (`{text: str, start_offset: int | None, end_offset: int | None, match_type: str}`); update the SQL fragment assembly sub-query in `_search()` to emit `start_offset`, `end_offset`, `match_type` from the JSONB; update `SearchResultItem.matched_fragments` to `list[FragmentRef]`. Assign FIX-C6 or T16 scope.
 
-### ARCH-10 [P3] — Query expansion absent from `query.py`
-Symptom: `RagQueryService.retrieve()` embeds and searches without any prior LLM-based query expansion step.
-Evidence: `app/retrieval/query.py:102–137` — no LLM client import or expansion call present.
-Root cause: Query expansion deferred from T11; assigned to T15 (search API).
-Impact: ARCHITECTURE.md §RAG query-time pipeline "query analyze" step unimplemented; spec.md §6 AC-5 (`expanded_terms[]` in response) not satisfied. Current retrieval is embedding-only without metaphor-aware expansion.
-Fix: Wire `claude-haiku-4-5` query expansion call in `retrieve()` before `_embed_query()`.
-Status: Open — resolves at T15.
+### ARCH-12 [P3] — Session Factory Duplicated Across API Routers
+Symptom: `app/api/search.py` and `app/api/dreams.py` each independently create their own `AsyncEngine` and `async_sessionmaker` via private `lru_cache` functions.
+Evidence: `app/api/search.py:151-163` (private `_get_engine`, `_get_session_factory`, `_get_rag_query_service`); `app/api/dreams.py:166-173` (same pattern, different module). No shared session factory in `app/main.py` or `app/shared/`.
+Root cause: No centralized dependency injection or shared DB module was established when the API routers were built.
+Impact: When `app/api/themes.py` is added (T16), it will either continue the duplication (three separate connection pools) or require refactoring first. Separate `lru_cache` instances per module mean DB connections are not pooled across routers in any controlled way. The session factory pattern referenced in T17 notes for `app/workers/` has no canonical location to inherit from.
+Fix: Create `app/shared/db.py` (or `app/shared/session.py`) exporting `get_engine()` and `get_session_factory()`. All API routers and future worker modules import from there. Strongly recommended as pre-T16 work to avoid a third duplicate.
 
-### ARCH-11 [P3] — `EvidenceBlock.matched_fragments` partial citation contract
-Symptom: `EvidenceBlock.matched_fragments` is `list[str]`; spec §Retrieval citation format requires character offsets and `match_type` label per fragment.
-Evidence: `app/retrieval/query.py:32–38` (`EvidenceBlock` dataclass).
-Root cause: Fragment metadata (offsets, `match_type`) not included when `EvidenceBlock` was designed at T11.
-Impact: Spec §6 AC-1 and §Retrieval citation format not fully satisfied. Will require a schema change to `EvidenceBlock` before `app/api/search.py` (T15) can return a compliant response.
-Fix: Add `match_type: str`, `start_offset: int | None`, `end_offset: int | None` fields to `EvidenceBlock`; update SQL fragment assembly and `_coerce_fragments` accordingly. Must resolve before T15.
-Status: Open — must resolve before T15.
+### ARCH-13 [P2] — `BULK_CONFIRM_TOKEN_TTL_SECONDS` Config Slot Absent Before T16
+Symptom: T16 will store bulk-confirm UUID tokens in Redis with a 10-minute TTL (per spec.md §5 AC-6). There is no config slot in `app/shared/config.py` for this TTL value.
+Evidence: `app/shared/config.py:1-27` — `Settings` class has no TTL field for bulk-confirm tokens. META_ANALYSIS scope item: "verify Redis client/config is shared and not duplicated; TTL policy consistency".
+Root cause: T16 has not been implemented yet, but the established codebase pattern externalizes all tunable constants to `Settings`. Implementing T16 without this slot will require a hardcoded constant or a separate ad-hoc env var.
+Impact: If T16 hardcodes the 600-second TTL, it violates the externalization pattern and makes the token expiry window non-configurable without a code change. The token TTL is security-adjacent (bulk-action authorization window). P2 because it is a pre-implementation contract violation risk.
+Fix: Add `BULK_CONFIRM_TOKEN_TTL_SECONDS: int = 600` to `Settings` in `app/shared/config.py` as a mandatory pre-T16 step.
 
-### NEW-ARCH-1 [P2] — `OpenAIEmbeddingClient` duplicated with diverging implementations; `app/retrieval/types.py` absent
-Symptom: `OpenAIEmbeddingClient` independently implemented in both `app/retrieval/ingestion.py:51–80` and `app/retrieval/query.py:55–84` with diverging Protocol signatures, error types, and log fields.
-Evidence: `app/retrieval/ingestion.py:32–80` (`EmbeddingClient` Protocol with `dream_id` kwarg; `EmbeddingServiceError`); `app/retrieval/query.py:23–66` (`EmbeddingClient` Protocol without `dream_id`; `QueryEmbeddingError`).
-Root cause: Shared client deferred as CODE-32; `app/retrieval/types.py` proposed but never created.
-Impact: When T14/T15 wire the search API and background workers, both codepaths call different implementations of the same service boundary. Divergence compounds; a correctness or security fix to one implementation may not be applied to the other. Testing both independently doubles the surface.
-Fix: Create `app/retrieval/types.py` with a unified `OpenAIEmbeddingClient` and shared `EmbeddingClient` Protocol (reconcile `dream_id` kwarg — recommend keeping it for tracing). Both `ingestion.py` and `query.py` import from `types.py`. Must ship with T13 or as FIX-C5-1 before T14.
-Status: Open — P2 age cap applies; deferral past T14 not acceptable.
+### ARCH-14 [P3] — Worker Files `ingest.py` and `index.py` Absent
+Symptom: ARCHITECTURE.md §File Layout and §Component Table declare `app/workers/ingest.py` and `app/workers/index.py` as ARQ background job handlers. Only `app/workers/__init__.py` exists. `app/api/dreams.py` uses `InMemorySyncBackend` (in-memory dict, not ARQ).
+Evidence: Glob of `app/**/*.py` — no `ingest.py` or `index.py` under `app/workers/`; `app/workers/__init__.py:1` contains only a docstring; `app/api/dreams.py:76-87` (`InMemorySyncBackend` — in-memory storage, not Redis/ARQ).
+Root cause: Background worker implementation has been deferred; no task has been assigned for it in Phase 4.
+Impact: Real background ingestion/indexing is not operational. T17 notes reference a "shared session factory pattern" that must be consistent with T14/T15 session handling — without worker files, this alignment cannot be assessed before T17 begins. The architecture declares ARQ as the task queue; the actual implementation uses an ephemeral in-memory store.
+Fix: Implement `app/workers/ingest.py` and `app/workers/index.py` as part of the first task requiring real background execution. The session factory consolidation from ARCH-12 should precede or accompany this work.
 
-### NEW-ARCH-2 [P2] — P2 age cap breached: CODE-2, CODE-5, CODE-11, CODE-12
-Symptom: Four P2 findings have been open 3–4 consecutive review cycles with no assigned fix window.
-Evidence: META_ANALYSIS.md open findings — CODE-2 (4 cycles), CODE-5 (4 cycles), CODE-11 (3 cycles), CODE-12 (3 cycles).
-Root cause: No concrete FIX task assigned in prior cycles; carry-forward pattern repeated without triage.
-Impact: IMPLEMENTATION_CONTRACT §P2 Age Cap requires action. CODE-11 (spurious `skipif` guards) and CODE-12 (`StubGrounder verified=True` hardcoded) directly compromise integration test validity.
-Fix: Group as FIX-C5-1 before T13 closes. CODE-2: one parametrised `HttpError` re-raise test in `test_gdocs_client.py`. CODE-5: add `fragments IS NOT NULL` + CHECK constraint assertions in `test_migrations.py`. CODE-11: remove three `skipif` decorators in `test_analysis.py`. CODE-12: add `verified=False` path to `StubGrounder` + one assertion. All are isolated; a single commit suffices.
-Status: MUST assign and close before Phase 4 begins.
+### ARCH-15 [P3] — `docs/adr/` Directory Does Not Exist
+Symptom: No ADR directory or governance records exist. IMPLEMENTATION_CONTRACT and ARCHITECTURE.md both declare ADRs as required before index schema changes, runtime tier expansion, or modifications to the contract itself.
+Evidence: Bash check — `docs/adr/` directory not found; Glob of `docs/adr/**` returned no results. Also open as ARCH-4 in Cycle 5 report.
+Root cause: ADR governance was never bootstrapped; no task was assigned in Phase 1–3.
+Impact: Currently low risk (no schema changes or runtime escalations in T16 scope), but the Phase 5 gate requires no P1 open findings. If a schema change or runtime expansion occurs without the ADR process in place, that finding would be automatic P1. The infrastructure for governance is missing.
+Fix: Create `docs/adr/` directory. File ADR-001 backfilling the index schema v1 decision before Phase 5 begins. A single documentation commit with no code change is sufficient.
 
 ---
 
@@ -123,11 +123,11 @@ Status: MUST assign and close before Phase 4 begins.
 
 | Check | Verdict | Note |
 |-------|---------|------|
-| Solution shape (Workflow) still appropriate | PASS | Bounded ingestion and query pipelines; LLM called at fixed points; no dynamic tool-selection loop introduced in scoped code |
-| Deterministic-owned areas remain deterministic | PASS | Segmentation (primary), taxonomy CRUD, calculations, routing — all remain deterministic; no LLM drift into governed areas detected |
-| Runtime tier (T1) unchanged / justified | PASS | No shell mutation, no ad-hoc package installs in scoped code. `host="0.0.0.0"` (CODE-7) is a security config issue, not a runtime-tier escalation |
-| Human approval boundaries still valid | PASS | `approve_category` and `deprecate_category` require explicit API calls; no automated promotion path in `taxonomy.py`; workers not wired; no bypass path found |
-| Minimum viable control surface still proportionate | PASS | All taxonomy mutations gated; annotation versioning enforced; no new uncontrolled governance surface added |
+| Solution shape (Workflow) still appropriate | PASS | System remains a bounded pipeline (ingest → segment → analyse → index → retrieve). T16 adds a curation API surface — still Workflow shape. No dynamic tool-selection loop introduced. LLM called at fixed points only. |
+| Deterministic-owned areas remain deterministic | PASS | Routing, segmentation heuristics (primary boundary detection), taxonomy CRUD, salience math, annotation versioning — all remain deterministic. `_expand_terms()` in `search.py` is deterministic (regex tokenizer); query expansion LLM path is declared but not yet wired (ARCH-10). No deterministic domain has drifted to LLM. |
+| Runtime tier (T1) unchanged / justified | PASS | No shell mutation, no ad-hoc package installs observed in any runtime path. `InMemorySyncBackend` is a stub; workers are not yet live. T1 tier intact. CODE-7 (`host="0.0.0.0"`) is a security config issue, not a runtime-tier escalation. |
+| Human approval boundaries still valid | DRIFT | `PATCH /themes/categories/{id}/approve` (taxonomy promotion), `PATCH /dreams/{id}/themes/{theme_id}/confirm`, `PATCH /dreams/{id}/themes/{theme_id}/reject`, and bulk-confirm endpoints are all declared in spec.md and ARCHITECTURE.md but do not yet exist (`app/api/themes.py` absent). Approval boundaries are architecturally correct but not yet enforced in code. Must verify after T16 lands. |
+| Minimum viable control surface still proportionate | PASS | Single-user system; auth via API key header; governance level Standard; no over-engineered RBAC. Proportionate to declared governance level. |
 
 ---
 
@@ -135,12 +135,12 @@ Status: MUST assign and close before Phase 4 begins.
 
 | Check | Verdict | Note |
 |-------|---------|------|
-| Ingestion / query-time separation (no cross-import) | PASS | Confirmed: no cross-imports between `app/retrieval/ingestion.py` and `app/retrieval/query.py` |
-| `insufficient_evidence` path defined | PASS | `InsufficientEvidence` dataclass in `query.py:41–43`; returned on empty query and on zero rows above threshold; defined in ARCHITECTURE.md and spec.md |
-| Evidence/citation contract defined | DRIFT | `EvidenceBlock` has `dream_id`, `date`, `chunk_text`, `relevance_score`, `matched_fragments`. `matched_fragments` is `list[str]`; spec requires `match_type` + character offsets per fragment — ARCH-11 |
-| Freshness / max-index-age policy (24h, health endpoint) | PASS | `MAX_INDEX_AGE_HOURS` from settings; staleness check and HTTP 503 in `health.py:31–34`; policy documented in ARCHITECTURE.md §Index Strategy |
-| Index schema versioning (v1) | PASS | `INDEX_SCHEMA_VERSION = "v1"` in `ingestion.py:21`; ARCHITECTURE.md documents v1 and ADR requirement for changes |
-| Retrieval observability expectations | DRIFT | `retrieval_ms` set as span attribute in `query.py`. `insufficient_evidence` emitted as `logger.info` only — no OBS-2 labeled counter. OpenAI HTTP call in `ingestion.py` inside `asyncio.to_thread` has no per-request HTTP child span (CODE-24); OTel context propagation into `asyncio.to_thread` requires architectural guidance at T13 |
+| Ingestion / query-time separation (no cross-import) | PASS | `app/retrieval/ingestion.py` does not import `query.py`; `app/retrieval/query.py` does not import `ingestion.py`. Verified by direct inspection. |
+| `insufficient_evidence` path defined | PASS | `InsufficientEvidence` dataclass at `app/retrieval/query.py:38-40`; returned on empty query (`query.py:86`) and on zero rows above threshold (`query.py:100-103`); handled in `app/api/search.py:71-76` returning `{"result": "insufficient_evidence", "query": "..."}` with HTTP 200. Path defined in ARCHITECTURE.md §Query-time pipeline and spec.md §Retrieval. |
+| Evidence/citation contract defined | DRIFT | `EvidenceBlock` carries `dream_id`, `date`, `chunk_text`, `relevance_score`, `matched_fragments`. `dream_id`, `date`, `chunk_text` are present per ARCHITECTURE.md. However spec.md §Retrieval citation format requires `matched_fragments` with character offsets and `match_type` per fragment — `matched_fragments: list[str]` only. See ARCH-11. |
+| Freshness / max-index-age policy (24h, health endpoint) | PASS | `MAX_INDEX_AGE_HOURS: int = 24` in `Settings` (`config.py:20`); `app/api/health.py:31-38` checks staleness against this value and returns HTTP 503 with `status="degraded"` when stale. Policy documented and enforced. |
+| Index schema versioning (v1) | PASS | `INDEX_SCHEMA_VERSION = "v1"` declared at `app/retrieval/ingestion.py:21`; set as span attribute on every `index_dream` call. ARCHITECTURE.md §Index Strategy and IMPLEMENTATION_CONTRACT §Index Schema Versioning both declare v1 as current. No ADR required yet (no schema change proposed). |
+| Retrieval observability expectations | PASS | `retrieval_ms` set as span attribute on the outer `rag_query.retrieve` span (`query.py:98`); `insufficient_evidence` emitted via `logger.info` with reason context at `query.py:87` and `query.py:102`; sub-spans present for embed query (`rag_query.embed_query`) and DB search (`db.query.rag_query.search`). Meets v1 observability expectations per ARCHITECTURE.md §Observability. |
 
 ---
 
@@ -148,9 +148,12 @@ Status: MUST assign and close before Phase 4 begins.
 
 | File | Section | Change |
 |------|---------|--------|
-| `docs/ARCHITECTURE.md` | §File Layout — alembic/versions | Add `005_add_fragments_default.py` and `006_add_hnsw_index.py` to migration listing |
-| `docs/adr/` | (new directory) | Create directory; file ADR-001 backfilling index schema v1 decision |
-| `docs/ARCHITECTURE.md` | §Component Table | Add `app/retrieval/types.py` entry once FIX-C5-1 / T13 creates the file |
+| `docs/ARCHITECTURE.md` | §File Layout — `app/workers/` | Mark `ingest.py` and `index.py` as "(planned — not yet implemented)" or add a note that these are pending until the background worker task is assigned |
+| `docs/ARCHITECTURE.md` | §Component Table — `app/api/themes.py` | Add "(T16 deliverable — not yet implemented)" note to the `Theme API router` row to avoid reviewer confusion |
+| `docs/audit/META_ANALYSIS.md` | §Open Findings | Mark ARCH-9 as CLOSED — migrations 005 and 006 are now correctly listed in ARCHITECTURE.md §File Layout |
+| `docs/audit/META_ANALYSIS.md` | §Open Findings | Mark CODE-22 as CLOSED/SUPERSEDED — superseded by CODE-30 (DB guard added); no ambiguity should remain |
+| `app/shared/config.py` | `Settings` class | Add `BULK_CONFIRM_TOKEN_TTL_SECONDS: int = 600` as a mandatory pre-T16 step (ARCH-13) |
+| `docs/adr/` | (new directory) | Create directory; file ADR-001 backfilling index schema v1 decision before Phase 5 gate (ARCH-15) |
 
 ---
 _ARCH_REPORT.md written. Run PROMPT_2_CODE.md._

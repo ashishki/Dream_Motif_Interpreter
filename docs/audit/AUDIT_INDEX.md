@@ -14,6 +14,7 @@ _Append-only. One row per review cycle._
 | 3 | Phase 3 | 2026-04-13 | T10 + FIX-C3-1/C3-2 | No | 0 | 2→0 | 13 |
 | 4 | Phase 3 | 2026-04-13 | T11 + ARCH-2 patch | No | 0 | 1 | 7 |
 | 5 | Phase 3 boundary | 2026-04-13 | T12 + Phase 3 full | No | 0 | 1 | 7 |
+| 6 | Phase 4 | 2026-04-14 | T13–T15 + rag:query trigger | No | 0 | 0 | 5 |
 
 ---
 
@@ -27,6 +28,7 @@ _Append-only. One row per review cycle._
 | 3 | `docs/archive/PHASE3_REVIEW.md` | Phase 3 (T10 + FIX-C3) | OK — 0 P0, 2 P1 resolved, 13 P2; Stop-Ship resolved |
 | 4 | `docs/archive/PHASE4_REVIEW.md` | Phase 3 (T11 + ARCH-2) | OK — 0 P0, 1 P1 open (CODE-26/FIX-C4-1); Stop-Ship: No |
 | 5 | `docs/archive/PHASE3_BOUNDARY_REVIEW.md` | Phase 3 boundary (T12 + full) | OK — 0 P0, 1 P1 (CODE-33/FIX-C5-1); Stop-Ship: No |
+| 6 | `docs/audit/archive/PHASE4_CYCLE6_REVIEW.md` | Phase 4 (T13–T15, rag:query) | OK — 0 P0/P1, 5 P2, 5 P3; Stop-Ship: No |
 
 ---
 

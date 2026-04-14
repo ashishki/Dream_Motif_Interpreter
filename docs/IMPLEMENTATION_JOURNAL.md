@@ -23,6 +23,15 @@ Status: append-only
 
 ## Entries
 
+### 2026-04-14 — FIX-C8 — Technical Debt — P2 Findings
+
+- Scope: `app/workers/ingest.py`, `app/api/dreams.py`, `app/api/themes.py`, `app/main.py`, targeted integration tests, and prompt continuity updates
+- Why this work happened: Cycle 8 left three P2 runtime hardening gaps open around Redis status writes, Redis client shutdown, and malformed bulk-confirm token parsing
+- Decisions applied: D-008, D-009
+- Evidence collected: `pytest -q tests/integration/test_workers.py tests/integration/test_curation_api.py` → `11 passed`; `pytest -q` → `95 passed, 9 skipped`; `ruff check app/ tests/` → clean; `ruff format --check app/ tests/` → clean
+- Follow-ups: no new findings introduced; remaining open findings are carry-forward P3 items only
+- Notes for next agent: Redis client ownership now lives in `app/api/dreams.py` as a lazy module-level singleton, and the app lifespan closes it when the concrete client exposes `aclose()`
+
 ### 2026-04-14 — T20 — End-to-End Integration Test
 
 - Scope: `tests/integration/test_e2e.py` and seeded fixture-driven pipeline test coverage

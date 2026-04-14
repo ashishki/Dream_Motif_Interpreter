@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.18
+Version: 1.19
 Date: 2026-04-14
 Phase: 5
 
@@ -9,10 +9,10 @@ Phase: 5
 ## Current State
 
 - **Phase:** 5
-- **Baseline:** 93 passing tests, 9 skipped
+- **Baseline:** 95 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (Cycle 8 Phase 5 boundary review)
+- **Last updated:** 2026-04-14 (FIX-C8 closure)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,8 +21,8 @@ Phase: 5
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 5 complete — all tasks done; maintenance mode
-- **Latest completed task:** T20 — End-to-End Integration Test
-- **Current baseline:** 93 passing tests, 9 skipped
+- **Latest completed task:** FIX-C8 — Technical Debt — P2 Findings
+- **Current baseline:** 95 passing tests, 9 skipped
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -38,20 +38,19 @@ Phase: 5
 
 ## Next Task
 
-No next task is currently queued in `docs/tasks.md`.
-Phase 5 is complete; next work should start from a new task or phase assignment.
+No next task — maintenance complete.
 
 ---
 
 ## Fix Queue
 
-─── Fix Queue ─── (empty — no P0/P1 open)
+FIX-C8 completed 2026-04-14. No open fix batch is queued.
 
 ---
 
 ## Open Findings
 
-_Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (46 Closed, 12 Open)_
+_Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (49 Closed, 9 Open)_
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
@@ -117,10 +116,10 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (46 Closed, 
 | ARCH-14 | P3 | Worker files `app/workers/ingest.py` and `app/workers/index.py` declared in ARCHITECTURE.md but absent. | `app/workers/` | **Closed** — T17 applied 2026-04-14; both worker files created and registered in ARCHITECTURE.md §File Layout |
 | ARCH-15 | P3 | `docs/adr/` directory does not exist; IMPLEMENTATION_CONTRACT requires ADRs for schema changes and runtime tier expansion. | `docs/adr/` | Open — new Cycle 6 |
 | ARCH-12-E | P3 | Session factory `_get_session_factory()` now imported into 4 API modules (dreams, search, patterns, versioning). Should be extracted to `app/shared/database.py`. Worsened by T18/T19. | `app/api/patterns.py:10`, `app/api/versioning.py:9`, `app/api/search.py:179`, `app/api/dreams.py:201` | Open — new Cycle 8 |
-| CODE-48 | P2 | `ingest_document` initial Redis status write (status="running") not in try/finally block. Transient Redis failure leaves job ID untracked; subsequent "done"/"failed" writes orphaned. | `app/workers/ingest.py:37` | Open — new Cycle 7 |
-| CODE-49 | P2 | Redis client in `themes.py` and `dreams.py` uses `lru_cache(maxsize=1)` but is never closed. No connection pool configured. Potential connection leak in long-running processes. | `app/api/themes.py:259-262`, `app/api/dreams.py:308-315` | Open — new Cycle 7 |
-| CODE-50 | P2 | Bulk confirm token parsing in `themes.py` lacks explicit `isinstance(..., list)` type guard on `parsed_payload["dream_ids"]`. Non-list value raises unhandled `TypeError`. | `app/api/themes.py:117-121` | Open — new Cycle 7 |
-| DOC-1 | P2 | `docs/IMPLEMENTATION_JOURNAL.md` last entry is T13 (2026-04-13); entries for T14, T15, T16, T17 absent. Retrieval continuity degraded for future agents. | `docs/IMPLEMENTATION_JOURNAL.md` | **Closed** — T14/T15/T16/T17/T18 journal entries added 2026-04-14 |
+| CODE-48 | P2 | `ingest_document` initial Redis status write (status="running") not in try/finally block. Transient Redis failure leaves job ID untracked; subsequent "done"/"failed" writes orphaned. | `app/workers/ingest.py:37` | **Closed** — FIX-C8 applied 2026-04-14; initial Redis write now logs and continues on failure; worker completion test added |
+| CODE-49 | P2 | Redis client in `themes.py` and `dreams.py` uses `lru_cache(maxsize=1)` but is never closed. No connection pool configured. Potential connection leak in long-running processes. | `app/api/themes.py:259-262`, `app/api/dreams.py:308-315` | **Closed** — FIX-C8 applied 2026-04-14; Redis client is now a shared module-level singleton with FastAPI shutdown close path |
+| CODE-50 | P2 | Bulk confirm token parsing in `themes.py` lacks explicit `isinstance(..., list)` type guard on `parsed_payload["dream_ids"]`. Non-list value raises unhandled `TypeError`. | `app/api/themes.py:117-121` | **Closed** — FIX-C8 applied 2026-04-14; non-list `dream_ids` now returns HTTP 410; malformed-token integration test added |
+| DOC-1 | P2 | `docs/IMPLEMENTATION_JOURNAL.md` last entry is T13 (2026-04-13); entries for T14, T15, T16, T17 absent. Retrieval continuity degraded for future agents. | `docs/IMPLEMENTATION_JOURNAL.md` | **Closed** — T14 through T20 journal entries are present as of 2026-04-14 |
 
 ---
 
@@ -217,16 +216,17 @@ none
 
 ## Completed Tasks
 
-- **T16** — User Curation API — Theme Confirmation and Taxonomy Management — 2026-04-14 — 79 tests passing, 9 skipped — confirm/reject theme mutations, Redis-backed bulk confirm approval flow, category approval auth gate, and write-ahead AnnotationVersion coverage implemented
-- **T17** — Background Worker Setup with Idempotency — 2026-04-14 — 83 tests passing, 9 skipped — Redis-backed sync job status, idempotent ingest/index workers, and integration coverage for done/failed worker outcomes implemented
-- **T18** — Archive-Level Pattern Detection — 2026-04-14 — 87 tests passing, 9 skipped — `/patterns/recurring`, `/patterns/co-occurrence`, and `/patterns/timeline` implemented with computational-pattern disclaimer framing and generated timestamps
-- **T19** — Annotation Versioning and Rollback — 2026-04-14 — 91 tests passing, 9 skipped — authenticated theme history and rollback APIs implemented; rollback appends a new AnnotationVersion; append-only guard coverage added
+- **FIX-C8** — Technical Debt — P2 Findings — 2026-04-14 — 95 tests passing, 9 skipped — CODE-48/49/50 closed via guarded initial Redis status writes, shared Redis client shutdown, and malformed bulk-confirm token handling; prompt continuity refreshed
 - **T20** — End-to-End Integration Test — 2026-04-14 — 93 tests passing, 9 skipped — end-to-end sync-to-search coverage added with test-only pipeline orchestration; flow now exercises sync, analysis, search, bulk curation approval, pattern APIs, rollback history, and cleanup assertions
+- **T19** — Annotation Versioning and Rollback — 2026-04-14 — 91 tests passing, 9 skipped — authenticated theme history and rollback APIs implemented; rollback appends a new AnnotationVersion; append-only guard coverage added
+- **T18** — Archive-Level Pattern Detection — 2026-04-14 — 87 tests passing, 9 skipped — `/patterns/recurring`, `/patterns/co-occurrence`, and `/patterns/timeline` implemented with computational-pattern disclaimer framing and generated timestamps
+- **T17** — Background Worker Setup with Idempotency — 2026-04-14 — 83 tests passing, 9 skipped — Redis-backed sync job status, idempotent ingest/index workers, and integration coverage for done/failed worker outcomes implemented
 
 ---
 
 ## Archived Tasks
 
+- **T16** — User Curation API — Theme Confirmation and Taxonomy Management — 2026-04-14 — 79 tests passing, 9 skipped — confirm/reject theme mutations, Redis-backed bulk confirm approval flow, category approval auth gate, and write-ahead AnnotationVersion coverage implemented
 - **T15** — Dream Browsing and Theme Search API — 2026-04-14 — 74 tests passing, 9 skipped — GET /search and GET /dreams/{id}/themes implemented; authenticated search returns ranked evidence with theme matches; insufficient_evidence and theme filter paths covered
 - **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed
 - **T01** — Project Skeleton — 2026-04-12 — 3 tests passing — Light review PASS

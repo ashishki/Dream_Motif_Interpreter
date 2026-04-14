@@ -40,6 +40,9 @@ class _InMemoryRedisClient:
     async def get(self, key: str) -> str | None:
         return self._values.get(key)
 
+    async def aclose(self) -> None:
+        return None
+
 
 class DreamListItem(BaseModel):
     id: uuid.UUID
@@ -309,8 +312,10 @@ def _get_job_enqueuer() -> JobEnqueuer:
     )
 
 
-@lru_cache(maxsize=1)
-def _get_redis_client():
+_REDIS_CLIENT: Any | None = None
+
+
+def _build_redis_client():
     try:
         from redis import asyncio as redis_asyncio
     except ModuleNotFoundError:
@@ -318,6 +323,13 @@ def _get_redis_client():
         return _InMemoryRedisClient()
 
     return redis_asyncio.from_url(get_settings().REDIS_URL, decode_responses=True)
+
+
+def _get_redis_client():
+    global _REDIS_CLIENT
+    if _REDIS_CLIENT is None:
+        _REDIS_CLIENT = _build_redis_client()
+    return _REDIS_CLIENT
 
 
 def _sync_job_key(job_id: uuid.UUID) -> str:

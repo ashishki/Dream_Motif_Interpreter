@@ -56,6 +56,18 @@ class FakeRedis:
         return self._values.get(key)
 
 
+class FailingFirstSyncStatusRedis(FakeRedis):
+    def __init__(self) -> None:
+        super().__init__()
+        self._failed = False
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        if not self._failed and key.startswith("sync_job:"):
+            self._failed = True
+            raise RuntimeError("transient redis failure")
+        return await super().set(key, value, ex=ex)
+
+
 class StaticGDocsClient:
     def __init__(self, paragraphs: list[str]) -> None:
         self._paragraphs = paragraphs
@@ -272,6 +284,40 @@ async def test_ingest_job_fails_cleanly_on_auth_error(
     assert state.status == "failed"
     assert state.new_entries is None
     assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_ingest_job_completes_when_initial_status_write_fails(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    redis_client = FailingFirstSyncStatusRedis()
+    job_id = uuid.uuid4()
+
+    new_entries = await ingest_document(
+        {
+            "redis": redis_client,
+            "session_factory": migrated_session_factory,
+            "gdocs_client": StaticGDocsClient(
+                [
+                    "2026-04-03",
+                    "A paper lantern drifted over the riverbank.",
+                ]
+            ),
+        },
+        job_id=job_id,
+        doc_id="doc-workers",
+    )
+
+    async with migrated_session_factory() as session:
+        total = await session.scalar(select(func.count()).select_from(DreamEntry))
+
+    state = await read_sync_job_state(redis_client, job_id)
+
+    assert new_entries == 1
+    assert total == 1
+    assert state is not None
+    assert state.status == "done"
+    assert state.new_entries == 1
 
 
 @pytest.mark.asyncio

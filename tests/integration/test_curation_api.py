@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import uuid
@@ -373,6 +374,32 @@ async def test_bulk_confirm_requires_approval_step(
         (first_dream.id, first_theme.id): "confirmed",
         (second_dream.id, second_theme.id): "confirmed",
     }
+
+
+@pytest.mark.anyio
+async def test_bulk_confirm_approve_returns_410_for_non_list_dream_ids(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_session_factory
+    app = _load_app()
+    import app.api.themes as themes_api
+
+    fake_redis = FakeRedis()
+    fake_redis._values["bulk_confirm:invalid-dream-ids"] = json.dumps({"dream_ids": "not-a-list"})
+    monkeypatch.setattr(themes_api, "_get_redis_client", lambda: fake_redis)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/curate/bulk-confirm/invalid-dream-ids/approve",
+            headers=_auth_headers(),
+        )
+
+    assert response.status_code == 410
+    assert response.json() == {"detail": "Bulk confirmation token has expired"}
 
 
 @pytest.mark.anyio

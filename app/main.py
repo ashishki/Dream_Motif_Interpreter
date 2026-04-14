@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from fastapi.responses import JSONResponse
-from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
 
-from app.api.dreams import is_valid_api_key, router as dreams_router
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from app.api.dreams import _get_redis_client, is_valid_api_key, router as dreams_router
 from app.api.health import router as health_router
 from app.api.patterns import router as patterns_router
 from app.api.search import router as search_router
@@ -19,7 +21,14 @@ def create_app() -> FastAPI:
     get_settings()
     configure_logging()
 
-    application = FastAPI(title="Dream Motif Interpreter", version="0.1.0")
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        yield
+        close = getattr(_get_redis_client(), "aclose", None)
+        if close is not None:
+            await close()
+
+    application = FastAPI(title="Dream Motif Interpreter", version="0.1.0", lifespan=lifespan)
     application.include_router(health_router)
     application.include_router(dreams_router)
     application.include_router(patterns_router)

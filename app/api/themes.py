@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import uuid
-from functools import lru_cache
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.api.dreams import _get_redis_client as _get_shared_redis_client
 from app.api.dreams import _get_session_factory
 from app.models.theme import DreamTheme, ThemeCategory
 from app.services.taxonomy import TaxonomyService
@@ -116,6 +116,8 @@ async def approve_bulk_confirm(token: str) -> BulkConfirmResponse:
 
     try:
         parsed_payload = json.loads(payload)
+        if not isinstance(parsed_payload.get("dream_ids"), list):
+            raise ValueError("dream_ids must be a list")
         dream_ids = [uuid.UUID(value) for value in parsed_payload["dream_ids"]]
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=410, detail="Bulk confirmation token has expired") from exc
@@ -240,8 +242,5 @@ def _bulk_confirm_key(token: str) -> str:
     return f"bulk_confirm:{token}"
 
 
-@lru_cache(maxsize=1)
 def _get_redis_client():
-    from redis import asyncio as redis_asyncio
-
-    return redis_asyncio.from_url(get_settings().REDIS_URL, decode_responses=True)
+    return _get_shared_redis_client()

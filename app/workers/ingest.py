@@ -34,7 +34,14 @@ async def ingest_document(ctx: dict[str, Any], *, job_id: uuid.UUID, doc_id: str
     session_factory: async_sessionmaker[AsyncSession] = ctx["session_factory"]
     gdocs_client: SupportsFetchDocument = ctx.get("gdocs_client", GDocsClient())
 
-    await write_sync_job_state(redis_client, job_id, SyncJobState(status="running"))
+    try:
+        await write_sync_job_state(redis_client, job_id, SyncJobState(status="running"))
+    except Exception:
+        logger.warning(
+            "ingest.redis_status_write_failed",
+            job_id=str(job_id),
+            exc_info=True,
+        )
 
     with tracer.start_as_current_span("worker.ingest_document") as span:
         span.set_attribute("job_id", str(job_id))

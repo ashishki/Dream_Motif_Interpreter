@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     RETRIEVAL_THRESHOLD: float = 0.35
     MAX_INDEX_AGE_HOURS: int = 24
+    BULK_CONFIRM_TOKEN_TTL_SECONDS: int = 600
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

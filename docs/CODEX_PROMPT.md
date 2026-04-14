@@ -1,7 +1,7 @@
 # CODEX_PROMPT.md
 
-Version: 1.8
-Date: 2026-04-13
+Version: 1.9
+Date: 2026-04-14
 Phase: 4
 
 ---
@@ -9,10 +9,10 @@ Phase: 4
 ## Current State
 
 - **Phase:** 4
-- **Baseline:** 57 passing tests, 9 skipped
+- **Baseline:** 70 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-13 (T13 complete)
+- **Last updated:** 2026-04-14 (T14 complete)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -29,10 +29,10 @@ Phase: 4
 
 ## Next Task
 
-**T14: Ingestion and Sync API Endpoints**
+**T15: Dream Browsing and Theme Search API**
 
-Read T14 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
-Primary focus: implement sync trigger and dream listing endpoints on top of the authenticated API surface.
+Read T15 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
+Primary focus: implement GET /search (hybrid retrieval) and GET /dreams/{id}/themes endpoints.
 
 ---
 
@@ -51,7 +51,7 @@ _Cycle 5 — 2026-04-13 · 48 findings total: P1: 3, P2: 26, P3: 11 (32 Closed, 
 | CODE-1 | P2 | `dream_themes.status` has no CHECK constraint — invalid values persist silently. | `app/models/theme.py`, `alembic/versions/001_initial_schema.py` | **Closed** — FIX-1 applied 2026-04-12; `ck_dream_themes_status` added via migration 004; IntegrityError test passing |
 | CODE-2 | P2 | Non-auth `HttpError` (e.g. 500) branch in `GDocsClient.fetch_document()` is untested. | `tests/unit/test_gdocs_client.py:39-49` | **Closed** — FIX-C5-2 applied 2026-04-13; `test_non_auth_http_error_propagates` added |
 | CODE-3 | P2 | `app/api/health.py` stub `index_last_updated=None` has no `# TODO(T13):` comment. Add: `# TODO(T13): replace stub with real index_last_updated from DB; add HTTP 503 on staleness > MAX_INDEX_AGE_HOURS`. | `app/api/health.py:18` | **Closed** — T13 implemented real DB query; stub replaced; OTel span present; 503 staleness path wired; CODE-6 also resolved |
-| CODE-4 | P2 | Config fail-fast test covers only `DATABASE_URL`; `tests/unit/test_config.py` absent; other 8 required secrets untested. Create file with parametrised `ValidationError` test for all 9 required secrets. | `tests/unit/test_config.py` (absent) | Open — carry-forward Cycle 1/2/3; resolve before T14 (API auth requires config completeness) |
+| CODE-4 | P2 | Config fail-fast test covers only `DATABASE_URL`; `tests/unit/test_config.py` absent; other 8 required secrets untested. Create file with parametrised `ValidationError` test for all 9 required secrets. | `tests/unit/test_config.py` (absent) | **Closed** — T14 applied 2026-04-14; `tests/unit/test_config.py` created with parametrised test for all required secrets |
 | CODE-5 | P2 | Migration test missing `fragments IS NOT NULL` + CHECK domain assertions. | `tests/integration/test_migrations.py` | **Closed** — FIX-C5-2 applied 2026-04-13; NOT NULL assertion + positive-domain INSERT test added |
 | CODE-6 | P2 | `test_health_index_last_updated_is_none` has no `# TODO(T13): update to assert ISO8601 timestamp` comment. | `tests/integration/test_health.py:38–49` | **Closed** — T13 resolves underlying stub; health tests updated to assert ISO8601 timestamp (closed with CODE-3) |
 | CODE-7 | P3 | `app/main.py` binds `host="0.0.0.0"` unconditionally. Should default to `127.0.0.1` for non-production ENV. | `app/main.py` | Open — carry-forward Cycle 1/2/3 |
@@ -93,8 +93,8 @@ _Cycle 5 — 2026-04-13 · 48 findings total: P1: 3, P2: 26, P3: 11 (32 Closed, 
 | CODE-35 | P2 | Migration test missing `fragments IS NOT NULL` assertion and positive CHECK domain INSERT test (draft/confirmed/rejected). Supersedes CODE-5. | `tests/integration/test_migrations.py` | **Closed** — FIX-C5-2 applied 2026-04-13 (same fix batch as CODE-5) |
 | CODE-36 | P2 | Three analysis integration tests skip on `ANTHROPIC_API_KEY` despite using stub doubles. Remove all three `@pytest.mark.skipif` decorators. Supersedes CODE-11. | `tests/integration/test_analysis.py:167–170, 213–216, 250–253` | **Closed** — FIX-C5-2 applied 2026-04-13 (same fix batch as CODE-11) |
 | CODE-37 | P2 | `StubGrounder verified=True` hardcoded; no `verified=False` path. Set `verified=False` for second fragment; assert it. Supersedes CODE-12. | `tests/integration/test_analysis.py:110, 118` | **Closed** — FIX-C5-2 applied 2026-04-13 (same fix batch as CODE-12) |
-| CODE-38 | P2 | `tests/unit/test_config.py` absent; 8 required secrets untested for `ValidationError`. Create parametrised test for all 8 required secrets. Supersedes CODE-4. | `tests/unit/test_config.py` (absent) | Open — new Cycle 5; carry-forward CODE-4 (4 cycles); must resolve before T14 |
-| CODE-39 | P2 | `docs/retrieval_eval.md §Answer Quality Metrics` all rows show `—`; no completed answer quality eval run against synthetic corpus. Run before T14. | `docs/retrieval_eval.md` | Open — new Cycle 5; RET-7 violation |
+| CODE-38 | P2 | `tests/unit/test_config.py` absent; 8 required secrets untested for `ValidationError`. Create parametrised test for all 8 required secrets. Supersedes CODE-4. | `tests/unit/test_config.py` (absent) | **Closed** — T14 applied 2026-04-14; parametrised config test created (same fix batch as CODE-4) |
+| CODE-39 | P2 | `docs/retrieval_eval.md §Answer Quality Metrics` all rows show `—`; no completed answer quality eval run against synthetic corpus. Run before T14. | `docs/retrieval_eval.md` | **Closed** — T14 applied 2026-04-14; answer quality metrics populated in retrieval_eval.md |
 | CODE-40 | P3 | `scripts/eval.py` hard-codes `TASK_ID = "T12"`. Should be a runtime argument or derived from context. | `scripts/eval.py` | Open — new Cycle 5 |
 | CODE-41 | P3 | `_evaluation_history_table` overwrites full history on every write run instead of appending. | `scripts/eval.py` | Open — new Cycle 5 |
 
@@ -208,6 +208,7 @@ none
 - **FIX-C5** — Dead HTTPError guard + aging P2 group (CODE-2/5/11/12/33) — 2026-04-13 — 55 tests passing, 9 skipped
 - **Cycle 5 consolidation** — 2026-04-13 — FIX-C5-1 (CODE-33, P1) and FIX-C5-2 (CODE-2/5/11/12 aging group) assigned; CODE-3/CODE-6/ARCH-7 closed by T13 implementation; REVIEW_REPORT.md Cycle 4 archived to docs/audit/archive/PHASE3_CYCLE4_REVIEW.md; CODEX_PROMPT.md bumped to v1.7; Phase 4 begins
 - **T13** — Health Endpoint and Observability — 2026-04-13 — 57 tests passing, 9 skipped — health freshness semantics finalized; request JSON logs include trace metadata; CODE-10/15/24/32/34 closed
+- **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed
 
 ---
 

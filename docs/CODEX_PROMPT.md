@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.12
+Version: 1.13
 Date: 2026-04-14
 Phase: 4
 
@@ -9,10 +9,10 @@ Phase: 4
 ## Current State
 
 - **Phase:** 4
-- **Baseline:** 79 passing tests, 9 skipped
+- **Baseline:** 83 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (T16 completion)
+- **Last updated:** 2026-04-14 (T17 completion)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -29,10 +29,10 @@ Phase: 4
 
 ## Next Task
 
-**T17: Background Worker Setup with Idempotency**
+**T18: Archive-Level Pattern Detection**
 
-Read T17 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
-Primary focus: implement ARQ ingestion/index workers with idempotent job execution and real sync status updates.
+Read T18 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
+Primary focus: implement archive-level recurring patterns, co-occurrence, and timeline APIs with disclaimer framing.
 
 ---
 
@@ -224,6 +224,7 @@ none
 - **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed
 - **T15** — Dream Browsing and Theme Search API — 2026-04-14 — 74 tests passing, 9 skipped — GET /search and GET /dreams/{id}/themes implemented; authenticated search returns ranked evidence with theme matches; insufficient_evidence and theme filter paths covered
 - **T16** — User Curation API — Theme Confirmation and Taxonomy Management — 2026-04-14 — 79 tests passing, 9 skipped — confirm/reject theme mutations, Redis-backed bulk confirm approval flow, category approval auth gate, and write-ahead AnnotationVersion coverage implemented
+- **T17** — Background Worker Setup with Idempotency — 2026-04-14 — 83 tests passing, 9 skipped — Redis-backed sync job status, idempotent ingest/index workers, and integration coverage for done/failed worker outcomes implemented
 
 ---
 

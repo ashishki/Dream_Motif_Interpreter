@@ -23,6 +23,15 @@ Status: append-only
 
 ## Entries
 
+### 2026-04-14 — T19 — Annotation Versioning and Rollback
+
+- Scope: `app/services/versioning.py`, `app/api/versioning.py`, versioning-related refactors in analysis/taxonomy/theme mutation paths, and T19 integration/unit coverage
+- Why this work happened: Phase 5 T19 required annotation history retrieval, authenticated rollback for dream themes, and an explicit guard that `annotation_versions` remains append-only
+- Decisions applied: D-007
+- Evidence collected: `pytest -q tests/unit/test_versioning.py tests/integration/test_versioning.py tests/integration/test_taxonomy.py` → `8 passed`; `pytest -q` → `91 passed, 9 skipped`; `ruff check app/ tests/` → clean; `ruff format --check app/ tests/` → clean
+- Follow-ups: T20 is next; existing carry-forward findings remain (`CODE-7`, `CODE-13`, `CODE-16`, `CODE-40`, `CODE-41`, `ARCH-10`, `ARCH-11`, `ARCH-12`, `ARCH-15`, `CODE-48`, `CODE-49`, `CODE-50`)
+- Notes for next agent: rollback restores the persisted DreamTheme fields from the selected `AnnotationVersion.snapshot` and writes a new append-only version row that captures the restored state plus rollback transition metadata
+
 ### 2026-04-14 — T18 — Archive-Level Pattern Detection
 
 - Scope: `app/services/patterns.py`, `app/api/patterns.py`, `app/main.py`, `tests/integration/test_patterns_api.py`

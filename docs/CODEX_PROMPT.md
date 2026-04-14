@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.15
+Version: 1.16
 Date: 2026-04-14
 Phase: 5
 
@@ -9,10 +9,10 @@ Phase: 5
 ## Current State
 
 - **Phase:** 5
-- **Baseline:** 87 passing tests, 9 skipped
+- **Baseline:** 91 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (T18 complete)
+- **Last updated:** 2026-04-14 (T19 complete)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,8 +21,8 @@ Phase: 5
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 4 complete; Phase 5 in progress
-- **Latest completed task:** T18 — Archive-Level Pattern Detection
-- **Current baseline:** 87 passing tests, 9 skipped
+- **Latest completed task:** T19 — Annotation Versioning and Rollback
+- **Current baseline:** 91 passing tests, 9 skipped
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -38,10 +38,10 @@ Phase: 5
 
 ## Next Task
 
-**T19: Annotation Versioning and Rollback**
+**T20: End-to-End Integration Test**
 
-Read T19 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
-Primary focus: implement annotation history retrieval and rollback APIs while preserving append-only versioning.
+Read T20 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
+Primary focus: implement the end-to-end workflow test that exercises sync, analysis, curation, rollback, and archive pattern APIs together.
 
 ---
 
@@ -218,16 +218,17 @@ none
 
 ## Completed Tasks
 
-- **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed
 - **T15** — Dream Browsing and Theme Search API — 2026-04-14 — 74 tests passing, 9 skipped — GET /search and GET /dreams/{id}/themes implemented; authenticated search returns ranked evidence with theme matches; insufficient_evidence and theme filter paths covered
 - **T16** — User Curation API — Theme Confirmation and Taxonomy Management — 2026-04-14 — 79 tests passing, 9 skipped — confirm/reject theme mutations, Redis-backed bulk confirm approval flow, category approval auth gate, and write-ahead AnnotationVersion coverage implemented
 - **T17** — Background Worker Setup with Idempotency — 2026-04-14 — 83 tests passing, 9 skipped — Redis-backed sync job status, idempotent ingest/index workers, and integration coverage for done/failed worker outcomes implemented
 - **T18** — Archive-Level Pattern Detection — 2026-04-14 — 87 tests passing, 9 skipped — `/patterns/recurring`, `/patterns/co-occurrence`, and `/patterns/timeline` implemented with computational-pattern disclaimer framing and generated timestamps
+- **T19** — Annotation Versioning and Rollback — 2026-04-14 — 91 tests passing, 9 skipped — authenticated theme history and rollback APIs implemented; rollback appends a new AnnotationVersion; append-only guard coverage added
 
 ---
 
 ## Archived Tasks
 
+- **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed
 - **T01** — Project Skeleton — 2026-04-12 — 3 tests passing — Light review PASS
 - **T02** — CI Setup — 2026-04-12 — 5 tests passing — Light review PASS
 - **T03** — Smoke Tests — 2026-04-12 — 8 tests passing — Light review PASS

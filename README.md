@@ -1,271 +1,150 @@
 # Dream Motif Interpreter
 
-An AI-assisted analysis backend for a personal dream journal. Ingests long-form dream entries from Google Docs, extracts and curates recurring themes, supports semantic search, and surfaces archive-level patterns — all with a human approval layer over every taxonomy change.
+Dream Motif Interpreter is a single-user dream-analysis system for a private dream journal.
+Today it is a backend-first product: it ingests dream entries from Google Docs, stores and curates dream themes, supports semantic retrieval, and surfaces archive-level motif patterns.
 
-**Status:** All 5 phases complete · 98 tests passing · 0 open findings
+The next project phase extends that core through a Telegram assistant interface for text and voice interaction.
+Telegram is an interaction surface, not the product identity.
 
----
+**Current repo status:** Phases 1-5 complete for the backend platform  
+**Next planned evolution:** Phase 6+ Telegram interaction, then voice, then operational hardening
 
-## What it does
+## What Exists Today
 
-You keep a dream journal in Google Docs. This system reads it, understands it, and builds a structured, searchable archive you can query and analyse.
+- FastAPI API for sync, dream browsing, search, theme curation, pattern analysis, and rollback
+- PostgreSQL 16 + pgvector as the system of record
+- Redis-backed job state and worker coordination
+- Google Docs ingestion
+- LLM-assisted theme extraction, grounding, and metaphor-aware retrieval
+- append-only annotation versioning for curation and rollback
+- explicit framing that interpretations are computational, not authoritative
 
-### Ingestion pipeline
+Primary references:
+- [Architecture](docs/ARCHITECTURE.md)
+- [Feature Spec](docs/spec.md)
+- [Phase Plan](docs/PHASE_PLAN.md)
+- [Phase 6+ Task Graph](docs/tasks_phase6.md)
+- [Environment](docs/ENVIRONMENT.md)
+- [Deployment](docs/DEPLOY.md)
 
-1. **Fetch** — pulls the source document from Google Docs via OAuth2 refresh token
-2. **Segment** — splits the raw text into individual dream entries by date headers and delimiters
-3. **Extract themes** — calls `claude-sonnet-4-6` to assign multi-label thematic categories (e.g. "descent", "pursuit", "transformation") ranked by salience
-4. **Ground themes** — links each theme to the exact text fragment that supports it, with a confidence score
-5. **Embed & index** — chunks each entry with tiktoken (512-token chunks, cl100k_base), embeds with `text-embedding-3-small`, and stores vectors in PostgreSQL via `pgvector` with an HNSW index for fast retrieval
+## Planned Phase 6+
 
-All theme assignments start as **draft** and require human confirmation before becoming part of the archive.
+The planned next phase introduces:
 
-### Semantic search
+- Telegram bot as a new interaction surface
+- text conversation with a bounded assistant layer
+- voice-message ingestion and transcription
+- internal assistant tools that safely invoke Dream Motif Interpreter capabilities
+- private single-user bot access via Telegram allowlist
 
-- `GET /search?q=...` — hybrid retrieval: vector similarity + keyword matching + LLM query expansion (via `claude-haiku-4-5`) for metaphor-aware results
-- Returns ranked evidence blocks with the matching text fragment, salience score, match type, and character offset
-- Every response includes an interpretation note framing results as computational, not authoritative
-- Falls back gracefully to "insufficient evidence" rather than returning low-confidence results
+This is a product extension, not a repository merge with another bot project.
+Dream Motif Interpreter remains the core product and source of truth.
 
-### Theme curation
+Implementation reference for the interaction layer:
 
-- Confirm or reject individual theme assignments via `PATCH /dreams/{id}/themes/{theme_id}/confirm`
-- Bulk-confirm multiple dreams via a two-step token flow with a configurable TTL
-- Approve new theme categories — requires explicit human action; no automated path can promote a category
+- `~/Documents/dev/ai-stack/projects/film-school-assistant`
 
-### Annotation versioning and rollback
+That repository should be treated as the working reference for:
 
-Every mutation (confirm, reject, approve) writes an append-only `AnnotationVersion` snapshot before changing the record. You can inspect the full change history and roll back any theme to any prior state. No version record is ever deleted or modified — enforced by a static code scan in the test suite.
+- Telegram bot runtime shape
+- bounded chat/tool loop patterns
+- voice-message ingress and processing flow
+- private single-user bot operations
 
-### Archive-level pattern detection
+It should not be treated as a schema or product-logic source of truth for Dream Motif Interpreter.
 
-- `GET /patterns/recurring` — theme categories sorted by appearance count across all confirmed dreams, with percentage of dreams
-- `GET /patterns/co-occurrence` — pairs of themes that appear together in at least two dreams, sorted by frequency
-- `GET /patterns/timeline?theme_id=...` — salience over time for a specific theme, sorted by date
+## Architecture Direction
 
-All pattern responses include: `"interpretation_note": "These are computational patterns, not authoritative interpretations."` and a `generated_at` ISO8601 timestamp.
+Recommended target shape:
 
-### Background workers (ARQ / Redis)
+- keep the current Dream Motif Interpreter backend as the canonical archive system
+- add a Telegram adapter inside the same repository as a separate runtime/process
+- route Telegram assistant behavior through a bounded internal service facade
+- persist bot session state separately from the dream archive
+- start with read-oriented conversational tools and explicit sync triggering
+- defer risky curation mutations in chat until the text and voice interaction model is proven
 
-- `ingest_document` — fetches a Google Doc, segments it, runs LLM analysis, stores dream entries; idempotent via `content_hash` (`ON CONFLICT DO NOTHING`)
-- `index_dream` — embeds and indexes a dream entry into pgvector; safe to re-run
+See:
+- [Telegram Interaction Model](docs/TELEGRAM_INTERACTION_MODEL.md)
+- [Voice Pipeline](docs/VOICE_PIPELINE.md)
+- [Auth and Security](docs/AUTH_SECURITY.md)
+- [Phase 6+ Task Graph](docs/tasks_phase6.md)
+- [Implementation Reference Map](docs/IMPLEMENTATION_REFERENCE_MAP.md)
 
-Job status is tracked in Redis (`queued → running → done / failed`). Workers fall back to an in-memory store in test environments (`ENV=test`).
+## Current vs Target State
 
-### Health and observability
+| Area | Current | Planned |
+|------|---------|---------|
+| Primary interface | HTTP API | HTTP API + Telegram |
+| Voice | none | Telegram voice messages |
+| Session state | none | persisted assistant sessions |
+| Core storage | PostgreSQL + pgvector | unchanged |
+| Background work | sync and indexing workers | sync/indexing + transcription/media jobs |
+| Auth | single-user API key | API key + Telegram allowlist |
+| Deployment | API + workers + Postgres + Redis | API + workers + bot + Postgres + Redis |
 
-- `GET /health` — returns `index_last_updated` timestamp; returns HTTP 503 if the index is stale (> `MAX_INDEX_AGE_HOURS` hours, default 24)
-- All external calls (DB, Redis, OpenAI, Anthropic, Google Docs) wrapped in named OpenTelemetry child spans
-- Structured JSON logs via `structlog`; PII (raw dream text, chunk text, justification) stripped before emission
-- Trace ID and span ID injected into every log line
+## Repository Map
 
----
-
-## API surface
-
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| GET | `/health` | Index freshness check | Public |
-| POST | `/sync` | Trigger document ingestion | Required |
-| GET | `/sync/{job_id}` | Poll sync job status | Required |
-| GET | `/dreams` | Paginated list of dream entries | Required |
-| GET | `/dreams/{id}` | Single dream with metadata | Required |
-| GET | `/dreams/{id}/themes` | Themes assigned to a dream | Required |
-| GET | `/dreams/{id}/themes/history` | Full annotation version history | Required |
-| POST | `/dreams/{id}/themes/{theme_id}/rollback/{version_id}` | Restore theme to prior snapshot | Required |
-| GET | `/search` | Semantic + keyword search | Required |
-| PATCH | `/dreams/{id}/themes/{theme_id}/confirm` | Confirm a draft theme | Required |
-| PATCH | `/dreams/{id}/themes/{theme_id}/reject` | Reject a draft theme | Required |
-| POST | `/curate/bulk-confirm` | Issue bulk-confirm approval token | Required |
-| POST | `/curate/bulk-confirm/{token}/approve` | Execute bulk confirmation | Required |
-| PATCH | `/themes/categories/{id}/approve` | Promote pending category to active | Required |
-| GET | `/patterns/recurring` | Most frequent themes in the archive | Required |
-| GET | `/patterns/co-occurrence` | Co-occurring theme pairs (count ≥ 2) | Required |
-| GET | `/patterns/timeline` | Theme salience over time | Required |
-
-Authentication: `X-API-Key: <SECRET_KEY>` header on all non-public endpoints.
-
----
-
-## Tech stack
-
-| Layer | Technology |
-|-------|-----------|
-| Web framework | FastAPI (async) |
-| Database | PostgreSQL 16 + pgvector extension (HNSW index) |
-| ORM / migrations | SQLAlchemy 2 (async) + Alembic |
-| Task queue | ARQ (Redis-backed async workers) |
-| Cache / job state | Redis |
-| LLM — analysis | Anthropic `claude-sonnet-4-6` |
-| LLM — query expansion | Anthropic `claude-haiku-4-5-20251001` |
-| Embeddings | OpenAI `text-embedding-3-small` (1536 dimensions) |
-| Tokenisation | tiktoken `cl100k_base`, 512-token chunks |
-| Tracing | OpenTelemetry SDK |
-| Logging | structlog (JSON output) |
-| Document source | Google Docs API (OAuth2 refresh token) |
-| Test runner | pytest + pytest-asyncio |
-| Linter / formatter | Ruff |
-| CI | GitHub Actions (pgvector/pgvector:pg16 service) |
-
----
-
-## Project structure
-
-```
+```text
 app/
-  api/           # FastAPI routers
-    health.py        # GET /health
-    dreams.py        # sync, dream list, job status
-    search.py        # GET /search, GET /dreams/{id}/themes
-    themes.py        # confirm, reject, bulk-confirm, approve
-    patterns.py      # recurring, co-occurrence, timeline
-    versioning.py    # history, rollback
-  models/        # SQLAlchemy ORM models
-    dream.py         # DreamEntry, DreamChunk
-    theme.py         # DreamTheme, ThemeCategory
-    annotation.py    # AnnotationVersion
-  services/      # Business logic
-    analysis.py      # theme extraction + grounding pipeline
-    segmentation.py  # dream entry boundary detection
-    taxonomy.py      # category approval, deprecation
-    patterns.py      # recurring pattern queries
-    versioning.py    # history retrieval, rollback
-    gdocs_client.py  # Google Docs API wrapper
-  retrieval/     # RAG pipeline
-    ingestion.py     # chunking, embedding, pgvector upsert
-    query.py         # hybrid retrieval + query expansion
-    types.py         # shared OpenAI embedding client
-  workers/       # ARQ background workers
-    ingest.py        # ingest_document — fetch, segment, analyse, store
-    index.py         # index_dream — embed + index
-  llm/           # LLM wrappers
-    theme_extractor.py   # multi-label theme extraction
-    grounder.py          # fragment grounding
-  shared/        # Cross-cutting concerns
-    config.py        # pydantic-settings env config
-    tracing.py       # OTel provider, structlog JSON, PII redaction
-    database.py      # shared async session factory
-alembic/
-  versions/      # 001 initial schema → 006 HNSW index
-docs/
-  ARCHITECTURE.md             # Full architectural decisions
-  IMPLEMENTATION_CONTRACT.md  # Invariants every change must uphold
-  DECISION_LOG.md             # Durable design decisions (D-001 … D-010)
-  adr/                        # Architectural Decision Records
-  audit/                      # 8 review cycle reports across 5 phases
-  retrieval_eval.md           # Retrieval evaluation dataset and baseline metrics
-tests/
-  unit/          # Pure unit tests (no DB, no network)
-  integration/   # Full integration tests against real PostgreSQL + pgvector
-  fixtures/      # Seed data for e2e tests
-scripts/
-  eval.py        # Retrieval evaluation script — accepts --task-id
+  api/           FastAPI routes
+  llm/           model wrappers and prompts
+  models/        SQLAlchemy models
+  retrieval/     ingestion and query pipeline
+  services/      domain services
+  shared/        config, tracing, DB factory
+  workers/       background jobs
+alembic/         schema migrations
+docs/            architecture, planning, ops, ADRs
+tests/           unit and integration coverage
 ```
 
----
+Planned Phase 6+ additions are documented as target modules, not shipped code:
 
-## Retrieval quality
+```text
+app/
+  assistant/     bounded assistant tool facade and session logic
+  telegram/      bot runtime, handlers, presenters, voice ingress
+  workers/       transcription/media cleanup jobs
+```
 
-Evaluated against a synthetic 20-entry corpus with 10 queries (simple, multi-doc, multi-hop, no-answer):
+## Setup Summary
 
-| Metric | Score | Baseline |
-|--------|-------|---------|
-| hit@3 | 1.00 | T12 |
-| MRR | 1.00 | T12 |
-| No-answer accuracy | 1.00 | T12 |
-
-No regression across T12 → T15. Query expansion (LLM) active; falls back to original query on API failure.
-
----
-
-## Setup
-
-### Prerequisites
+Current backend setup requires:
 
 - Python 3.11+
-- PostgreSQL 16 with `pgvector` extension (`CREATE EXTENSION vector;`)
+- PostgreSQL 16 with `pgvector`
 - Redis
+- Anthropic and OpenAI credentials
+- Google Docs credentials matching the current implementation path
 
-### Install
+Detailed setup:
+- [Environment](docs/ENVIRONMENT.md)
+- [Deployment](docs/DEPLOY.md)
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt -e .
-```
+## Google Docs Credentials Note
 
-### Environment variables
+The current implementation expects OAuth-style Google Docs credentials via environment variables.
+If you already have a service-account JSON file with the document shared to that account, keep it available during implementation planning, but treat service-account auth as a deliberate implementation decision rather than something already wired into the current code.
 
-```env
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/dmi
-REDIS_URL=redis://localhost:6379/0
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REFRESH_TOKEN=...
-GOOGLE_DOC_ID=...                     # Google Docs document ID
-SECRET_KEY=...                        # ≥32 bytes; used as the API key
-ENV=development                       # "production" → 0.0.0.0; anything else → 127.0.0.1
+That boundary is documented in:
+- [Environment](docs/ENVIRONMENT.md)
+- [Open Decisions in the Phase Plan](docs/PHASE_PLAN.md)
 
-# Optional tuning
-EMBEDDING_MODEL=text-embedding-3-small
-RETRIEVAL_THRESHOLD=0.35
-MAX_INDEX_AGE_HOURS=24
-BULK_CONFIRM_TOKEN_TTL_SECONDS=600
-```
+## Documentation Map
 
-### Database setup
-
-```bash
-alembic upgrade head
-```
-
-### Run the API
-
-```bash
-uvicorn app.main:app --reload
-```
-
-### Run background workers
-
-```bash
-arq app.workers.ingest.WorkerSettings
-arq app.workers.index.WorkerSettings
-```
-
-### Tests
-
-```bash
-export TEST_DATABASE_URL=postgresql+asyncpg://dmi_test:dmi_test@localhost:5432/dmi_test
-export ENV=test
-pytest -q
-```
-
-CI runs automatically on every push. Requires no secrets — placeholder values are injected. Real Anthropic and OpenAI API tests are skipped in CI.
-
----
-
-## Design constraints
-
-**Interpretation framing.** Every API response containing LLM-derived data carries an `interpretation_note` field. The system never presents theme assignments or pattern detections as objective truth.
-
-**Append-only annotation history.** `AnnotationVersion` records are never modified or deleted. A static code scan in the test suite verifies there are no `DELETE FROM annotation_versions` or `UPDATE annotation_versions` statements anywhere in the codebase.
-
-**Human approval gate.** No theme category reaches `active` status without an explicit `PATCH /themes/categories/{id}/approve` call. No worker, scheduled job, or LLM call can bypass this gate.
-
-**Idempotent workers.** Ingesting or indexing the same content twice is always safe. Deduplication is by `content_hash` with `ON CONFLICT DO NOTHING`.
-
-**PII policy.** Raw dream text, chunk text, and grounding justifications are stripped from all logs and OpenTelemetry span attributes before emission.
-
----
-
-## Architectural decisions
-
-See [`docs/adr/`](docs/adr/) for formal ADRs and [`docs/DECISION_LOG.md`](docs/DECISION_LOG.md) for the full log.
-
-| ID | Decision |
-|----|---------|
-| D-001 | Workflow shape — ordered pipelines, no agentic loop |
-| D-003 | RAG retrieval ON — pgvector + HNSW index |
-| D-007 | Append-only `AnnotationVersion` for all theme and category mutations |
-| D-008 | Human approval required for all taxonomy changes |
+- [Architecture](docs/ARCHITECTURE.md): current system shape and target Telegram-enabled architecture
+- [Feature Spec](docs/spec.md): current backend scope plus planned interface evolution
+- [Phase Plan](docs/PHASE_PLAN.md): Phase 6, 7, 8 decomposition and milestones
+- [Phase 6+ Task Graph](docs/tasks_phase6.md): active execution graph for Telegram, voice, and hardening work
+- [Implementation Reference Map](docs/IMPLEMENTATION_REFERENCE_MAP.md): file-to-file guidance for reusing `film-school-assistant` interaction-layer patterns
+- [Environment](docs/ENVIRONMENT.md): runtime variables and credential notes
+- [Deployment](docs/DEPLOY.md): recommended deployment topology
+- [Telegram Interaction Model](docs/TELEGRAM_INTERACTION_MODEL.md): assistant behavior and bot boundary
+- [Voice Pipeline](docs/VOICE_PIPELINE.md): voice ingestion and transcription flow
+- [Auth and Security](docs/AUTH_SECURITY.md): access model and operational security constraints
+- [Testing Strategy](docs/TESTING_STRATEGY.md): test coverage expectations for Phase 6+
+- [Decision Log](docs/DECISION_LOG.md): compact decision index
+- [ADRs](docs/adr/README.md): durable architectural decisions
+- [Telegram Bot Runbook](docs/RUNBOOK_TELEGRAM_BOT.md)
+- [Voice Pipeline Runbook](docs/RUNBOOK_VOICE_PIPELINE.md)

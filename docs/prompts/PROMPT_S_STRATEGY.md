@@ -11,12 +11,13 @@ Output: docs/audit/STRATEGY_NOTE.md (overwrite).
 - docs/ARCHITECTURE.md           — system design, Capability Profiles table
 - docs/CODEX_PROMPT.md           — current state: baseline, Fix Queue, open findings
 - docs/adr/                      — all ADRs (if any)
-- docs/tasks.md                  — upcoming phase tasks (next phase header + task list only)
+- docs/tasks_phase6.md           — active Phase 6+ task graph
+- docs/tasks.md                  — historical backend task graph when needed for continuity only
 
 ## Checks
 
 **1. Phase coherence**
-Do the upcoming phase tasks map to the business goal stated in docs/tasks.md for that phase?
+Do the upcoming phase tasks map to the business goal stated in the active task graph for that phase?
 Is there any task that doesn't belong in this phase or is missing?
 Verdict: COHERENT | DRIFT
 

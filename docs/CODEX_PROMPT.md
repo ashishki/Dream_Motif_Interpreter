@@ -1,18 +1,18 @@
 # CODEX_PROMPT.md
 
-Version: 1.20
+Version: 1.21
 Date: 2026-04-14
-Phase: 5
+Phase: 6-planning
 
 ---
 
 ## Current State
 
-- **Phase:** 5
+- **Phase:** 6 planning
 - **Baseline:** 98 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (hotfix: Redis test fallback dc5875f)
+- **Last updated:** 2026-04-14 (Phase 6+ documentation rewrite for Telegram and voice evolution)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -20,8 +20,9 @@ Phase: 5
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 5 complete — all tasks done; maintenance mode
-- **Latest completed task:** FIX-C9 — Technical Debt — P3 Findings
+- **Phases completed:** Phase 1 through Phase 5 complete for the backend platform
+- **Current planning state:** Phase 6+ target architecture, roadmap, and operations docs prepared for Telegram text, voice, and deployment evolution
+- **Latest completed implementation task:** FIX-C9 — Technical Debt — P3 Findings
 - **Current baseline:** 98 passing tests, 9 skipped
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
@@ -32,13 +33,33 @@ Phase: 5
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
-- **Task-scoped context:** read `Context-Refs` in `docs/tasks.md` before broad searching
+- **Active task graph:** `docs/tasks_phase6.md`
+- **Historical backend task graph:** `docs/tasks.md`
+- **Task-scoped context:** read `Context-Refs` in the active task graph before broad searching
 
 ---
 
 ## Next Task
 
-No open findings — project complete.
+Implementation planning and execution for the Phase 6 Telegram interaction foundation.
+Read first:
+
+- `docs/ARCHITECTURE.md`
+- `docs/PHASE_PLAN.md`
+- `docs/tasks_phase6.md`
+- `docs/TELEGRAM_INTERACTION_MODEL.md`
+- `docs/VOICE_PIPELINE.md`
+- `docs/ENVIRONMENT.md`
+- `docs/AUTH_SECURITY.md`
+- `~/Documents/dev/ai-stack/projects/film-school-assistant` as the implementation reference for interaction-layer patterns
+
+Before coding, resolve the documented open decisions around:
+
+- Phase 6 scope boundary
+- transcription provider
+- Telegram ingress mode
+- session persistence
+- Google Docs credential mode if service-account JSON is adopted
 
 ---
 
@@ -371,7 +392,7 @@ Read these instructions every time you pick up a task. Do not skip steps.
 ### Pre-Task Protocol (mandatory — do not skip)
 
 1. **Read `docs/IMPLEMENTATION_CONTRACT.md`** — before anything else. Know the rules before touching code.
-2. **Read the full task in `docs/tasks.md`** — including all acceptance criteria, file lists, and notes.
+2. **Read the full active task in `docs/tasks_phase6.md` for Phase 6+ work, or in `docs/tasks.md` for historical/backend follow-up work** — including all acceptance criteria, file lists, and notes.
 3. **Read all Depends-On tasks** — understand the interface contracts your task must satisfy.
 4. **Read task `Context-Refs` and continuity artifacts as needed** — required when the task resolves a finding, changes a risky boundary, or depends on prior decisions / evidence.
 5. **Run `pytest -q`** — capture the current baseline. Record: `N passing, M failed`. If M > 0, stop and report: you cannot add failures to an already-failing baseline.

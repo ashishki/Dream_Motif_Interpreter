@@ -202,7 +202,7 @@ A regression in hit@3, MRR, citation precision, or no-answer accuracy vs. baseli
 
 ## Continuity and Retrieval Rules
 
-- Canonical authority: `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_CONTRACT.md`, `docs/tasks.md`, `docs/CODEX_PROMPT.md`, ADRs, review reports, eval artifacts, code, tests.
+- Canonical authority: `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_CONTRACT.md`, `docs/tasks.md`, `docs/tasks_phase6.md`, `docs/CODEX_PROMPT.md`, ADRs, review reports, eval artifacts, code, tests.
 - `docs/DECISION_LOG.md`, `docs/IMPLEMENTATION_JOURNAL.md`, and `docs/EVIDENCE_INDEX.md` are retrieval aids. They summarize and point; they do not overrule canonical files.
 - A task with `Context-Refs` must read those references before implementation begins.
 
@@ -215,7 +215,7 @@ Violation: P2. Repeated violation becomes P1 at age cap.
 Every Codex agent must execute these steps before writing any implementation code. No exceptions.
 
 1. Read `docs/IMPLEMENTATION_CONTRACT.md` (this file) from top to bottom.
-2. Read the full task in `docs/tasks.md`, including all acceptance criteria, the Depends-On list, and the Notes section.
+2. Read the full active task in `docs/tasks_phase6.md` for Phase 6+ work, or in `docs/tasks.md` for historical/backend follow-up work, including all acceptance criteria, the Depends-On list, and the Notes section.
 3. Read all Depends-On tasks to understand the interface contracts your implementation must satisfy.
 4. Read the task's `Context-Refs` and relevant entries in continuity artifacts when the task depends on prior decisions, proof, or findings.
 5. Run `pytest -q`. Record: `{N} passing, {M} failed`. If M > 0, stop and report.
@@ -278,7 +278,7 @@ Review agents close findings only after verifying the fix in code (file:line exi
 |----------|------|------|
 | Architecture | `docs/ARCHITECTURE.md` | System design authority |
 | Specification | `docs/spec.md` | Feature authority |
-| Task graph | `docs/tasks.md` | Implementation authority |
+| Task graph | `docs/tasks.md`, `docs/tasks_phase6.md` | Historical backend authority + active Phase 6+ implementation authority |
 | Session handoff | `docs/CODEX_PROMPT.md` | State authority |
 | This document | `docs/IMPLEMENTATION_CONTRACT.md` | Rule authority |
 | Review reports | `docs/audit/CYCLE{N}_REVIEW.md` | Finding authority |

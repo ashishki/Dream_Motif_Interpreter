@@ -23,6 +23,24 @@ Status: append-only
 
 ## Entries
 
+### 2026-04-14 — DOC-PHASE6 — Telegram and Voice Documentation Rewrite
+
+- Scope: `README.md`, `docs/ARCHITECTURE.md`, `docs/spec.md`, `docs/PHASE_PLAN.md`, `docs/PRODUCT_OVERVIEW.md`, `docs/ENVIRONMENT.md`, `docs/DEPLOY.md`, `docs/TELEGRAM_INTERACTION_MODEL.md`, `docs/VOICE_PIPELINE.md`, `docs/AUTH_SECURITY.md`, `docs/TESTING_STRATEGY.md`, `docs/RUNBOOK_TELEGRAM_BOT.md`, `docs/RUNBOOK_VOICE_PIPELINE.md`, `docs/DECISION_LOG.md`, `docs/CODEX_PROMPT.md`, and ADRs 003-007
+- Why this work happened: The project needed a documentation rewrite for the post-Phase-5 evolution so implementation can proceed against a coherent Telegram-enabled architecture instead of a backend-only maintenance framing
+- Decisions applied: D-005 through D-011; ADR-003 through ADR-007 proposed
+- Evidence collected: manual repo analysis of Dream Motif Interpreter and the Telegram-first reference repository; documentation consistency pass across architecture, phase plan, env, deploy, auth, testing, and runbooks
+- Follow-ups: implementation should resolve the open decisions around Phase 6 write scope, transcription provider, session persistence, Telegram ingress mode, and Google Docs credential mode before coding starts
+- Notes for next agent: the docs now explicitly separate current observed backend state from planned Telegram and voice target state; do not describe service-account JSON auth or Telegram runtime as already implemented until code exists
+
+### 2026-04-14 — DOC-PHASE6-TASKGRAPH — Active Execution Graph Added
+
+- Scope: `docs/tasks_phase6.md`, `docs/CODEX_PROMPT.md`, `docs/IMPLEMENTATION_CONTRACT.md`, and planning/ops docs that now reference the new execution graph
+- Why this work happened: Phase 6+ needed an explicit active execution graph so AI implementation can preserve historical context without treating the old Phase 1-5 backend task graph as the live roadmap
+- Decisions applied: D-008 through D-011
+- Evidence collected: consistency pass across README, architecture, phase plan, product overview, deploy, testing, Telegram, voice, and prompt/contract docs
+- Follow-ups: implementation agents should use `docs/tasks_phase6.md` as the active source of execution truth for Telegram, voice, and Phase 6+ work
+- Notes for next agent: `docs/tasks.md` is now historical; do not append new Telegram work there unless you are explicitly documenting history rather than defining active execution
+
 ### 2026-04-14 — FIX-C9 — Technical Debt — P3 Findings
 
 - Scope: `app/main.py`, `app/services/segmentation.py`, `alembic/versions/003_seed_categories.py`, `scripts/eval.py`, `app/retrieval/query.py`, `app/api/search.py`, `app/api/dreams.py`, `app/api/patterns.py`, `app/api/versioning.py`, `app/api/themes.py`, `app/shared/database.py`, ADR docs, and targeted retrieval/eval/API tests

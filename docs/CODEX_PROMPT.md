@@ -12,7 +12,7 @@ Phase: 5
 - **Baseline:** 98 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (FIX-C9 closure)
+- **Last updated:** 2026-04-14 (hotfix: Redis test fallback dc5875f)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 

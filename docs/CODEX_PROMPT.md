@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.13
+Version: 1.14
 Date: 2026-04-14
 Phase: 4
 
@@ -12,7 +12,7 @@ Phase: 4
 - **Baseline:** 83 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (T17 completion)
+- **Last updated:** 2026-04-14 (Cycle 7 Phase 4 boundary review)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -38,13 +38,13 @@ Primary focus: implement archive-level recurring patterns, co-occurrence, and ti
 
 ## Fix Queue
 
-─── Fix Queue ─── (empty — no P0/P1 open; proceed to T16 implementation queue)
+─── Fix Queue ─── (empty — no P0/P1 open; proceed to T18)
 
 ---
 
 ## Open Findings
 
-_Cycle 6 — 2026-04-14 · 53 findings total: P1: 3, P2: 30, P3: 13 (41 Closed, 12 Open)_
+_Cycle 7 — 2026-04-14 · 57 findings total: P1: 3, P2: 33, P3: 14 (45 Closed, 12 Open)_
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
@@ -107,8 +107,12 @@ _Cycle 6 — 2026-04-14 · 53 findings total: P1: 3, P2: 30, P3: 13 (41 Closed, 
 | ARCH-11 | P3 | `EvidenceBlock.matched_fragments` is `list[str]`; spec requires `match_type` labels and character offsets. Partial contract. | `app/retrieval/query.py:28–34` | Open — carry-forward Cycles 4–6; T15 shipped without closure |
 | ARCH-12 | P3 | Session factory duplicated in `search.py` and `dreams.py` — private `lru_cache` per module; no shared DB module. | `app/api/search.py:151–163`, `app/api/dreams.py:166–173` | Open — new Cycle 6 |
 | ARCH-13 | P2 | `BULK_CONFIRM_TOKEN_TTL_SECONDS` absent from `app/shared/config.py` (same root as CODE-43). | `app/shared/config.py` | **Closed** — resolved with CODE-43 in T16 on 2026-04-14 |
-| ARCH-14 | P3 | Worker files `app/workers/ingest.py` and `app/workers/index.py` declared in ARCHITECTURE.md but absent. | `app/workers/` | Open — new Cycle 6 |
+| ARCH-14 | P3 | Worker files `app/workers/ingest.py` and `app/workers/index.py` declared in ARCHITECTURE.md but absent. | `app/workers/` | **Closed** — T17 applied 2026-04-14; both worker files created and registered in ARCHITECTURE.md §File Layout |
 | ARCH-15 | P3 | `docs/adr/` directory does not exist; IMPLEMENTATION_CONTRACT requires ADRs for schema changes and runtime tier expansion. | `docs/adr/` | Open — new Cycle 6 |
+| CODE-48 | P2 | `ingest_document` initial Redis status write (status="running") not in try/finally block. Transient Redis failure leaves job ID untracked; subsequent "done"/"failed" writes orphaned. | `app/workers/ingest.py:37` | Open — new Cycle 7 |
+| CODE-49 | P2 | Redis client in `themes.py` and `dreams.py` uses `lru_cache(maxsize=1)` but is never closed. No connection pool configured. Potential connection leak in long-running processes. | `app/api/themes.py:259-262`, `app/api/dreams.py:308-315` | Open — new Cycle 7 |
+| CODE-50 | P2 | Bulk confirm token parsing in `themes.py` lacks explicit `isinstance(..., list)` type guard on `parsed_payload["dream_ids"]`. Non-list value raises unhandled `TypeError`. | `app/api/themes.py:117-121` | Open — new Cycle 7 |
+| DOC-1 | P2 | `docs/IMPLEMENTATION_JOURNAL.md` last entry is T13 (2026-04-13); entries for T14, T15, T16, T17 absent. Retrieval continuity degraded for future agents. | `docs/IMPLEMENTATION_JOURNAL.md` | Open — new Cycle 7 |
 
 ---
 
@@ -120,7 +124,7 @@ _Cycle 6 — 2026-04-14 · 53 findings total: P1: 3, P2: 30, P3: 13 (41 Closed, 
 - Open retrieval findings: ARCH-10 (P3, query expansion not wired), ARCH-11 (P3, evidence fragment metadata incomplete); CODE-39 closed (T14)
 - Index schema version: v1 (implemented in ingestion.py; HNSW index migration 006 applied)
 - Pending reindex actions: none
-- Retrieval-related next tasks: T17 (background workers), T18 (pattern detection)
+- Retrieval-related next tasks: T18 (pattern detection)
 - Retrieval-driven tasks: none
 
 ---

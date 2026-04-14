@@ -302,6 +302,9 @@ _REDIS_CLIENT: Any | None = None
 
 
 def _build_redis_client():
+    if get_settings().ENV == "test":
+        return _InMemoryRedisClient()
+
     try:
         from redis import asyncio as redis_asyncio
     except ModuleNotFoundError:

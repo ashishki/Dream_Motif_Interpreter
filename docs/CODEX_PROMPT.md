@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.11
+Version: 1.12
 Date: 2026-04-14
 Phase: 4
 
@@ -9,10 +9,10 @@ Phase: 4
 ## Current State
 
 - **Phase:** 4
-- **Baseline:** 74 passing tests, 9 skipped
+- **Baseline:** 79 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (Cycle 6 consolidation)
+- **Last updated:** 2026-04-14 (T16 completion)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -29,10 +29,10 @@ Phase: 4
 
 ## Next Task
 
-**T16: User Curation API — Theme Confirmation and Taxonomy Management**
+**T17: Background Worker Setup with Idempotency**
 
-Read T16 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
-Primary focus: implement theme confirmation/rejection, taxonomy approval, and bulk confirmation flows with AnnotationVersion writes.
+Read T17 in `docs/tasks.md` for the full specification, acceptance criteria, and file list.
+Primary focus: implement ARQ ingestion/index workers with idempotent job execution and real sync status updates.
 
 ---
 
@@ -44,7 +44,7 @@ Primary focus: implement theme confirmation/rejection, taxonomy approval, and bu
 
 ## Open Findings
 
-_Cycle 6 — 2026-04-14 · 53 findings total: P1: 3, P2: 30, P3: 13 (34 Closed, 19 Open)_
+_Cycle 6 — 2026-04-14 · 53 findings total: P1: 3, P2: 30, P3: 13 (41 Closed, 12 Open)_
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
@@ -75,7 +75,7 @@ _Cycle 6 — 2026-04-14 · 53 findings total: P1: 3, P2: 30, P3: 13 (34 Closed, 
 | CODE-25 | P2 | AC-4 cross-import test uses relative path — brittle in non-root CWD. Use `Path(__file__).resolve().parents[2] / "app/retrieval/ingestion.py"`. | `tests/unit/test_rag_ingestion.py:31` | **Closed** — FIX-C3 applied 2026-04-13; absolute path used |
 | ARCH-1 | P2 | `app/retrieval/query.py` absent — T11 blocked; T10-AC-4 cross-import test cannot fully validate query-side. | `app/retrieval/query.py` | **Closed** — T11 complete 2026-04-13; `query.py` exists; cross-import tests passing |
 | ARCH-2 | P2 | No HNSW index on `dream_chunks.embedding` — `006_add_hnsw_index.py` absent. T11 hard dependency for p95 < 3 s retrieval latency. | `alembic/versions/` | **Closed** — T11 pre-patch complete 2026-04-13; `006_add_hnsw_index.py` present; `autocommit_block()` pattern confirmed |
-| ARCH-6 | P2 | LLM output framing at prompt level only; `"interpretation_note"` literal field not enforced in API response Pydantic models. | `app/llm/grounder.py:67`, `app/llm/theme_extractor.py:63` | Open — tracked as CODE-44 Cycle 6; T15 shipped without closure; escalates to P1 if not closed Cycle 7 |
+| ARCH-6 | P2 | LLM output framing at prompt level only; `"interpretation_note"` literal field not enforced in API response Pydantic models. | `app/llm/grounder.py:67`, `app/llm/theme_extractor.py:63` | **Closed** — T16 applied 2026-04-14; `interpretation_note` literal fields added to search and curation API response models |
 | CODE-26 | P1 | `query.py` `_send_embedding_request()` has no `try/except urllib.error.HTTPError`; no typed `QueryEmbeddingError`; raw HTTP errors propagate to caller. Log policy: log `status_code` and `query_length`, NOT query text. | `app/retrieval/query.py:9, 256–258, 63` | **Closed** — FIX-C4-1 applied 2026-04-13; `QueryEmbeddingError` defined; 429/500 tests passing |
 | CODE-27 | P2 | `query.py` missing `retrieval_ms` span attribute on `rag_query.retrieve` and `insufficient_evidence` structured log counter (OBS-2 RAG violation). **RAG P2 age cap: 1 cycle — must resolve in Cycle 5.** | `app/retrieval/query.py:84–110` | **Closed** — T12 applied 2026-04-13; `retrieval_ms` span attribute and structured insufficient-evidence logs added |
 | CODE-28 | P2 | `CODEX_PROMPT.md` stale after T11: baseline 41/6, Next Task T11, version v1.4. | `docs/CODEX_PROMPT.md:12,32` | **Closed** — resolved by Cycle 4 consolidation 2026-04-13; baseline → 42/10, Next Task → T12, version → v1.5 |
@@ -97,16 +97,16 @@ _Cycle 6 — 2026-04-14 · 53 findings total: P1: 3, P2: 30, P3: 13 (34 Closed, 
 | CODE-39 | P2 | `docs/retrieval_eval.md §Answer Quality Metrics` all rows show `—`; no completed answer quality eval run against synthetic corpus. Run before T14. | `docs/retrieval_eval.md` | **Closed** — T14 applied 2026-04-14; answer quality metrics populated in retrieval_eval.md |
 | CODE-40 | P3 | `scripts/eval.py` hard-codes `TASK_ID = "T12"`. Should be a runtime argument or derived from context. | `scripts/eval.py` | Open — new Cycle 5 |
 | CODE-41 | P3 | `_evaluation_history_table` overwrites full history on every write run instead of appending. | `scripts/eval.py` | Open — new Cycle 5 |
-| CODE-42 | P2 | T16 primary deliverable `app/api/themes.py` absent — pre-implementation expected; assigned to T16. | `app/api/themes.py` | Open — new Cycle 6; assigned to T16 |
-| CODE-43 | P2 | `BULK_CONFIRM_TOKEN_TTL_SECONDS` config slot absent from `app/shared/config.py`; T16 bulk-confirm TTL has no config home. Must add before T16. | `app/shared/config.py` | Open — new Cycle 6; pre-T16 blocker |
-| CODE-44 | P2 | `interpretation_note` absent from all API response Pydantic models (`SearchResultItem`, `SearchResultsResponse`, `DreamThemeResponseItem`). ARCH-6 carry-forward. Assign to T16; escalates to P1 if not closed Cycle 7. | `app/api/search.py:27–57`, `app/llm/theme_extractor.py:63`, `app/llm/grounder.py:67` | Open — new Cycle 6 |
-| CODE-45 | P2 | `tests/integration/test_curation_api.py` absent — T16 integration test file does not yet exist. | `tests/integration/test_curation_api.py` | Open — new Cycle 6; assigned to T16 |
-| CODE-46 | P2 | `_redact_pii` strips only `raw_text`; `chunk_text` and `justification` not stripped. PII policy gap. | `app/api/search.py` (redact helper) | Open — new Cycle 6; code change required |
+| CODE-42 | P2 | T16 primary deliverable `app/api/themes.py` absent — pre-implementation expected; assigned to T16. | `app/api/themes.py` | **Closed** — T16 applied 2026-04-14; curation router implemented and registered in `app/main.py` |
+| CODE-43 | P2 | `BULK_CONFIRM_TOKEN_TTL_SECONDS` config slot absent from `app/shared/config.py`; T16 bulk-confirm TTL has no config home. Must add before T16. | `app/shared/config.py` | **Closed** — T16 verified config slot present and bulk confirm flow uses it for Redis token TTL |
+| CODE-44 | P2 | `interpretation_note` absent from all API response Pydantic models (`SearchResultItem`, `SearchResultsResponse`, `DreamThemeResponseItem`). ARCH-6 carry-forward. Assign to T16; escalates to P1 if not closed Cycle 7. | `app/api/search.py:27–57`, `app/llm/theme_extractor.py:63`, `app/llm/grounder.py:67` | **Closed** — T16 applied 2026-04-14; literal framing field added to the affected API response models |
+| CODE-45 | P2 | `tests/integration/test_curation_api.py` absent — T16 integration test file does not yet exist. | `tests/integration/test_curation_api.py` | **Closed** — T16 applied 2026-04-14; curation integration suite added with AC coverage for confirm/reject, bulk approval, auth, and version writes |
+| CODE-46 | P2 | `_redact_pii` strips only `raw_text`; `chunk_text` and `justification` not stripped. PII policy gap. | `app/api/search.py` (redact helper) | **Closed** — T16 applied 2026-04-14; shared tracing redaction now strips `raw_text`, `chunk_text`, and `justification` |
 | CODE-47 | P2 | CODE-22 explicit disposition absent — formally closed as superseded by CODE-30. | `tests/integration/test_rag_ingestion.py` | **Closed** — superseded by CODE-30 (Cycle 6 disposition) |
 | ARCH-10 | P3 | LLM query expansion not wired in `query.py`; declared in ARCHITECTURE.md §RAG Architecture. | `app/retrieval/query.py:84–110` | Open — carry-forward Cycles 4–6 |
 | ARCH-11 | P3 | `EvidenceBlock.matched_fragments` is `list[str]`; spec requires `match_type` labels and character offsets. Partial contract. | `app/retrieval/query.py:28–34` | Open — carry-forward Cycles 4–6; T15 shipped without closure |
 | ARCH-12 | P3 | Session factory duplicated in `search.py` and `dreams.py` — private `lru_cache` per module; no shared DB module. | `app/api/search.py:151–163`, `app/api/dreams.py:166–173` | Open — new Cycle 6 |
-| ARCH-13 | P2 | `BULK_CONFIRM_TOKEN_TTL_SECONDS` absent from `app/shared/config.py` (same root as CODE-43). | `app/shared/config.py` | Open — new Cycle 6; tracked as CODE-43 |
+| ARCH-13 | P2 | `BULK_CONFIRM_TOKEN_TTL_SECONDS` absent from `app/shared/config.py` (same root as CODE-43). | `app/shared/config.py` | **Closed** — resolved with CODE-43 in T16 on 2026-04-14 |
 | ARCH-14 | P3 | Worker files `app/workers/ingest.py` and `app/workers/index.py` declared in ARCHITECTURE.md but absent. | `app/workers/` | Open — new Cycle 6 |
 | ARCH-15 | P3 | `docs/adr/` directory does not exist; IMPLEMENTATION_CONTRACT requires ADRs for schema changes and runtime tier expansion. | `docs/adr/` | Open — new Cycle 6 |
 
@@ -120,7 +120,7 @@ _Cycle 6 — 2026-04-14 · 53 findings total: P1: 3, P2: 30, P3: 13 (34 Closed, 
 - Open retrieval findings: ARCH-10 (P3, query expansion not wired), ARCH-11 (P3, evidence fragment metadata incomplete); CODE-39 closed (T14)
 - Index schema version: v1 (implemented in ingestion.py; HNSW index migration 006 applied)
 - Pending reindex actions: none
-- Retrieval-related next tasks: T16 (curation API), T17 (background workers)
+- Retrieval-related next tasks: T17 (background workers), T18 (pattern detection)
 - Retrieval-driven tasks: none
 
 ---
@@ -223,6 +223,7 @@ none
 - **T13** — Health Endpoint and Observability — 2026-04-13 — 57 tests passing, 9 skipped — health freshness semantics finalized; request JSON logs include trace metadata; CODE-10/15/24/32/34 closed
 - **T14** — Ingestion and Sync API Endpoints — 2026-04-14 — 70 tests passing, 9 skipped — POST /sync, GET /sync/{job_id}, GET /dreams, GET /dreams/{id}; API key auth; CODE-4/38/39 closed
 - **T15** — Dream Browsing and Theme Search API — 2026-04-14 — 74 tests passing, 9 skipped — GET /search and GET /dreams/{id}/themes implemented; authenticated search returns ranked evidence with theme matches; insufficient_evidence and theme filter paths covered
+- **T16** — User Curation API — Theme Confirmation and Taxonomy Management — 2026-04-14 — 79 tests passing, 9 skipped — confirm/reject theme mutations, Redis-backed bulk confirm approval flow, category approval auth gate, and write-ahead AnnotationVersion coverage implemented
 
 ---
 

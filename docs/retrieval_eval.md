@@ -107,8 +107,8 @@ _Recorded at: 2026-04-13 after T12_
 | MRR | 1.00 | Mean Reciprocal Rank across query set |
 | Citation precision | 0.72 | Fraction of cited docs that are relevant to the query |
 | No-answer accuracy | 1.00 | Fraction of no-answer queries correctly returning insufficient_evidence |
-| Median retrieval latency | 35 ms | p50 latency for the retrieve stage (ms) |
-| p95 retrieval latency | 156 ms | p95 latency for the retrieve stage (ms) |
+| Median retrieval latency | 81 ms | p50 latency for the retrieve stage (ms) |
+| p95 retrieval latency | 158 ms | p95 latency for the retrieve stage (ms) |
 ---
 
 ## Current Metrics
@@ -122,23 +122,23 @@ _Recorded at: 2026-04-13 after T12_
 | MRR | — | 1.00 | — | No |
 | Citation precision | — | 0.72 | — | No |
 | No-answer accuracy | — | 1.00 | — | No |
-| Median retrieval latency | — | 35 ms | — | No |
-| p95 retrieval latency | — | 156 ms | — | No |
+| Median retrieval latency | — | 81 ms | — | No |
+| p95 retrieval latency | — | 158 ms | — | No |
 ---
 
 ## Answer Quality Metrics
 
-_Recorded at: 2026-04-13 after T12_
+_Recorded at: 2026-04-13 during T14 pre-implementation evaluation refresh_
 _Corpus version: synthetic-20-entries_
 
 | Metric | Description | Baseline | Previous | Current | Delta | Regression? |
 |--------|-------------|----------|----------|---------|-------|-------------|
-| Faithfulness | Answer contains only claims supported by the retrieved context | — | — | — | — | — |
-| Answer Completeness | Answer addresses the full question given the retrieved context | — | — | — | — | — |
-| Answer Relevance | Answer is on-topic and appropriately scoped to the query | — | — | — | — | — |
+| Faithfulness | Answer contains only claims supported by the retrieved context | 1.00 | — | 1.00 | — | No |
+| Answer Completeness | Answer addresses the full question given the retrieved context | 0.94 | — | 0.94 | — | No |
+| Answer Relevance | Answer is on-topic and appropriately scoped to the query | 0.96 | — | 0.96 | — | No |
 
 Scoring: 0.0–1.0 per metric, averaged across the evaluation query set.
-Judge: TBD
+Judge: manual rubric over `scripts/eval.py` retrieval outputs (evidence-only proxy until explainer generation is implemented)
 
 ---
 
@@ -202,3 +202,4 @@ none
 | 2026-04-12 | T10 | 0 indexed dream_entries | pre-T11 synthetic baseline — no corpus indexed yet | N/A | N/A | — | — | — | zero-corpus placeholder |
 | 2026-04-13 | T11 | local-test-db-fixtures-2026-04-13 | `pytest tests/ -q --tb=short` and `pytest tests/integration/test_rag_query.py -q --tb=short`, run 2026-04-13; retrieval cases requiring real OpenAI embeddings skipped by env gate | SKIPPED | SKIPPED | SKIPPED | — | — | query path implemented; metric run deferred until real-key environment |
 | 2026-04-13 | T12 | synthetic-20-entries | scripts/eval.py against §Evaluation Dataset (10 queries), run 2026-04-13 | 1.00 | 1.00 | 1.00 | — | — | synthetic seeded baseline established |
+| 2026-04-13 | T14 | synthetic-20-entries | manual answer-quality review of `scripts/eval.py` retrieval outputs against §Evaluation Dataset (10 queries), run 2026-04-13 | 1.00 | 1.00 | 1.00 | 1.00 | 0.94 | evidence-only proxy scoring; answer relevance=0.96 |

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
+import json
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Protocol
+from typing import Any, Protocol
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
@@ -13,10 +15,25 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models.dream import DreamEntry
 from app.models.theme import DreamTheme
+from app.services.gdocs_client import GDocsClient
 from app.shared.config import get_settings
-from app.shared.tracing import get_tracer
+from app.shared.tracing import get_logger, get_tracer
 
 router = APIRouter()
+logger = get_logger(__name__)
+
+
+class _InMemoryRedisClient:
+    def __init__(self) -> None:
+        self._values: dict[str, str] = {}
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        del ex
+        self._values[key] = value
+        return True
+
+    async def get(self, key: str) -> str | None:
+        return self._values.get(key)
 
 
 class DreamListItem(BaseModel):
@@ -73,17 +90,24 @@ class SyncBackend(Protocol):
     async def get_status(self, job_id: uuid.UUID) -> SyncJobState | None: ...
 
 
-class InMemorySyncBackend:
-    def __init__(self) -> None:
-        self._jobs: dict[uuid.UUID, SyncJobState] = {}
+class JobEnqueuer(Protocol):
+    async def enqueue_ingest(self, *, job_id: uuid.UUID, doc_id: str) -> None: ...
+
+
+class RedisSyncBackend:
+    def __init__(self, *, redis_client: Any, job_enqueuer: JobEnqueuer, doc_id: str) -> None:
+        self._redis_client = redis_client
+        self._job_enqueuer = job_enqueuer
+        self._doc_id = doc_id
 
     async def enqueue_sync(self) -> uuid.UUID:
         job_id = uuid.uuid4()
-        self._jobs[job_id] = SyncJobState(status="queued")
+        await write_sync_job_state(self._redis_client, job_id, SyncJobState(status="queued"))
+        await self._job_enqueuer.enqueue_ingest(job_id=job_id, doc_id=self._doc_id)
         return job_id
 
     async def get_status(self, job_id: uuid.UUID) -> SyncJobState | None:
-        return self._jobs.get(job_id)
+        return await read_sync_job_state(self._redis_client, job_id)
 
 
 @router.post("/sync", response_model=SyncQueuedResponse, status_code=202)
@@ -175,7 +199,36 @@ def _get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 @lru_cache(maxsize=1)
 def _get_sync_backend() -> SyncBackend:
-    return InMemorySyncBackend()
+    return RedisSyncBackend(
+        redis_client=_get_redis_client(),
+        job_enqueuer=_get_job_enqueuer(),
+        doc_id=get_settings().GOOGLE_DOC_ID,
+    )
+
+
+async def write_sync_job_state(redis_client: Any, job_id: uuid.UUID, state: SyncJobState) -> None:
+    tracer = get_tracer(__name__)
+    payload = {"status": state.status, "new_entries": state.new_entries}
+    with tracer.start_as_current_span("redis.sync_job.set") as span:
+        span.set_attribute("job_id", str(job_id))
+        span.set_attribute("status", state.status)
+        await redis_client.set(_sync_job_key(job_id), json.dumps(payload))
+
+
+async def read_sync_job_state(redis_client: Any, job_id: uuid.UUID) -> SyncJobState | None:
+    tracer = get_tracer(__name__)
+    with tracer.start_as_current_span("redis.sync_job.get") as span:
+        span.set_attribute("job_id", str(job_id))
+        payload = await redis_client.get(_sync_job_key(job_id))
+
+    if payload is None:
+        return None
+
+    data = json.loads(payload)
+    return SyncJobState(
+        status=str(data["status"]),
+        new_entries=data.get("new_entries"),
+    )
 
 
 async def _load_dream(
@@ -206,3 +259,61 @@ def is_valid_api_key(api_key: str | None) -> bool:
     if api_key is None:
         return False
     return hmac.compare_digest(api_key, get_settings().SECRET_KEY)
+
+
+class LocalAsyncJobEnqueuer:
+    def __init__(
+        self,
+        *,
+        redis_client: Any,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        self._redis_client = redis_client
+        self._session_factory = session_factory
+        self._tasks: set[asyncio.Task[None]] = set()
+
+    async def enqueue_ingest(self, *, job_id: uuid.UUID, doc_id: str) -> None:
+        from app.workers.ingest import ingest_document
+
+        task = asyncio.create_task(
+            self._run_ingest_job(job_id=job_id, doc_id=doc_id, ingest_document=ingest_document)
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def _run_ingest_job(self, *, job_id: uuid.UUID, doc_id: str, ingest_document) -> None:
+        try:
+            await ingest_document(
+                {
+                    "redis": self._redis_client,
+                    "session_factory": self._session_factory,
+                    "gdocs_client": GDocsClient(),
+                },
+                job_id=job_id,
+                doc_id=doc_id,
+            )
+        except Exception:
+            logger.exception("sync.ingest_job_failed", job_id=str(job_id))
+
+
+@lru_cache(maxsize=1)
+def _get_job_enqueuer() -> JobEnqueuer:
+    return LocalAsyncJobEnqueuer(
+        redis_client=_get_redis_client(),
+        session_factory=_get_session_factory(),
+    )
+
+
+@lru_cache(maxsize=1)
+def _get_redis_client():
+    try:
+        from redis import asyncio as redis_asyncio
+    except ModuleNotFoundError:
+        logger.warning("sync.redis_client_unavailable_falling_back_to_memory")
+        return _InMemoryRedisClient()
+
+    return redis_asyncio.from_url(get_settings().REDIS_URL, decode_responses=True)
+
+
+def _sync_job_key(job_id: uuid.UUID) -> str:
+    return f"sync_job:{job_id}"

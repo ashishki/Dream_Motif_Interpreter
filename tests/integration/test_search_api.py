@@ -12,7 +12,12 @@ import pytest_asyncio
 from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
 from app.models.dream import DreamEntry
@@ -20,6 +25,9 @@ from app.models.theme import DreamTheme, ThemeCategory
 from app.retrieval.query import EvidenceBlock, InsufficientEvidence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+INTERPRETATION_NOTE = (
+    "These theme assignments are computational interpretations, not authoritative conclusions."
+)
 
 
 def _alembic_config() -> Config:
@@ -115,7 +123,9 @@ async def _create_category(
 ) -> ThemeCategory:
     async with session_factory() as session:
         category = ThemeCategory(
-            name=f"{name}-{uuid.uuid4()}" if name is not None else f"search-api-category-{uuid.uuid4()}",
+            name=f"{name}-{uuid.uuid4()}"
+            if name is not None
+            else f"search-api-category-{uuid.uuid4()}",
             description="Theme for search API tests",
             status="active",
         )
@@ -216,6 +226,7 @@ async def test_search_returns_ranked_results(
     body = response.json()
     assert body["query"] == "flying"
     assert body["expanded_terms"] == ["flying"]
+    assert body["interpretation_note"] == INTERPRETATION_NOTE
     assert len(body["results"]) == 5
     assert [item["dream_id"] for item in body["results"]] == [str(dream.id) for dream in dreams[:5]]
     for item in body["results"]:
@@ -225,8 +236,10 @@ async def test_search_returns_ranked_results(
             "matched_fragments",
             "relevance_score",
             "theme_matches",
+            "interpretation_note",
         }
         assert item["matched_fragments"] == ["flying through bright air"]
+        assert item["interpretation_note"] == INTERPRETATION_NOTE
         assert item["theme_matches"] == [
             {
                 "category_id": str(category.id),
@@ -350,6 +363,8 @@ async def test_search_with_theme_filter(
             "status": "confirmed",
         }
     ]
+    assert body["interpretation_note"] == INTERPRETATION_NOTE
+    assert body["results"][0]["interpretation_note"] == INTERPRETATION_NOTE
 
 
 @pytest.mark.anyio
@@ -410,6 +425,7 @@ async def test_get_dream_themes_sorted_by_salience(
                 "match_type": "narrative",
                 "status": "confirmed",
                 "fragments": [{"text": "wolf"}],
+                "interpretation_note": INTERPRETATION_NOTE,
             },
             {
                 "category_id": str(middle.id),
@@ -417,6 +433,7 @@ async def test_get_dream_themes_sorted_by_salience(
                 "match_type": "symbolic",
                 "status": "draft",
                 "fragments": [{"text": "bridge"}],
+                "interpretation_note": INTERPRETATION_NOTE,
             },
             {
                 "category_id": str(lowest.id),
@@ -424,6 +441,7 @@ async def test_get_dream_themes_sorted_by_salience(
                 "match_type": "emotional",
                 "status": "confirmed",
                 "fragments": [{"text": "lantern"}],
+                "interpretation_note": INTERPRETATION_NOTE,
             },
         ],
     }

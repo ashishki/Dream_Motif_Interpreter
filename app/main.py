@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from app.api.dreams import is_valid_api_key, router as dreams_router
 from app.api.health import router as health_router
 from app.api.search import router as search_router
+from app.api.themes import router as themes_router
 from app.shared.config import get_settings
 from app.shared.tracing import configure_logging, get_logger, get_tracer
 
@@ -20,13 +21,17 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(dreams_router)
     application.include_router(search_router)
+    application.include_router(themes_router)
 
     @application.middleware("http")
     async def require_authentication(request: Request, call_next):
         if request.url.path not in PUBLIC_PATHS:
             api_key = request.headers.get("X-API-Key")
             if not is_valid_api_key(api_key):
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+                return JSONResponse(
+                    status_code=_unauthorized_status_code(request.url.path),
+                    content={"detail": "Unauthorized"},
+                )
         return await call_next(request)
 
     @application.middleware("http")
@@ -53,6 +58,12 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def _unauthorized_status_code(path: str) -> int:
+    if path.startswith("/themes/categories/") and path.endswith("/approve"):
+        return 403
+    return 401
 
 
 def main() -> None:

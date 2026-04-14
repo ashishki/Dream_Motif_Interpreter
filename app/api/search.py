@@ -3,11 +3,17 @@ from __future__ import annotations
 import re
 import uuid
 from functools import lru_cache
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.models.dream import DreamEntry
 from app.models.theme import DreamTheme
@@ -16,6 +22,9 @@ from app.shared.config import get_settings
 from app.shared.tracing import get_tracer
 
 router = APIRouter()
+INTERPRETATION_NOTE = (
+    "These theme assignments are computational interpretations, not authoritative conclusions."
+)
 
 
 class SearchThemeMatch(BaseModel):
@@ -30,12 +39,18 @@ class SearchResultItem(BaseModel):
     matched_fragments: list[str]
     relevance_score: float
     theme_matches: list[SearchThemeMatch]
+    interpretation_note: Literal[
+        "These theme assignments are computational interpretations, not authoritative conclusions."
+    ] = INTERPRETATION_NOTE
 
 
 class SearchResultsResponse(BaseModel):
     query: str
     expanded_terms: list[str]
     results: list[SearchResultItem]
+    interpretation_note: Literal[
+        "These theme assignments are computational interpretations, not authoritative conclusions."
+    ] = INTERPRETATION_NOTE
 
 
 class SearchInsufficientEvidenceResponse(BaseModel):
@@ -50,6 +65,9 @@ class DreamThemeResponseItem(BaseModel):
     match_type: str
     status: str
     fragments: list[dict[str, object]]
+    interpretation_note: Literal[
+        "These theme assignments are computational interpretations, not authoritative conclusions."
+    ] = INTERPRETATION_NOTE
 
 
 class DreamThemesResponse(BaseModel):
@@ -92,9 +110,11 @@ async def search(
             matched_fragments=block.matched_fragments,
             relevance_score=block.relevance_score,
             theme_matches=theme_map.get(block.dream_id, []),
+            interpretation_note=INTERPRETATION_NOTE,
         )
         for block in retrieval
-        if not theme_filter_ids or _matches_theme_filter(theme_map.get(block.dream_id, []), theme_filter_ids)
+        if not theme_filter_ids
+        or _matches_theme_filter(theme_map.get(block.dream_id, []), theme_filter_ids)
     ]
 
     if not filtered_results:
@@ -108,6 +128,7 @@ async def search(
         query=q,
         expanded_terms=expanded_terms,
         results=filtered_results[:5],
+        interpretation_note=INTERPRETATION_NOTE,
     )
 
 
@@ -142,6 +163,7 @@ async def get_dream_themes(dream_id: uuid.UUID) -> DreamThemesResponse:
                 match_type=theme.match_type,
                 status=theme.status,
                 fragments=_coerce_theme_fragments(theme.fragments),
+                interpretation_note=INTERPRETATION_NOTE,
             )
             for theme in result.scalars().all()
         ],
@@ -200,7 +222,8 @@ def _matches_theme_filter(
     theme_filter_ids: set[uuid.UUID],
 ) -> bool:
     return any(
-        theme.status == "confirmed" and theme.category_id in theme_filter_ids for theme in theme_matches
+        theme.status == "confirmed" and theme.category_id in theme_filter_ids
+        for theme in theme_matches
     )
 
 

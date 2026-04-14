@@ -49,22 +49,34 @@ class TaxonomyService:
         return category_id
 
     @staticmethod
-    async def approve_category(session: AsyncSession, category_id: uuid.UUID) -> None:
+    async def approve_category(
+        session: AsyncSession,
+        category_id: uuid.UUID,
+        *,
+        changed_by: str = "system",
+    ) -> None:
         await TaxonomyService._transition_category(
             session=session,
             category_id=category_id,
             from_status="suggested",
             to_status="active",
+            changed_by=changed_by,
         )
 
     @staticmethod
-    async def deprecate_category(session: AsyncSession, category_id: uuid.UUID) -> None:
+    async def deprecate_category(
+        session: AsyncSession,
+        category_id: uuid.UUID,
+        *,
+        changed_by: str = "system",
+    ) -> None:
         await TaxonomyService._transition_category(
             session=session,
             category_id=category_id,
             from_status="active",
             to_status="deprecated",
             update_dream_themes=True,
+            changed_by=changed_by,
         )
 
     @staticmethod
@@ -75,6 +87,7 @@ class TaxonomyService:
         to_status: str,
         *,
         update_dream_themes: bool = False,
+        changed_by: str = "system",
     ) -> None:
         tracer = get_tracer(__name__)
 
@@ -101,11 +114,13 @@ class TaxonomyService:
                         "entity_id": str(category_id),
                         "status_before": category.status,
                         "status_after": to_status,
-                        "changed_by": "system",
+                        "changed_by": changed_by,
                     },
-                    changed_by="system",
+                    changed_by=changed_by,
                 )
             )
+            with tracer.start_as_current_span("db.query.taxonomy.flush_annotation_version"):
+                await session.flush()
             category.status = to_status
 
             if update_dream_themes:

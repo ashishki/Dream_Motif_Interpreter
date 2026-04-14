@@ -67,6 +67,8 @@ def _redact_pii(
     event_dict: dict[str, Any],
 ) -> dict[str, Any]:
     event_dict.pop("raw_text", None)
+    event_dict.pop("chunk_text", None)
+    event_dict.pop("justification", None)
     return event_dict
 
 

@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.31
+Version: 1.32
 Date: 2026-04-15
 Phase: 6-active
 
@@ -8,11 +8,11 @@ Phase: 6-active
 
 ## Current State
 
-- **Phase:** 7 active (P7-T03 complete)
-- **Baseline:** 96 unit tests passing
+- **Phase:** 7 complete — Phase 8 pending
+- **Baseline:** 97 unit tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-15 (P7-T03 — cleanup_voice_media sweep, immediate delete after transcription, VOICE_RETENTION_SECONDS)
+- **Last updated:** 2026-04-15 (P7-T04 — Phase 7 test coverage complete; all phase gate conditions met)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,9 +21,9 @@ Phase: 6-active
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 5 complete for the backend platform
-- **Current planning state:** Phase 7 active; P7-T03 complete; next is P7-T04 (Voice Test Coverage)
-- **Latest completed implementation task:** P7-T03 — Media Retention and Cleanup
-- **Current baseline:** 96 unit tests passing
+- **Current planning state:** Phase 7 complete; Phase 8 is next (P8-T01: Bot and Voice Observability Hardening)
+- **Latest completed implementation task:** P7-T04 — Voice Test Coverage
+- **Current baseline:** 97 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---

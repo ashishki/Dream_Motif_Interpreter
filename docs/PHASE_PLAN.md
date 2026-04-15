@@ -1,29 +1,32 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 1.0  
-Last updated: 2026-04-14
+Version: 2.0
+Last updated: 2026-04-15 (Phase 8 complete — all phases 1–8 done)
 
-## 1. Status Through Phase 5
+## 1. Current Status: Phases 1–8 Complete
 
-The repository is documented as complete through Phase 5 for the backend platform:
+**Phases 1–5** — Backend platform complete:
 
 - ingestion and sync foundation
-- archive schema and migrations
+- archive schema and migrations (001–006)
 - theme extraction and curation
-- retrieval pipeline
+- retrieval pipeline (pgvector + HNSW)
 - archive-level pattern analysis
 - rollback and versioning hardening
 
-The next work is not a backend rewrite.
-It is an interface and operational expansion around the existing core.
+**Phases 6–8** — Telegram interface and hardening complete:
 
-Active execution source for this work:
+- Telegram bot runtime with text and voice support
+- bounded assistant tool-use loop
+- async transcription via OpenAI Whisper
+- session persistence and media lifecycle
+- runbooks and operational hardening
+- all open decisions resolved
 
-- [docs/tasks_phase6.md](tasks_phase6.md)
+Execution graph:
 
-Historical Phase 1-5 execution graph:
-
-- [docs/tasks.md](tasks.md)
+- [docs/tasks_phase6.md](tasks_phase6.md) — Phase 6–8 active graph
+- [docs/tasks.md](tasks.md) — historical Phase 1–5 graph
 
 ## 2. Planning Principle
 
@@ -40,7 +43,7 @@ Reference implementation source for the interaction layer:
 
 This should be used as a working code reference for Telegram-first patterns instead of regenerating the entire interaction layer from scratch.
 
-## 3. Phase 6 — Telegram Interaction Foundation
+## 3. Phase 6 — Telegram Interaction Foundation ✓ Complete
 
 ### Objective
 
@@ -80,7 +83,7 @@ Implementation rule:
 - bot sessions survive restart
 - deployment and env docs are complete enough to run privately
 
-## 4. Phase 7 — Voice Interaction and Media Pipeline
+## 4. Phase 7 — Voice Interaction and Media Pipeline ✓ Complete
 
 ### Objective
 
@@ -117,7 +120,7 @@ Implementation rule:
 - failures are observable and recoverable
 - retention and cleanup are documented and test-covered
 
-## 5. Phase 8 — Hardening and Controlled Expansion
+## 5. Phase 8 — Hardening and Controlled Expansion ✓ Complete
 
 ### Objective
 
@@ -143,15 +146,16 @@ Stabilize the Telegram-enabled system and decide whether any curation flows belo
 - major open decisions are resolved
 - optional mutation flows, if added, have explicit audit-safe UX
 
-## 6. Recommended Decision Freeze Before Implementation
+## 6. Resolved Decisions (Phase 6–8)
 
-Must decide before coding:
+All decisions were resolved during implementation:
 
-- whether Phase 6 is read-only plus sync trigger
-- transcription provider strategy
-- polling vs webhook as initial Telegram ingress
-- session persistence storage shape
-- retention periods for raw audio and transcripts
+- Phase 6 is read-only plus `trigger_sync` ✓
+- Transcription: OpenAI Whisper API (managed) ✓
+- Telegram ingress: long polling ✓
+- Session persistence: PostgreSQL `bot_sessions` table ✓
+- Raw audio: immediate deletion after transcription; `VOICE_RETENTION_SECONDS` sweep ✓
+- Transcript retention: not stored — transient in memory only ✓
 
 ## 7. Recommended Milestones
 
@@ -171,8 +175,7 @@ Voice messages work through async transcription and the same assistant path.
 
 Deployment docs, env docs, runbooks, and tests cover the Telegram-enabled stack.
 
-## 8. Open Decision Notes
+## 8. Open Items
 
-- Google Docs auth currently uses env-driven OAuth-style configuration in code.
-- A service-account JSON with granted document access may already exist operationally.
-- If implementation moves toward service-account auth, that should be treated as an explicit implementation decision, not silently assumed.
+- Google Docs auth: current code path uses OAuth env vars. Service-account JSON is not yet wired; treat as a future implementation decision if adopted.
+- Chat-driven curation mutations remain deferred. See [Telegram Interaction Model §11](TELEGRAM_INTERACTION_MODEL.md) for preconditions required before enabling.

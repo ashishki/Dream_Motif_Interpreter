@@ -1,14 +1,14 @@
 # Architecture — Dream Motif Interpreter
 
-Version: 2.0  
-Last updated: 2026-04-15  
-Status: Active for current backend; target-state guidance for Phase 6+
+Version: 3.0
+Last updated: 2026-04-15 (Phase 8 complete — all target state implemented)
+Status: Active — reflects implemented system through Phase 8
 
 ## 1. System Definition
 
 Dream Motif Interpreter is a private, single-user dream-analysis system.
 
-Its current implemented center of gravity is a backend platform:
+The implemented system is:
 
 - ingestion from Google Docs
 - structured dream archive storage
@@ -16,22 +16,17 @@ Its current implemented center of gravity is a backend platform:
 - semantic and thematic retrieval
 - archive-level pattern analysis
 - versioned theme curation and rollback
+- Telegram assistant interface for text and voice interaction
 
-The next planned evolution adds a Telegram assistant interface for text and voice interaction.
-That addition does not change the product’s source of truth:
+The Telegram layer does not change the product’s source of truth:
 the dream archive, retrieval layer, and curation rules remain owned by Dream Motif Interpreter.
 
 ## 2. Product Category
 
-### Current
+Single-user dream-analysis system with a Telegram conversational interface for text and voice.
 
-Single-user dream-analysis backend for a private dream journal
-
-### Planned
-
-Single-user dream-analysis system with a Telegram conversational interface
-
-The planned Telegram layer is an interface extension, not a reclassification into “bot script”.
+The Telegram layer is an interface extension, not a reclassification into “bot script”.
+The backend remains the core product and source of truth.
 
 ## 3. Observed Current Architecture
 
@@ -95,8 +90,8 @@ This is the boundary Phase 6 should rely on.
 | Profile | Status | Notes |
 |---------|--------|-------|
 | RAG | ON | Hybrid retrieval over dream archive is core product behavior |
-| Tool-Use | OFF in current backend | no assistant tool loop in the shipped backend |
-| Agentic | OFF | current system uses bounded workflows, not an autonomous loop |
+| Tool-Use | ON (bounded) | Telegram assistant uses a bounded tool-use loop (MAX_TOOL_ROUNDS=5); no autonomous tool use |
+| Agentic | OFF | system uses bounded workflows, not an autonomous loop |
 | Planning | OFF | no plan artifact governs execution |
 | Compliance | OFF | privacy-sensitive, but no named regulated framework |
 
@@ -187,13 +182,12 @@ Telegram handlers embedded directly into the FastAPI process:
 
 | Component | Responsibility | Status |
 |-----------|----------------|--------|
-| `app/api/` | public HTTP API for archive access and curation | current |
-| `app/services/` | domain services and business rules | current |
-| `app/retrieval/` | chunking, embeddings, retrieval | current |
-| `app/workers/` | sync and indexing workers | current |
-| `app/assistant/` | bounded internal assistant service facade and session policy | current (Phase 6 facade); Telegram runtime still planned |
-| `app/telegram/` | Telegram runtime, routing, presenters, voice ingress | planned |
-| `app/workers/transcription*` | async voice transcription jobs | planned |
+| `app/api/` | public HTTP API for archive access and curation | implemented |
+| `app/services/` | domain services and business rules | implemented |
+| `app/retrieval/` | chunking, embeddings, retrieval | implemented |
+| `app/workers/` | sync, indexing, transcription, and cleanup workers | implemented |
+| `app/assistant/` | bounded assistant facade, chat loop, session persistence, voice media helpers | implemented (Phase 6–7) |
+| `app/telegram/` | bot runtime, auth guard, text/voice handlers, file download | implemented (Phase 6–7) |
 
 ## 10. Assistant Boundary
 
@@ -223,79 +217,73 @@ Initial recommendation:
 - Phase 6 bot tools are read-oriented plus explicit sync triggering
 - mutation tools are deferred until the conversational UX and audit surface are proven
 
-## 11. Telegram Interface Layer
+## 11. Telegram Interface Layer (Implemented — Phase 6–7)
 
-Telegram is the planned primary interaction surface for the next phase because:
+Telegram is the primary interaction surface for the single user.
 
-- it fits the private single-user model
-- text and voice are the highest-leverage interaction paths
-- it avoids inventing a web layer before the conversational flow is validated
+The implemented bot layer provides:
 
-The bot layer should provide:
+- text conversation via bounded tool-use loop (`app/assistant/chat.py`)
+- voice-message handling via async transcription task (`app/workers/transcribe.py`)
+- `chat_id` allowlist authorization guard (`app/telegram/handlers.py`)
+- acknowledgements for in-progress transcription tasks
+- “insufficient evidence” behavior preserved in chat
 
-- text conversation
-- voice-message handling
-- bounded assistant routing
-- acknowledgements for long-running tasks
-- clear “insufficient evidence” behavior
+Runtime: `python3 -m app.telegram` (long polling, separate process from the API).
 
-Implementation guidance:
+See [Telegram Interaction Model](TELEGRAM_INTERACTION_MODEL.md) and [Telegram Bot Runbook](RUNBOOK_TELEGRAM_BOT.md).
 
-- use `film-school-assistant` as the primary reference for bot runtime structure and flow control
-- replace its domain-specific storage and prompts with Dream Motif Interpreter assistant services and policies
+## 12. Voice Processing (Implemented — Phase 7)
 
-See [Telegram Interaction Model](TELEGRAM_INTERACTION_MODEL.md).
+Implemented flow:
 
-## 12. Voice Processing Strategy
+1. Telegram voice update arrives.
+2. Bot validates sender via `chat_id` allowlist.
+3. `VoiceMediaEvent` is persisted with `received` status.
+4. Voice file is downloaded to `VOICE_MEDIA_DIR`.
+5. Bot acknowledges “Processing your voice note...”
+6. `asyncio.create_task(transcribe_and_reply(...))` enqueues background transcription.
+7. Worker calls OpenAI Whisper API (`whisper-1`, via `asyncio.to_thread`).
+8. Transcript routes through `handle_chat()` — same path as text messages.
+9. Bot sends reply via standalone `Bot(token=...)`.
+10. Raw audio is deleted immediately after successful reply; sweep cleanup handles survivors.
 
-Recommended Phase 7 direction:
+Provider: **OpenAI Whisper API** (managed). Local Whisper deferred.
 
-- Telegram voice message arrives
-- bot validates sender
-- media event is persisted
-- file is downloaded to temporary storage
-- transcription job is queued
-- transcript flows through the same text assistant path
-- raw media is deleted on a short retention schedule
-
-Recommended initial posture:
-
-- managed transcription API first
-- local Whisper as a later optimization or privacy-driven alternative
+See [Voice Pipeline](VOICE_PIPELINE.md) and [Voice Pipeline Runbook](RUNBOOK_VOICE_PIPELINE.md).
 
 See [Voice Pipeline](VOICE_PIPELINE.md).
 
 ## 13. Session and State Model
 
-Current backend:
+Backend:
 
 - no conversational state
 
-Planned bot layer:
+Telegram bot layer (implemented — Phase 6):
 
 - one conversation/session stream per allowed Telegram chat
-- persisted session metadata and pending actions in PostgreSQL
+- session history persisted in `bot_sessions` table (PostgreSQL)
+- trimmed to `MAX_HISTORY_MESSAGES=20` on each save
 - Redis for locks, deduplication, and short-lived job state only
 
-Important rule:
-
-- bot session history is interaction state, not dream-archive truth
+Rule: bot session history is interaction state, not dream-archive truth.
 
 ## 14. Auth and Authorization
 
-Current backend auth:
+Backend auth:
 
 - single-user API key header
 
-Planned Telegram auth:
+Telegram auth (implemented — Phase 6):
 
-- allowlisted Telegram `chat_id`
-- preferably allowlisted Telegram `user_id` as well
+- allowlisted Telegram `chat_id` via `TELEGRAM_ALLOWED_CHAT_ID`
+- user_id allowlisting deferred to a future phase
 
-Authorization policy recommendation:
+Authorization policy:
 
 - read/query operations broadly available to the allowed user
-- archive mutations remain explicitly gated and initially deferred from natural chat
+- archive mutations remain explicitly gated and deferred from natural chat (see [Telegram Interaction Model](TELEGRAM_INTERACTION_MODEL.md) §11)
 
 See [Auth and Security](AUTH_SECURITY.md).
 
@@ -313,40 +301,44 @@ Reason:
 
 See [Deployment](DEPLOY.md).
 
-## 16. Testing Implications
+## 16. Testing
 
-Phase 6+ expands testing scope to include:
+Current coverage (Phase 8 baseline): **97 unit tests passing**.
+
+Covered areas:
 
 - Telegram auth guard behavior
-- tool-routing correctness
+- tool-routing correctness and bounded loop guard
 - insufficient-evidence conversational handling
-- session persistence across restart
+- session load/save and history trimming
 - voice pipeline success and failure paths
+- cleanup worker (immediate deletion + sweep)
+- transcription worker status progression
 
 See [Testing Strategy](TESTING_STRATEGY.md).
 
-## 17. Documentation and Governance Implications
+## 17. ADR Coverage
 
-Phase 6+ requires:
+Architecture-affecting decisions are documented in `docs/adr/`:
 
-- new product framing documents
-- new deployment and env docs
-- Telegram and voice operational docs
-- ADR coverage for the major new boundaries
-- an active execution graph for Phase 6+ implementation work: [docs/tasks_phase6.md](tasks_phase6.md)
+- ADR-001: append-only annotation versioning
+- ADR-002: single-user API key auth
+- ADR-003: Telegram adapter inside the same repository
+- ADR-004: bounded assistant tool facade
+- ADR-005: managed transcription first (OpenAI Whisper)
+- ADR-006: persisted bot session state
+- ADR-007: Compose-first Telegram deployment
 
-Required architecture-affecting ADR topics:
+## 18. Resolved Architectural Decisions
 
-- Telegram adapter placement
-- bounded assistant tool facade
-- transcription strategy
-- session persistence
-- deployment topology
+All Phase 6–8 decisions are resolved:
 
-## 18. Open Architectural Decisions
-
-- whether Phase 6 remains read-only plus sync trigger
-- whether transcription starts managed or local
-- final retention periods for media and transcripts
-- whether polling or webhook is the canonical Telegram ingress mode
-- whether Google Docs auth remains OAuth env vars or later adopts service-account JSON
+| Decision | Outcome |
+|----------|---------|
+| Phase 6 write scope | Read-only plus `trigger_sync`; mutations deferred |
+| Transcription provider | OpenAI Whisper API (managed) |
+| Media retention | Immediate deletion after transcription; sweep via `VOICE_RETENTION_SECONDS` |
+| Telegram ingress mode | Long polling (no public webhook required) |
+| Session persistence | PostgreSQL `bot_sessions` table |
+| Deployment topology | Docker Compose with `telegram-bot` service |
+| Google Docs auth | OAuth env vars (current code path); service-account JSON deferred |

@@ -1,4 +1,4 @@
-"""Unit tests for P7-T01: Voice ingress and media persistence."""
+"""Unit tests for P7-T01/P7-T04: Voice ingress, media persistence, and end-to-end success path."""
 from __future__ import annotations
 
 import uuid
@@ -195,4 +195,50 @@ async def test_voice_handler_continues_without_session_factory() -> None:
         await voice_message_handler(update, context)
 
     mock_persist.assert_not_awaited()
+    message.reply_text.assert_awaited_once_with("Processing your voice note...")
+
+
+# ---------------------------------------------------------------------------
+# P7-T04 AC-1: Voice success path end-to-end (handler enqueues transcription)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_voice_handler_enqueues_transcription_task_when_fully_configured() -> None:
+    """When all required config is present (session_factory, bot_token, facade),
+    voice_message_handler enqueues a transcribe_and_reply task. AC-1 (success path)."""
+    from app.assistant.facade import AssistantFacade
+
+    event_id = uuid.uuid4()
+    update, message = _make_voice_update(chat_id=77)
+
+    facade = AsyncMock(spec=AssistantFacade)
+    session_factory = MagicMock()
+    context = SimpleNamespace(
+        bot_data={
+            "session_factory": session_factory,
+            "voice_media_dir": "/tmp/test_voice",
+            "bot_token": "BOT_TOKEN",
+            "facade": facade,
+        },
+        bot=AsyncMock(),
+    )
+
+    enqueued_coros: list = []
+
+    def mock_create_task(coro: object) -> MagicMock:
+        import inspect
+        if inspect.iscoroutine(coro):
+            coro.close()
+        enqueued_coros.append(coro)
+        task = MagicMock()
+        task.add_done_callback = MagicMock()
+        return task
+
+    with patch("app.telegram.handlers.create_voice_media_event", new=AsyncMock(return_value=event_id)), \
+         patch("app.telegram.handlers.download_voice_file", new=AsyncMock(return_value="/tmp/voice.ogg")), \
+         patch("app.telegram.handlers.asyncio.create_task", side_effect=mock_create_task):
+        await voice_message_handler(update, context)
+
+    assert len(enqueued_coros) == 1
     message.reply_text.assert_awaited_once_with("Processing your voice note...")

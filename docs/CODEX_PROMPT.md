@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.29
+Version: 1.30
 Date: 2026-04-15
 Phase: 6-active
 
@@ -8,11 +8,11 @@ Phase: 6-active
 
 ## Current State
 
-- **Phase:** 7 active (P7-T01 complete)
-- **Baseline:** 82 unit tests passing
+- **Phase:** 7 active (P7-T02 complete)
+- **Baseline:** 87 unit tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-15 (P7-T01 — VoiceMediaEvent model, migration 008, voice ingress handler, download utility)
+- **Last updated:** 2026-04-15 (P7-T02 — OpenAI Whisper transcription, transcribe_and_reply worker, handle_chat routing)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,9 +21,9 @@ Phase: 6-active
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 5 complete for the backend platform
-- **Current planning state:** Phase 7 active; P7-T01 complete; next is P7-T02 (Async Transcription Pipeline)
-- **Latest completed implementation task:** P7-T01 — Voice Ingress and Media Persistence
-- **Current baseline:** 82 unit tests passing
+- **Current planning state:** Phase 7 active; P7-T02 complete; next is P7-T03 (Media Retention and Cleanup)
+- **Latest completed implementation task:** P7-T02 — Async Transcription Pipeline
+- **Current baseline:** 87 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---

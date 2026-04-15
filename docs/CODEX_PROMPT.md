@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.23
+Version: 1.24
 Date: 2026-04-15
 Phase: 6-active
 
@@ -8,11 +8,11 @@ Phase: 6-active
 
 ## Current State
 
-- **Phase:** 6 active (P6-T02 complete)
-- **Baseline:** 104 passing tests, 9 skipped
+- **Phase:** 6 active (P6-T03 complete)
+- **Baseline:** 106 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-15 (P6-T02 — bounded AssistantFacade added; read-oriented service boundary for Telegram layer)
+- **Last updated:** 2026-04-15 (P6-T03 — Telegram bot runtime wired; chat_guard auth, text handler, __main__ bootstrap entrypoint)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,9 +21,9 @@ Phase: 6-active
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 5 complete for the backend platform
-- **Current planning state:** Phase 6 active; P6-T02 complete; next is P6-T03 (Telegram Bot Runtime)
-- **Latest completed implementation task:** P6-T02 — Assistant Service Facade
-- **Current baseline:** 104 passing tests, 9 skipped
+- **Current planning state:** Phase 6 active; P6-T03 complete; next is P6-T04 (Text Conversation Flow) and P6-T05 (Session Persistence) — both depend on P6-T03
+- **Latest completed implementation task:** P6-T03 — Telegram Bot Runtime
+- **Current baseline:** 106 passing tests, 9 skipped
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---

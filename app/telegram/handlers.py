@@ -29,7 +29,16 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     facade = _get_facade(context)
-    reply = await handle_chat(message.text, facade)
+    chat = update.effective_chat
+    chat_id = chat.id if chat is not None else None
+    session_factory = context.bot_data.get("session_factory")
+
+    reply = await handle_chat(
+        message.text,
+        facade,
+        session_factory=session_factory,
+        chat_id=chat_id,
+    )
     await message.reply_text(reply)
 
 

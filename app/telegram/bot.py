@@ -17,13 +17,18 @@ async def post_init(application: Application) -> None:
     LOGGER.info("Telegram bot initialized for allowed_chat_id=%s", allowed_chat_id)
 
 
-def build_application(facade: AssistantFacade) -> Application:
+def build_application(
+    facade: AssistantFacade,
+    *,
+    session_factory: object | None = None,
+) -> Application:
     settings = get_settings()
     _validate_bot_settings(settings)
 
     application = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
     application.bot_data["facade"] = facade
     application.bot_data["allowed_chat_id"] = settings.TELEGRAM_ALLOWED_CHAT_ID
+    application.bot_data["session_factory"] = session_factory
 
     application.add_handler(TypeHandler(Update, chat_guard), group=-1000)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
@@ -31,12 +36,12 @@ def build_application(facade: AssistantFacade) -> Application:
     return application
 
 
-def main(facade: AssistantFacade) -> None:
+def main(facade: AssistantFacade, *, session_factory: object | None = None) -> None:
     """Start the Telegram bot. Accepts a pre-constructed facade to keep domain imports
     out of the telegram package. Call from app/telegram/__main__.py or tests."""
     settings = get_settings()
     _validate_bot_settings(settings)
-    application = build_application(facade)
+    application = build_application(facade, session_factory=session_factory)
 
     LOGGER.info("Starting Telegram bot with long polling")
     try:

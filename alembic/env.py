@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.models.annotation  # noqa: F401
 import app.models.dream  # noqa: F401
+import app.models.session  # noqa: F401
 import app.models.theme  # noqa: F401
 from app.models.dream import Base
 

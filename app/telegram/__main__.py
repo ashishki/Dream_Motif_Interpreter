@@ -20,4 +20,4 @@ if __name__ == "__main__":
         session_factory=session_factory,
         rag_query_service=RagQueryService(session_factory=session_factory),
     )
-    main(facade)
+    main(facade, session_factory=session_factory)

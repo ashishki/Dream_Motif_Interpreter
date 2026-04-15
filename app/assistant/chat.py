@@ -6,8 +6,10 @@ import os
 from typing import Any
 
 from anthropic import AsyncAnthropic
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.assistant.facade import AssistantFacade
+from app.assistant.session import load_history, save_history
 from app.assistant.tools import TOOLS, execute_tool
 
 LOGGER = logging.getLogger(__name__)
@@ -25,9 +27,17 @@ _DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 _MAX_TOOL_ROUNDS = 5
 
 
-async def handle_chat(message_text: str, facade: AssistantFacade) -> str:
+async def handle_chat(
+    message_text: str,
+    facade: AssistantFacade,
+    *,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+    chat_id: int | None = None,
+) -> str:
     """Process a user text message through the bounded tool-use loop.
 
+    When session_factory and chat_id are provided, conversation history is
+    loaded from and saved to the database so context survives restarts.
     Returns a plain text response suitable for sending back to the user.
     Never raises — errors are returned as user-facing strings.
     """
@@ -39,7 +49,14 @@ async def handle_chat(message_text: str, facade: AssistantFacade) -> str:
     model = os.environ.get("ASSISTANT_MODEL", _DEFAULT_MODEL)
     client = AsyncAnthropic(api_key=api_key)
 
-    messages: list[dict[str, Any]] = [{"role": "user", "content": message_text}]
+    history: list[dict[str, Any]] = []
+    if session_factory is not None and chat_id is not None:
+        try:
+            history = await load_history(session_factory, chat_id)
+        except Exception:
+            LOGGER.warning("Failed to load session history for chat_id=%s", chat_id, exc_info=True)
+
+    messages: list[dict[str, Any]] = history + [{"role": "user", "content": message_text}]
     round_counter = 0
     last_text = ""
 
@@ -91,6 +108,17 @@ async def handle_chat(message_text: str, facade: AssistantFacade) -> str:
 
     if not last_text:
         return "No response from the assistant."
+
+    if session_factory is not None and chat_id is not None:
+        new_history = history + [
+            {"role": "user", "content": message_text},
+            {"role": "assistant", "content": last_text},
+        ]
+        try:
+            await save_history(session_factory, chat_id, new_history)
+        except Exception:
+            LOGGER.warning("Failed to save session history for chat_id=%s", chat_id, exc_info=True)
+
     return last_text
 
 

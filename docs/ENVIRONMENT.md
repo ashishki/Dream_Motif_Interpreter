@@ -29,9 +29,15 @@ BULK_CONFIRM_TOKEN_TTL_SECONDS=600
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ALLOWED_CHAT_ID=0
 ASSISTANT_MODEL=claude-haiku-4-5-20251001
+VOICE_MEDIA_DIR=/tmp/dream_voice
+VOICE_RETENTION_SECONDS=3600
 ```
 
 `ASSISTANT_MODEL` — Claude model used by the bounded tool-use loop. Defaults to `claude-haiku-4-5-20251001`.
+
+`VOICE_MEDIA_DIR` — writable directory for temporary voice files. Default: `/tmp/dream_voice`.
+
+`VOICE_RETENTION_SECONDS` — retention window for raw voice files (seconds). Default: `3600` (1 hour). Files are deleted immediately after transcription and swept by cleanup for any survivors.
 
 ## 2. Phase 6 Telegram Variables
 

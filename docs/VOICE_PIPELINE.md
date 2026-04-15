@@ -1,10 +1,10 @@
 # Voice Pipeline
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15 (P7-T03 update — implemented)
 
 ## 1. Purpose
 
-This document defines the planned voice-message path for the Telegram-enabled evolution of Dream Motif Interpreter.
+This document defines the voice-message path for Dream Motif Interpreter (Phase 7 implemented).
 
 ## 2. Goal
 
@@ -53,16 +53,32 @@ Why:
 
 Local Whisper remains a future option if privacy or cost justifies the operational overhead.
 
-## 6. Storage Rules
+## 6. Storage and Retention Rules
 
 - raw audio is not canonical dream data
 - transcript is not canonical dream data by default
 - dream archive changes must still pass explicit domain flows
 
-Recommended retention:
+Implemented retention (Phase 7):
 
-- raw audio: 24-72 hours
-- transcripts: 30-90 days if needed operationally
+- raw audio is deleted **immediately** after successful transcription via `delete_local_voice_file`
+- `cleanup_voice_media` (in `app/workers/cleanup.py`) provides a scheduled sweep for any files that
+  survived the immediate deletion (e.g., due to transient failure)
+- retention window is configurable via `VOICE_RETENTION_SECONDS` (default: 3600 seconds)
+- only events in terminal states (`done`, `failed`) with `updated_at < cutoff` are eligible for sweep deletion
+
+Environment variable:
+
+```env
+VOICE_RETENTION_SECONDS=3600   # default: 1 hour
+```
+
+Run the sweep cleanup periodically (e.g., cron or scheduled arq task):
+
+```python
+from app.workers.cleanup import cleanup_voice_media
+await cleanup_voice_media(session_factory, retention_seconds=settings.VOICE_RETENTION_SECONDS)
+```
 
 ## 7. Failure Modes
 

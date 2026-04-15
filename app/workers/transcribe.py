@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.assistant.chat import handle_chat
 from app.assistant.facade import AssistantFacade
 from app.assistant.voice_media import update_voice_media_event_status
+from app.workers.cleanup import delete_local_voice_file
 
 LOGGER = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ async def transcribe_and_reply(
         return
 
     await update_voice_media_event_status(session_factory, event_id, "done")
+    delete_local_voice_file(local_path)
     await _send_telegram_message(telegram_bot_token, chat_id, reply)
 
 

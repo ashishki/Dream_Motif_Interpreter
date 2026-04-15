@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.32
+Version: 1.34
 Date: 2026-04-15
 Phase: 6-active
 
@@ -8,11 +8,11 @@ Phase: 6-active
 
 ## Current State
 
-- **Phase:** 7 complete — Phase 8 pending
+- **Phase:** 8 complete — Phase 9 pending (not yet planned)
 - **Baseline:** 97 unit tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-15 (P7-T04 — Phase 7 test coverage complete; all phase gate conditions met)
+- **Last updated:** 2026-04-15 (P8-T02 — curation deferral explicit; Telegram is read-oriented; Phase 8 gate conditions met)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -20,9 +20,9 @@ Phase: 6-active
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 5 complete for the backend platform
-- **Current planning state:** Phase 7 complete; Phase 8 is next (P8-T01: Bot and Voice Observability Hardening)
-- **Latest completed implementation task:** P7-T04 — Voice Test Coverage
+- **Phases completed:** Phase 1 through Phase 8 complete
+- **Current planning state:** Phase 8 complete; Phase 9 not yet planned
+- **Latest completed implementation task:** P8-T02 — Controlled Evaluation of Chat Curation (deferred decision documented)
 - **Current baseline:** 97 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
@@ -41,24 +41,13 @@ Phase: 6-active
 
 ## Next Task
 
-P6-T03 — Telegram Bot Runtime.
-Read first:
+No Phase 9 tasks are yet defined. The next orchestrator cycle should:
 
-- `docs/tasks_phase6.md` (P6-T03 entry)
-- `docs/TELEGRAM_INTERACTION_MODEL.md`
-- `docs/AUTH_SECURITY.md`
-- `docs/ENVIRONMENT.md`
-- `docs/adr/ADR-003-telegram-adapter-inside-core-repo.md`
-- `app/assistant/facade.py` (the service facade P6-T02 built)
-- `/home/gdev/film-school-assistant` as the implementation reference for bot runtime and handler patterns
+1. Read `docs/PHASE_PLAN.md` and `docs/tasks_phase6.md` to check if Phase 9 tasks exist.
+2. If no tasks are defined, identify the most valuable next area of work from the product vision.
+3. Propose Phase 9 scope before implementing anything.
 
-Before coding, resolve the documented open decisions around:
-
-- Phase 6 scope boundary
-- transcription provider
-- Telegram ingress mode
-- session persistence
-- Google Docs credential mode if service-account JSON is adopted
+Active fix queue items (CODE-7, CODE-13, CODE-16, CODE-40, CODE-41) can be addressed as standalone follow-ups without a new phase gate.
 
 ---
 
@@ -67,100 +56,6 @@ Before coding, resolve the documented open decisions around:
 ### FIX-C9: Closed
 
 All 9 carry-forward P3 findings are now closed. No new tasks remain.
-
----
-
-**CODE-7** — `app/main.py`
-`uvicorn.run()` binds `host="0.0.0.0"` unconditionally. Change to bind `127.0.0.1` when `ENV != "production"` and `0.0.0.0` otherwise. Read `get_settings().ENV` to decide. No new tests required (existing smoke tests cover the app startup path).
-
-**CODE-13** — `app/services/segmentation.py`
-`_segment_with_llm_fallback()` raises `NotImplementedError` with a stale comment referencing "T08". Replace the comment and `type: ignore` with: `# TODO(future): implement LLM-based boundary detection fallback; T08 is complete but this path was deferred`. Remove the `type: ignore` annotation if it is no longer needed. No behaviour change; no new tests.
-
-**CODE-16** — `alembic/versions/003_seed_categories.py`
-The `status='active'` insert at the bootstrap seed has no governance exception comment. Add the inline comment before the insert block:
-```python
-# Bootstrap exception: migration-time seed bypasses the approval gate.
-# Single-user system; AnnotationVersion records are not written for seed data.
-# This is intentional and documented in IMPLEMENTATION_CONTRACT.md §Taxonomy Mutation Gate.
-```
-No behaviour change; no new tests.
-
-**CODE-40** — `scripts/eval.py`
-`TASK_ID = "T12"` is hardcoded. Replace with a CLI argument:
-```python
-import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument("--task-id", default="T12", help="Task ID to tag this eval run")
-args = parser.parse_args()
-TASK_ID = args.task_id
-```
-Keep the `default="T12"` so existing usage without arguments is unchanged. No new tests required.
-
-**CODE-41** — `scripts/eval.py`
-`_evaluation_history_table()` (or equivalent) overwrites the full history on every run. Change it to append the new row instead of rebuilding the table from scratch. Read the existing `## Evaluation History` section from `docs/retrieval_eval.md`, append the new row, and write back only the updated section. Do not lose prior rows. Add a unit test `tests/unit/test_eval_script.py::test_eval_history_appends` that verifies calling the append function twice results in two rows, not one.
-
-**ARCH-10** — `app/retrieval/query.py`
-LLM query expansion is declared in ARCHITECTURE.md §RAG Architecture but not wired. Wire it:
-1. Add a method `_expand_query_terms(query: str) -> str` to `RagQueryService` that calls the Anthropic client (`claude-haiku-4-5-20251001`) with a short system prompt: `"Expand the following dream search query with related symbolic and thematic synonyms. Return only the expanded query, no explanation."` and the user query as the message. Use `max_tokens=100`.
-2. Call `_expand_query_terms` at the top of `retrieve()` before embedding, replacing the original query text for embedding purposes only. The original query string must still be logged/spanned as `query_length` (not the expanded version).
-3. Guard against API failure: if the Anthropic call raises any exception, log a structured warning and fall back to the original query. Do not propagate the expansion failure to the caller.
-4. The Anthropic client should use `get_settings().ANTHROPIC_API_KEY`. Import `anthropic` (already a dependency via `anthropic` package used in `app/services/analysis.py`).
-5. Add a unit test `tests/unit/test_rag_query_expansion.py::test_query_expansion_fallback` that verifies: when the Anthropic client raises an exception, `retrieve()` still returns a result using the original query (mock the embedding call to return a fixed vector).
-6. Skip tests that make real Anthropic API calls (use `pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY") or os.getenv("ENV") == "test", ...)` or mock the client entirely).
-
-**ARCH-11** — `app/retrieval/query.py`, `app/api/search.py`
-`EvidenceBlock.matched_fragments` is `list[str]`; spec requires `match_type` and `char_offset` per fragment. Change the type:
-1. In `app/retrieval/query.py`, define a new dataclass:
-```python
-@dataclass(frozen=True)
-class FragmentMatch:
-    text: str
-    match_type: str  # "keyword" | "semantic"
-    char_offset: int  # character offset of the match start within the chunk
-```
-2. Change `EvidenceBlock.matched_fragments: list[str]` → `matched_fragments: list[FragmentMatch]`.
-3. In the retrieval logic, populate `match_type="semantic"` and `char_offset=0` (stub values — exact offsets require full-text alignment which is out of scope; stub is acceptable and honest).
-4. Update `app/api/search.py` response models: `matched_fragments` in `SearchResultItem` becomes `list[dict]` (serialised `FragmentMatch`). Or add a `FragmentMatchItem` Pydantic model.
-5. Update any test that asserts on `matched_fragments` to use the new structure.
-6. No new tests required beyond fixing existing ones.
-
-**ARCH-12 / ARCH-12-E** — Session factory duplication
-Extract `_get_session_factory()` to a single shared function. Steps:
-1. Create `app/shared/database.py` with:
-```python
-from functools import lru_cache
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from app.shared.config import get_settings
-
-@lru_cache(maxsize=1)
-def get_session_factory() -> async_sessionmaker[AsyncSession]:
-    engine = create_async_engine(get_settings().DATABASE_URL)
-    return async_sessionmaker(engine, expire_on_commit=False)
-```
-2. Replace the private `_get_session_factory()` definitions in `app/api/dreams.py`, `app/api/search.py`, `app/api/patterns.py`, and `app/api/versioning.py` with imports of `get_session_factory` from `app.shared.database`.
-3. Remove the now-unused local definitions. Ensure `themes.py` (which imported from `dreams.py`) is also updated.
-4. Run all tests to verify nothing broke. No new tests required.
-
-**ARCH-15** — `docs/adr/`
-Create the ADR directory and write the first ADR:
-1. Create `docs/adr/README.md` with a one-paragraph description of the ADR convention (title, date, status, context, decision, consequences).
-2. Create `docs/adr/ADR-001-append-only-annotation-versioning.md` documenting decision D-007 (append-only AnnotationVersion). Use the standard ADR format.
-3. Create `docs/adr/ADR-002-single-user-api-key-auth.md` documenting the API key auth approach (decision D-005 or equivalent from DECISION_LOG.md).
-No code changes; no tests required.
-
----
-
-After all fixes:
-1. `pytest -q` → baseline ≥ 95 passing, 9 skipped.
-2. `ruff check app/ tests/ scripts/` and `ruff format --check app/ tests/ scripts/` → clean.
-3. Update `docs/CODEX_PROMPT.md`:
-   - Close all 9 P3 findings.
-   - Update findings header count.
-   - Set Next Task: "No open findings — project complete."
-   - Bump version to 1.20.
-4. Commit: `fix(debt): FIX-C9 — close all P3 technical debt`
-
----
 
 ## Open Findings
 

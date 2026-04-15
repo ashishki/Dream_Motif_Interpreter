@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.22
+Version: 1.23
 Date: 2026-04-15
 Phase: 6-active
 
@@ -8,11 +8,11 @@ Phase: 6-active
 
 ## Current State
 
-- **Phase:** 6 active (P6-T01 complete)
-- **Baseline:** 99 passing tests, 9 skipped
+- **Phase:** 6 active (P6-T02 complete)
+- **Baseline:** 104 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-15 (P6-T01 — backend execution boundary wired; analysis and indexing now run automatically after sync)
+- **Last updated:** 2026-04-15 (P6-T02 — bounded AssistantFacade added; read-oriented service boundary for Telegram layer)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,9 +21,9 @@ Phase: 6-active
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 5 complete for the backend platform
-- **Current planning state:** Phase 6 active; P6-T01 complete; next is P6-T02 (Assistant Service Facade)
-- **Latest completed implementation task:** P6-T01 — Reconcile Backend Execution Boundary
-- **Current baseline:** 99 passing tests, 9 skipped
+- **Current planning state:** Phase 6 active; P6-T02 complete; next is P6-T03 (Telegram Bot Runtime)
+- **Latest completed implementation task:** P6-T02 — Assistant Service Facade
+- **Current baseline:** 104 passing tests, 9 skipped
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -41,14 +41,16 @@ Phase: 6-active
 
 ## Next Task
 
-P6-T02 — Assistant Service Facade.
+P6-T03 — Telegram Bot Runtime.
 Read first:
 
-- `docs/ARCHITECTURE.md` (§10 Assistant Boundary)
-- `docs/tasks_phase6.md` (P6-T02 entry)
+- `docs/tasks_phase6.md` (P6-T03 entry)
 - `docs/TELEGRAM_INTERACTION_MODEL.md`
-- `docs/adr/ADR-004-bounded-assistant-tool-facade.md`
-- `/home/gdev/film-school-assistant` as the implementation reference for interaction-layer patterns
+- `docs/AUTH_SECURITY.md`
+- `docs/ENVIRONMENT.md`
+- `docs/adr/ADR-003-telegram-adapter-inside-core-repo.md`
+- `app/assistant/facade.py` (the service facade P6-T02 built)
+- `/home/gdev/film-school-assistant` as the implementation reference for bot runtime and handler patterns
 
 Before coding, resolve the documented open decisions around:
 
@@ -328,6 +330,7 @@ none
 
 ## Completed Tasks
 
+- **P6-T02** — Assistant Service Facade — 2026-04-15 — 104 tests passing, 9 skipped — AssistantFacade created in app/assistant/; exposes search_dreams, get_dream, list_recent_dreams, get_patterns, get_theme_history, trigger_sync; returns dataclass DTOs; no ORM leakage; mutation methods absent; 5 unit tests added
 - **P6-T01** — Reconcile Backend Execution Boundary — 2026-04-15 — 99 tests passing, 9 skipped — ingest worker now calls AnalysisService and index_dream after storing entries; _collect_pipeline_targets detects missing themes/chunks; resync skips complete stages; fetch_document offloaded via asyncio.to_thread; ARCHITECTURE.md §4 updated with explicit runtime contract
 - **FIX-C9** — Technical Debt — P3 Findings — 2026-04-14 — 98 tests passing, 9 skipped — CODE-7/13/16/40/41 and ARCH-10/11/12/12-E/15 closed via environment-aware host binding, retrieval query expansion fallback, structured fragment metadata, shared DB session factory extraction, eval history append logic, and ADR documentation
 - **FIX-C8** — Technical Debt — P2 Findings — 2026-04-14 — 95 tests passing, 9 skipped — CODE-48/49/50 closed via guarded initial Redis status writes, shared Redis client shutdown, and malformed bulk-confirm token handling; prompt continuity refreshed

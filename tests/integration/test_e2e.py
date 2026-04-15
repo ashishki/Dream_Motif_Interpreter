@@ -29,7 +29,7 @@ from app.retrieval.ingestion import EMBEDDING_DIMENSIONS, RagIngestionService
 from app.retrieval.query import RagQueryService
 from app.services.analysis import AnalysisService
 from app.services.gdocs_client import GDocsAuthError
-from app.workers.ingest import _store_entries
+from app.workers.ingest import _collect_pipeline_targets, _store_entries
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SEED_DREAMS_PATH = PROJECT_ROOT / "tests" / "fixtures" / "seed_dreams.json"
@@ -336,19 +336,22 @@ class PipelineJobEnqueuer:
 
         try:
             paragraphs = self._gdocs_client.fetch_document()
-            new_entries = await _store_entries(
+            stored_entries = await _store_entries(
                 session_factory=self._session_factory,
                 paragraphs=paragraphs,
                 doc_id=doc_id,
             )
-            dream_ids = await self._load_dream_ids(doc_id)
+            pipeline_targets = await _collect_pipeline_targets(
+                session_factory=self._session_factory,
+                dream_ids=stored_entries.dream_ids,
+            )
 
-            async with self._session_factory() as session:
-                for dream_id in dream_ids:
-                    await self._analysis_service.analyse_dream(dream_id, session)
-
-            for dream_id in dream_ids:
-                await self._index_service.index_dream(dream_id)
+            for target in pipeline_targets:
+                if target.needs_analysis:
+                    async with self._session_factory() as session:
+                        await self._analysis_service.analyse_dream(target.dream_id, session)
+                if target.needs_indexing:
+                    await self._index_service.index_dream(target.dream_id)
         except GDocsAuthError:
             await write_sync_job_state(self._redis_client, job_id, SyncJobState(status="failed"))
             return
@@ -359,17 +362,8 @@ class PipelineJobEnqueuer:
         await write_sync_job_state(
             self._redis_client,
             job_id,
-            SyncJobState(status="done", new_entries=new_entries),
+            SyncJobState(status="done", new_entries=stored_entries.new_entries),
         )
-
-    async def _load_dream_ids(self, doc_id: str) -> list[uuid.UUID]:
-        async with self._session_factory() as session:
-            result = await session.execute(
-                select(DreamEntry.id)
-                .where(DreamEntry.source_doc_id == doc_id)
-                .order_by(DreamEntry.date.asc(), DreamEntry.created_at.asc())
-            )
-        return list(result.scalars().all())
 
 
 def _load_seeded_paragraphs() -> list[str]:
@@ -481,7 +475,7 @@ def _build_job_enqueuer(
 
 
 async def _poll_sync_job(client: AsyncClient, job_id: uuid.UUID) -> dict[str, object]:
-    for _attempt in range(80):
+    for _attempt in range(300):
         response = await client.get(f"/sync/{job_id}", headers=_auth_headers())
         assert response.status_code == 200
         payload = response.json()

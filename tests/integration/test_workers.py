@@ -22,7 +22,11 @@ from sqlalchemy.pool import NullPool
 
 from app.api.dreams import read_sync_job_state
 from app.models.dream import DreamEntry
+from app.models.theme import DreamTheme, ThemeCategory
 from app.retrieval.ingestion import EMBEDDING_DIMENSIONS, fetch_indexed_chunks
+from app.llm.grounder import GroundedTheme
+from app.llm.theme_extractor import ThemeAssignment
+from app.services.analysis import AnalysisService
 from app.services.gdocs_client import GDocsAuthError
 from app.workers.index import index_dream
 from app.workers.ingest import ingest_document
@@ -85,6 +89,68 @@ class StubEmbeddingClient:
     async def embed(self, texts: list[str], *, dream_id: str | None = None) -> list[list[float]]:
         del dream_id
         return [[0.125] * EMBEDDING_DIMENSIONS for _ in texts]
+
+
+class NoopThemeExtractor:
+    async def extract(
+        self,
+        dream_entry: DreamEntry,
+        categories: list[ThemeCategory],
+    ) -> list[ThemeAssignment]:
+        del dream_entry, categories
+        return []
+
+
+class NoopGrounder:
+    async def ground(
+        self,
+        dream_entry: DreamEntry,
+        theme_assignments: list[ThemeAssignment],
+    ) -> list[GroundedTheme]:
+        del dream_entry, theme_assignments
+        return []
+
+
+class WorkerThemeExtractor:
+    async def extract(
+        self,
+        dream_entry: DreamEntry,
+        categories: list[ThemeCategory],
+    ) -> list[ThemeAssignment]:
+        del dream_entry
+        return [
+            ThemeAssignment(
+                category_id=categories[0].id,
+                salience=0.88,
+                match_type="symbolic",
+                justification="Worker pipeline stub assignment.",
+            )
+        ]
+
+
+class WorkerGrounder:
+    async def ground(
+        self,
+        dream_entry: DreamEntry,
+        theme_assignments: list[ThemeAssignment],
+    ) -> list[GroundedTheme]:
+        fragment_text = "river"
+        start_offset = dream_entry.raw_text.index(fragment_text)
+        return [
+            GroundedTheme(
+                category_id=theme_assignments[0].category_id,
+                salience=0.91,
+                fragments=[
+                    {
+                        "text": fragment_text,
+                        "start_offset": start_offset,
+                        "end_offset": start_offset + len(fragment_text),
+                        "match_type": "symbolic",
+                        "verified": True,
+                    }
+                ],
+            )
+        ]
 
 
 class RecordingJobEnqueuer:
@@ -172,6 +238,28 @@ def _auth_headers() -> dict[str, str]:
     return {"X-API-Key": os.environ["SECRET_KEY"]}
 
 
+def _noop_analysis_service() -> AnalysisService:
+    return AnalysisService(
+        theme_extractor=NoopThemeExtractor(),
+        grounder=NoopGrounder(),
+    )
+
+
+async def _create_active_category(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> ThemeCategory:
+    async with session_factory() as session:
+        category = ThemeCategory(
+            name=f"worker-category-{uuid.uuid4()}",
+            description="Worker integration category",
+            status="active",
+        )
+        session.add(category)
+        await session.commit()
+        await session.refresh(category)
+        return category
+
+
 @pytest.mark.asyncio
 async def test_ingest_job_idempotent(
     migrated_session_factory: async_sessionmaker[AsyncSession],
@@ -185,6 +273,8 @@ async def test_ingest_job_idempotent(
         "redis": redis_client,
         "session_factory": migrated_session_factory,
         "gdocs_client": StaticGDocsClient(paragraphs),
+        "analysis_service": _noop_analysis_service(),
+        "embedding_client": StubEmbeddingClient(),
     }
 
     first_new_entries = await ingest_document(
@@ -240,6 +330,8 @@ async def test_sync_job_status_done_after_completion(
                     "A silver bridge crossed the river behind the house.",
                 ]
             ),
+            "analysis_service": _noop_analysis_service(),
+            "embedding_client": StubEmbeddingClient(),
         },
         job_id=job_id,
         doc_id="doc-workers",
@@ -271,6 +363,8 @@ async def test_ingest_job_fails_cleanly_on_auth_error(
             "redis": redis_client,
             "session_factory": migrated_session_factory,
             "gdocs_client": AuthFailingGDocsClient(),
+            "analysis_service": _noop_analysis_service(),
+            "embedding_client": StubEmbeddingClient(),
         },
         job_id=job_id,
         doc_id="doc-workers",
@@ -305,6 +399,8 @@ async def test_ingest_job_completes_when_initial_status_write_fails(
                     "A paper lantern drifted over the riverbank.",
                 ]
             ),
+            "analysis_service": _noop_analysis_service(),
+            "embedding_client": StubEmbeddingClient(),
         },
         job_id=job_id,
         doc_id="doc-workers",
@@ -320,6 +416,58 @@ async def test_ingest_job_completes_when_initial_status_write_fails(
     assert state is not None
     assert state.status == "done"
     assert state.new_entries == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_job_runs_analysis_and_indexing_automatically(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    redis_client = FakeRedis()
+    await _create_active_category(migrated_session_factory)
+
+    worker_ctx = {
+        "redis": redis_client,
+        "session_factory": migrated_session_factory,
+        "gdocs_client": StaticGDocsClient(
+            [
+                "2026-04-04",
+                "A bright river passed beneath the house at dawn.",
+            ]
+        ),
+        "analysis_service": AnalysisService(
+            theme_extractor=WorkerThemeExtractor(),
+            grounder=WorkerGrounder(),
+        ),
+        "embedding_client": StubEmbeddingClient(),
+    }
+
+    first_new_entries = await ingest_document(
+        worker_ctx,
+        job_id=uuid.uuid4(),
+        doc_id="doc-workers",
+    )
+    second_new_entries = await ingest_document(
+        worker_ctx,
+        job_id=uuid.uuid4(),
+        doc_id="doc-workers",
+    )
+
+    async with migrated_session_factory() as session:
+        dream = await session.scalar(
+            select(DreamEntry).where(DreamEntry.source_doc_id == "doc-workers")
+        )
+        assert dream is not None
+
+        themes = (
+            await session.execute(select(DreamTheme).where(DreamTheme.dream_id == dream.id))
+        ).scalars().all()
+        chunks = await fetch_indexed_chunks(session, dream.id)
+
+    assert first_new_entries == 1
+    assert second_new_entries == 0
+    assert len(themes) == 1
+    assert themes[0].status == "draft"
+    assert len(chunks) == 1
 
 
 @pytest.mark.asyncio

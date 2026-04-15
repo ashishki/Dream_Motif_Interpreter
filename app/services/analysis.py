@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.llm.grounder import GroundedTheme, Grounder
 from app.llm.theme_extractor import ThemeAssignment, ThemeExtractor
@@ -116,3 +116,11 @@ class AnalysisService:
             with tracer.start_as_current_span("db.query.analysis.commit"):
                 await session.commit()
             return assignments
+
+    async def analyse_dream_with_session_factory(
+        self,
+        dream_id: uuid.UUID,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> list[ThemeAssignment]:
+        async with session_factory() as session:
+            return await self.analyse_dream(dream_id, session)

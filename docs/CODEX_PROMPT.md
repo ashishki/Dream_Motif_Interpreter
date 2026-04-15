@@ -1,14 +1,14 @@
 # CODEX_PROMPT.md
 
-Version: 1.34
+Version: 1.35
 Date: 2026-04-15
-Phase: 6-active
+Phase: 9-planned
 
 ---
 
 ## Current State
 
-- **Phase:** 8 complete — Phase 9 pending (not yet planned)
+- **Phase:** 9 planned — Phase 8 complete
 - **Baseline:** 97 unit tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
@@ -21,7 +21,7 @@ Phase: 6-active
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 8 complete
-- **Current planning state:** Phase 8 complete; Phase 9 not yet planned
+- **Current planning state:** Phase 9 planned; task graph at `docs/tasks_phase9.md`; first task WS-9.1
 - **Latest completed implementation task:** P8-T02 — Controlled Evaluation of Chat Curation (deferred decision documented)
 - **Current baseline:** 97 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
@@ -33,7 +33,8 @@ Phase: 6-active
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
-- **Active task graph:** `docs/tasks_phase6.md`
+- **Active task graph:** `docs/tasks_phase9.md`
+- **Previous task graph (Phases 6–8):** `docs/tasks_phase6.md`
 - **Historical backend task graph:** `docs/tasks.md`
 - **Task-scoped context:** read `Context-Refs` in the active task graph before broad searching
 
@@ -41,13 +42,16 @@ Phase: 6-active
 
 ## Next Task
 
-No Phase 9 tasks are yet defined. The next orchestrator cycle should:
+**WS-9.1 — Database Migration and ORM Models**
 
-1. Read `docs/PHASE_PLAN.md` and `docs/tasks_phase6.md` to check if Phase 9 tasks exist.
-2. If no tasks are defined, identify the most valuable next area of work from the product vision.
-3. Propose Phase 9 scope before implementing anything.
+Phase 9 task graph: `docs/tasks_phase9.md`
+First task: WS-9.1 — add `motif_inductions` table, `MotifInduction` ORM model, and `AnnotationVersion` support for `entity_type = 'motif_induction'`.
 
-Active fix queue items (CODE-7, CODE-13, CODE-16, CODE-40, CODE-41) can be addressed as standalone follow-ups without a new phase gate.
+Context refs before starting:
+- `docs/MOTIF_ABSTRACTION.md` — full design spec for the motif abstraction layer
+- `docs/adr/ADR-008-motif-induction-vs-taxonomy.md` — why motif_inductions must never merge with dream_themes
+- `docs/adr/ADR-010-feature-flag-gating.md` — feature flag strategy
+- `docs/tasks_phase9.md §WS-9.1` — acceptance criteria and file scope
 
 ---
 
@@ -288,7 +292,7 @@ Read these instructions every time you pick up a task. Do not skip steps.
 ### Pre-Task Protocol (mandatory — do not skip)
 
 1. **Read `docs/IMPLEMENTATION_CONTRACT.md`** — before anything else. Know the rules before touching code.
-2. **Read the full active task in `docs/tasks_phase6.md` for Phase 6+ work, or in `docs/tasks.md` for historical/backend follow-up work** — including all acceptance criteria, file lists, and notes.
+2. **Read the full active task in `docs/tasks_phase9.md` for Phase 9 work, in `docs/tasks_phase6.md` for Phase 6–8 reference, or in `docs/tasks.md` for historical/backend follow-up work** — including all acceptance criteria, file lists, and notes.
 3. **Read all Depends-On tasks** — understand the interface contracts your task must satisfy.
 4. **Read task `Context-Refs` and continuity artifacts as needed** — required when the task resolves a finding, changes a risky boundary, or depends on prior decisions / evidence.
 5. **Run `pytest -q`** — capture the current baseline. Record: `N passing, M failed`. If M > 0, stop and report: you cannot add failures to an already-failing baseline.

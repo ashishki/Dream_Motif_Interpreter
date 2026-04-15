@@ -153,3 +153,84 @@ Until all four preconditions are met, chat-driven mutation tools must not be add
 Implementation sequencing for this surface is tracked in:
 
 - [docs/tasks_phase6.md](tasks_phase6.md)
+
+## 12. Phase 9 Tool — get_dream_motifs (Planned)
+
+`get_dream_motifs` returns the inducted motifs for a specific dream entry.
+
+### What it returns
+
+- the list of motif labels with confidence (`high`, `moderate`, `low`) and status (`draft`, `confirmed`, `rejected`)
+- the rationale string for each motif as produced by the induction pipeline
+- the grounded imagery fragments that support each motif label
+
+### Confidence framing requirements
+
+The assistant must frame motif results according to their confidence level and status:
+
+- `draft` motifs must be presented as unconfirmed model suggestions, not as conclusions
+- `confirmed` motifs may be presented with slightly more weight, but still as computational abstractions — never as interpretations
+- `rejected` motifs must not be presented in normal responses
+- The word "interpretation" must not be used to describe inducted motifs; use "abstraction" or "suggestion"
+
+Example framing: "The induction pipeline flagged [label] as a possible abstract motif for this dream with [confidence] confidence. This is a computational suggestion derived from the imagery, not a curated finding."
+
+The distinction between these motifs and the existing theme taxonomy must be preserved in responses. Inducted motifs and taxonomy-based themes are different things.
+
+### Availability
+
+This tool is only available when `MOTIF_INDUCTION_ENABLED=true`. If the flag is off, the tool must not appear in the tool catalog.
+
+## 13. Phase 10 Tool — research_motif_parallels (Planned)
+
+`research_motif_parallels` searches for structural parallels in mythology, folklore, cultural, and taboo material for a confirmed inducted motif.
+
+### Confirmation-before-execution pattern
+
+This tool must not execute automatically. Before any external search is triggered, the assistant must:
+
+1. State what it is about to search for and why.
+2. Ask the user for explicit confirmation.
+3. Execute the search only after the user confirms.
+
+If the user does not confirm, no external call is made.
+
+### Speculative framing requirements
+
+All results returned by this tool must be framed as speculative:
+
+- every parallel must carry its source URL and retrieval timestamp
+- confidence values are limited to: speculative, plausible, uncertain
+- the assistant must not present any result as a finding or as confirmed
+- opening framing: "The following parallels are retrieved from external sources. They are speculative and have not been verified against the archive."
+
+### What the tool does not do
+
+- it is not a search engine the user can query freely
+- it is not a reference source
+- it does not make truth claims about the dream's meaning
+- results must never be stored in or treated as equivalent to archive evidence
+
+### Availability
+
+This tool is only available when `RESEARCH_AUGMENTATION_ENABLED=true`. If the flag is off, the tool must not appear in the tool catalog.
+
+## 14. Phase 11 — Feedback Capture UX (Planned)
+
+### When the rating prompt appears
+
+After the assistant delivers a substantive response (not an error message, not a transcription acknowledgment), it may append a brief rating prompt. The exact wording is: "Rate this response: reply with 1–5."
+
+### What digit-only replies do
+
+A message containing only a single digit (1–5) sent immediately after a substantive response is captured as a rating for that response. The system stores: the chat ID, the score, the context snapshot of the preceding response, and the creation timestamp.
+
+Messages containing anything other than a single digit are not treated as ratings, even if they contain a digit among other characters.
+
+### Acknowledgment message
+
+When a rating is captured, the assistant sends a brief acknowledgment: "Thanks, noted." No further action is taken in the conversation.
+
+### What ratings do not do
+
+Ratings do not alter assistant behavior in the current session. They do not feed into automated retraining. They are stored for human review only via the `GET /feedback` admin endpoint.

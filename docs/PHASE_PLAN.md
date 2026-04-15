@@ -179,3 +179,143 @@ Deployment docs, env docs, runbooks, and tests cover the Telegram-enabled stack.
 
 - Google Docs auth: current code path uses OAuth env vars. Service-account JSON is not yet wired; treat as a future implementation decision if adopted.
 - Chat-driven curation mutations remain deferred. See [Telegram Interaction Model §11](TELEGRAM_INTERACTION_MODEL.md) for preconditions required before enabling.
+
+## 9. Phase 9 — Motif Abstraction and Induction
+
+### Objective
+
+Given a dream entry, inductively derive higher-order abstract motifs from concrete imagery without using a predefined taxonomy.
+
+### Why this phase exists
+
+- the existing theme extraction pipeline assigns dreams to a closed vocabulary of curated categories
+- that closed vocabulary is useful for pattern queries but cannot surface novel, emergent imagery
+- motif induction produces open-vocabulary labels that describe what is actually present without forcing a match to known categories
+- these labels coexist with taxonomy-based themes; they are stored separately and serve a different analytical purpose
+
+### Scope In
+
+- `ImageryExtractor`: extracts concrete imagery fragments from dream text
+- `MotifInductor`: forms abstract motif labels from extracted imagery (open vocabulary, model-derived)
+- `MotifGrounder`: verifies imagery fragments against source offsets (reuses offset-verification pattern from `Grounder`)
+- `MotifService`: orchestrates the induction pipeline; wired into ingest when `MOTIF_INDUCTION_ENABLED=true`
+- New table: `motif_inductions` (columns: `id`, `dream_id`, `label`, `rationale`, `confidence`, `status`, `fragments` JSONB, `model_version`, `created_at`)
+- New migration: `009_add_motif_inductions`
+- New API routes: `GET /dreams/{id}/motifs`, `PATCH /dreams/{id}/motifs`, `GET /dreams/{id}/motifs/history`
+- New assistant tool: `get_dream_motifs`
+- New env var: `MOTIF_INDUCTION_ENABLED` (default `false`)
+
+### Scope Out
+
+- merging inducted motifs into the `dream_themes` table or `theme_categories` taxonomy
+- treating inducted motif labels as interpretations
+- automated curation without human confirmation
+
+### Workstreams
+
+- WS-9.1: DB migration and ORM models (`motif_inductions`, `AnnotationVersion` support)
+- WS-9.2: `ImageryExtractor` + `MotifInductor` LLM pipeline
+- WS-9.3: `MotifGrounder` (reuses offset-verification from `Grounder`)
+- WS-9.4: `MotifService` orchestrator + ingest integration (`MOTIF_INDUCTION_ENABLED` flag)
+- WS-9.5: API routes (`app/api/motifs.py`)
+- WS-9.6: assistant tool `get_dream_motifs` + facade method + system prompt update
+- WS-9.7: pattern queries extension (optional, depends on WS-9.4)
+
+### Phase gate
+
+- induction pipeline runs end-to-end for a dream entry when `MOTIF_INDUCTION_ENABLED=true`
+- inducted motifs are stored in `motif_inductions`, never in `dream_themes`
+- `GET /dreams/{id}/motifs` returns motifs with confidence and status fields
+- assistant can present motifs with correct confidence framing
+- feature flag disables the pipeline completely when set to `false`
+
+### Status: Planned
+
+See [docs/tasks_phase9.md](tasks_phase9.md) for the detailed task graph.
+See [docs/MOTIF_ABSTRACTION.md](MOTIF_ABSTRACTION.md) for conceptual documentation.
+See [docs/adr/ADR-008-motif-induction-vs-taxonomy.md](adr/ADR-008-motif-induction-vs-taxonomy.md).
+
+## 10. Phase 10 — Research Augmentation
+
+### Objective
+
+On demand, search for mythology, folklore, cultural, and taboo parallels to confirmed inducted motifs from external sources.
+
+### Why this phase exists
+
+- inducted motifs may have structural parallels in comparative mythology and folklore that are not in the local archive
+- surfacing these parallels enriches analysis without conflating external content with archive evidence
+- all external results carry an explicitly low trust level and are always labeled as speculative
+
+### Scope In
+
+- `app/research/retriever.py` (`ResearchRetriever`): calls external search API
+- `app/research/synthesizer.py` (`ResearchSynthesizer`): summarises retrieved results into labeled parallels
+- New table: `research_results` (columns: `id`, `motif_id`, `dream_id`, `query_label`, `parallels` JSONB, `sources` JSONB, `triggered_by`, `created_at`)
+- New migration: `010_add_research_results`
+- New assistant tool: `research_motif_parallels` (requires user confirmation before executing)
+- New env vars: `RESEARCH_AUGMENTATION_ENABLED` (default `false`), `RESEARCH_API_KEY`
+- Trust constraint: all research output confidence values are `speculative`, `plausible`, or `uncertain` — never `high` or `confirmed`; always labeled as external and unverified
+
+### Scope Out
+
+- treating external results as authoritative
+- automating research without user request
+- storing research results in the dream archive tables
+- using research results to drive curation decisions
+
+### Dependencies
+
+- Phase 9 must be complete (`motif_inductions` table must exist; research requires confirmed inducted motifs)
+
+### Phase gate
+
+- `research_motif_parallels` tool requires explicit user confirmation before executing
+- all returned parallels carry source URL and retrieval timestamp
+- confidence vocabulary is limited to `speculative`, `plausible`, `uncertain`
+- feature flag disables the tool completely when set to `false`
+
+### Status: Planned
+
+See [docs/RESEARCH_AUGMENTATION.md](RESEARCH_AUGMENTATION.md) for full design documentation.
+See [docs/adr/ADR-009-research-trust-boundary.md](adr/ADR-009-research-trust-boundary.md).
+
+## 11. Phase 11 — Feedback Loop
+
+### Objective
+
+Allow the user to rate assistant responses on a 1–5 scale with an optional comment, providing a quality signal for human review.
+
+### Why this phase exists
+
+- the bounded tool-use loop produces assistant responses whose quality cannot currently be measured
+- a lightweight rating mechanism provides a signal for manual review without requiring automated retraining infrastructure
+- feedback is captured passively in Telegram without adding a separate workflow step
+
+### Scope In
+
+- New model: `assistant_feedback` (columns: `id`, `chat_id`, `context` JSONB, `score`, `comment`, `created_at`)
+- New migration: `011_add_feedback`
+- Telegram UX: a digit-only reply (1–5) sent immediately after a substantive assistant response is captured as a rating
+- New API route: `GET /feedback` (admin paginated view)
+
+### Scope Out
+
+- automated retraining or fine-tuning pipelines
+- using feedback scores to alter model behavior automatically
+- unsupervised training or reinforcement from feedback without explicit human review
+- multi-user feedback aggregation
+
+### Dependencies
+
+- independent of Phases 9 and 10
+
+### Phase gate
+
+- digit-only replies (1–5) are captured as ratings linked to the preceding assistant response context
+- ratings are retrievable via `GET /feedback`
+- the system does not alter model behavior based on ratings
+
+### Status: Planned
+
+See [docs/FEEDBACK_LOOP.md](FEEDBACK_LOOP.md) for full design documentation.

@@ -28,6 +28,32 @@ Lookup table for proof artifacts across review cycles, retrieval evaluations, an
 
 ---
 
+---
+
+## Trust Levels
+
+Evidence and model output in this system carry three distinct trust levels. These must not be conflated.
+
+### 1. Archive evidence
+
+Source: local PostgreSQL archive.
+Trust level: **high**.
+Description: results retrieved from `dream_entries`, `dream_themes`, `dream_chunks`, and related tables via RAG query or direct lookup. This content has been ingested from the user's own journal and, where applicable, curated via the approval and versioning pipeline. It is the canonical system of record.
+
+### 2. Inducted motifs
+
+Source: Phase 9 motif induction pipeline (model-derived).
+Trust level: **medium**.
+Description: abstract motif labels produced by `MotifInductor` from concrete imagery in a dream entry. These are computational abstractions, not curated facts. They are stored in `motif_inductions`, never in `dream_themes`. Default status is `draft`. A motif must be explicitly confirmed by the user before carrying any weight in analysis. The assistant must always present inducted motifs as model suggestions, not as conclusions. Confidence values: `high`, `moderate`, `low` — but even `high` confidence here means high confidence in the model's abstraction, not high confidence that the motif is analytically correct.
+
+### 3. External research
+
+Source: Phase 10 external search API (internet sources).
+Trust level: **explicitly low / speculative**.
+Description: structural parallels retrieved by `ResearchRetriever` from external mythology, folklore, and cultural material. This content is never verified against the archive. It is always labeled as external and unverified. Confidence vocabulary is restricted to: `speculative`, `plausible`, `uncertain`. The words `confirmed` and `high confidence` are prohibited for research results. Source URL and retrieval timestamp are required on every item. Research results must never be presented as findings.
+
+---
+
 ## Rules
 
 - Append entries; do not delete or update existing rows.

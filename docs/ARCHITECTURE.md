@@ -317,7 +317,85 @@ Covered areas:
 
 See [Testing Strategy](TESTING_STRATEGY.md).
 
-## 17. ADR Coverage
+## 17. Motif Abstraction Layer (Planned — Phase 9)
+
+Motif abstraction is a separate analytical layer that operates independently of the existing theme extraction pipeline.
+
+### Conceptual distinction
+
+- `ThemeExtractor` + `Grounder` (existing): assigns a dream to predefined categories from `theme_categories`. Closed vocabulary. Model selects from known options. Results stored in `dream_themes`.
+- `ImageryExtractor` + `MotifInductor` + `MotifGrounder` (Phase 9): derives abstract motif labels from concrete imagery without a predefined vocabulary. Open vocabulary. Model forms the abstraction itself. Results stored in `motif_inductions`. These two subsystems coexist; they are never merged.
+
+### Planned components
+
+| Component | Responsibility |
+|-----------|----------------|
+| `app/services/imagery.py` (`ImageryExtractor`) | Extract concrete imagery fragments from dream text |
+| `app/services/motif_inductor.py` (`MotifInductor`) | Form abstract motif labels from extracted imagery |
+| `app/services/motif_grounder.py` (`MotifGrounder`) | Verify imagery fragment offsets against source text |
+| `app/services/motif_service.py` (`MotifService`) | Orchestrate the induction pipeline; integrate with ingest |
+| `app/api/motifs.py` | REST API for motif retrieval and status updates |
+| `motif_inductions` table | Stores inducted motifs with label, rationale, confidence, status, fragments |
+
+### Trust level
+
+Inducted motifs are computational abstractions, draft by default, and require human confirmation. Trust level: medium. They must be presented as model suggestions, not as interpretations.
+
+### Feature flag
+
+`MOTIF_INDUCTION_ENABLED` (default `false`). The ingest pipeline does not call `MotifService` unless this flag is enabled.
+
+See [MOTIF_ABSTRACTION.md](MOTIF_ABSTRACTION.md) and [ADR-008](adr/ADR-008-motif-induction-vs-taxonomy.md).
+
+## 18. Research Augmentation Layer (Planned — Phase 10)
+
+Research augmentation is an on-demand external search layer for mythology, folklore, cultural, and taboo parallels to confirmed inducted motifs.
+
+### Trust boundary
+
+`ResearchRetriever` is an external trust boundary. All content retrieved by this component originates outside the system and cannot be verified by the archive. It is never stored in dream archive tables.
+
+### Planned components
+
+| Component | Responsibility |
+|-----------|----------------|
+| `app/research/retriever.py` (`ResearchRetriever`) | Call external search API; external trust boundary |
+| `app/research/synthesizer.py` (`ResearchSynthesizer`) | Summarise retrieved results into labeled parallels |
+| `research_results` table | Stores parallels with source URL and retrieval timestamp |
+
+### Trust level
+
+All research results carry confidence values of `speculative`, `plausible`, or `uncertain`. The words `confirmed` and `high confidence` are prohibited in research output. Source URL and retrieval timestamp are required on every result.
+
+### Feature flag
+
+`RESEARCH_AUGMENTATION_ENABLED` (default `false`). The `research_motif_parallels` assistant tool is unavailable unless this flag is enabled.
+
+See [RESEARCH_AUGMENTATION.md](RESEARCH_AUGMENTATION.md) and [ADR-009](adr/ADR-009-research-trust-boundary.md).
+
+## 19. Feedback Model (Planned — Phase 11)
+
+The `assistant_feedback` table stores user-submitted ratings (1–5) with optional comment. Ratings are linked to the chat context of the preceding assistant response.
+
+This is a quality signal for human review only. It does not feed into automated retraining or any unsupervised model update pipeline.
+
+See [FEEDBACK_LOOP.md](FEEDBACK_LOOP.md).
+
+## 20. Planned Storage Model (Phase 9–11 additions)
+
+Current tables (implemented):
+
+- `dream_entries`, `dream_chunks`, `dream_themes`, `theme_categories`, `annotation_versions`, `bot_sessions`, `voice_media_events`
+
+Planned additions:
+
+| Table | Phase | Purpose |
+|-------|-------|---------|
+| `motif_inductions` | 9 | Open-vocabulary inducted motifs; separate from `dream_themes` |
+| `research_results` | 10 | External research parallels; external trust boundary |
+| `assistant_feedback` | 11 | User rating scores; quality signal only |
+
+## 21. ADR Coverage
 
 Architecture-affecting decisions are documented in `docs/adr/`:
 
@@ -328,6 +406,9 @@ Architecture-affecting decisions are documented in `docs/adr/`:
 - ADR-005: managed transcription first (OpenAI Whisper)
 - ADR-006: persisted bot session state
 - ADR-007: Compose-first Telegram deployment
+- ADR-008: inducted motifs and taxonomy themes as separate data models (planned)
+- ADR-009: research trust boundary and confidence vocabulary (planned)
+- ADR-010: feature flag gating for Phase 9 and Phase 10 (planned)
 
 ## 18. Resolved Architectural Decisions
 

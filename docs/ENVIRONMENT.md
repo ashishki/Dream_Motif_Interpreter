@@ -98,7 +98,23 @@ Recommended profiles:
 - `development`: local API, local bot, local Postgres/Redis
 - `production`: private VPS or private host, persistent storage, supervised processes
 
-## 6. Config Decision Notes
+## 6. Phase 9–10 Feature Flag Variables (Planned)
+
+```env
+MOTIF_INDUCTION_ENABLED=false
+RESEARCH_AUGMENTATION_ENABLED=false
+RESEARCH_API_KEY=
+```
+
+`MOTIF_INDUCTION_ENABLED` — enables the Phase 9 motif induction pipeline. When `false` (default), ingest does not call `MotifService` and the `get_dream_motifs` assistant tool is unavailable. Set to `true` only after migration `009_add_motif_inductions` has been applied.
+
+`RESEARCH_AUGMENTATION_ENABLED` — enables the Phase 10 research augmentation tool. When `false` (default), the `research_motif_parallels` assistant tool is unavailable. Set to `true` only after migration `010_add_research_results` has been applied and `RESEARCH_API_KEY` is configured.
+
+`RESEARCH_API_KEY` — API key for the external search provider used by `ResearchRetriever`. Optional; required only when `RESEARCH_AUGMENTATION_ENABLED=true`. Must not be committed or logged.
+
+See [ADR-010](adr/ADR-010-feature-flag-gating.md) for the rationale behind default-off gating.
+
+## 7. Config Decision Notes
 
 Must be finalized during implementation:
 
@@ -106,3 +122,4 @@ Must be finalized during implementation:
 - transcription provider config
 - media retention settings
 - whether Google Docs auth remains OAuth-env based or moves to service-account JSON
+- external search provider selection for Phase 10 (`RESEARCH_API_KEY`)

@@ -507,3 +507,9 @@ Context-Refs:
 - `docs/tasks.md` remains the historical task graph for the backend build-out through Phase 5
 - `docs/tasks_phase6.md` is the active task graph for Telegram, voice, and Phase 6+ work
 - when these files diverge, use this file for current implementation work unless the task explicitly targets historical backend follow-up
+
+## 7. Phase 9 Task Graph
+
+Phase 9 (Motif Abstraction and Induction) workstreams are tracked in:
+
+- [docs/tasks_phase9.md](tasks_phase9.md)

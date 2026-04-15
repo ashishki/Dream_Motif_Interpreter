@@ -1,7 +1,7 @@
 # Decision Log — Dream Motif Interpreter
 
 Version: 2.0  
-Last updated: 2026-04-14
+Last updated: 2026-04-15 (Phase 8 complete — all proposed decisions confirmed)
 
 ## Rules
 
@@ -21,11 +21,11 @@ Last updated: 2026-04-14
 | D-006 | 2026-04-14 | Active | Telegram should be added inside the same repository as a separate runtime/process | ADR-003 |
 | D-007 | 2026-04-14 | Active | The conversational layer must use a bounded internal assistant-tool facade | ADR-004 |
 | D-008 | 2026-04-14 | Active | Phase 6 Telegram scope should start read-oriented plus explicit sync trigger | `docs/PHASE_PLAN.md` |
-| D-009 | 2026-04-14 | Proposed | Voice support enters as a separate Phase 7 with async transcription | ADR-005 |
-| D-010 | 2026-04-14 | Proposed | Bot session state should be persisted durably, with Redis used only for ephemeral coordination | ADR-006 |
-| D-011 | 2026-04-14 | Proposed | Compose-first is the canonical deployment documentation for the Telegram-enabled stack | ADR-007 |
+| D-009 | 2026-04-14 | Active | Voice support entered as Phase 7 with async transcription via OpenAI Whisper | ADR-005 |
+| D-010 | 2026-04-14 | Active | Bot session state persisted in PostgreSQL `bot_sessions`; Redis for ephemeral only | ADR-006 |
+| D-011 | 2026-04-14 | Active | Compose-first is the canonical deployment; `telegram-bot` service added to docker-compose.yml | ADR-007 |
 
 ## Notes
 
-- Decisions marked `Proposed` are intentional planning decisions for Phase 6+ and should be confirmed during implementation.
-- The presence of a decision in this log does not imply the corresponding implementation already exists.
+- All decisions through D-011 are Active — confirmed and implemented through Phase 8.
+- The presence of a decision in this log implies the corresponding implementation exists unless explicitly marked otherwise.

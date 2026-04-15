@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.26
+Version: 1.27
 Date: 2026-04-15
 Phase: 6-active
 
@@ -8,11 +8,11 @@ Phase: 6-active
 
 ## Current State
 
-- **Phase:** 6 active (P6-T05 complete)
-- **Baseline:** 71 unit tests passing (8 new), 0 failures
+- **Phase:** 6 active (P6-T06 complete)
+- **Baseline:** 71 unit tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-15 (P6-T05 — BotSession model, migration 007, session load/save in handle_chat)
+- **Last updated:** 2026-04-15 (P6-T06 — docker-compose telegram-bot service, DEPLOY/ENVIRONMENT/RUNBOOK docs updated)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,8 +21,8 @@ Phase: 6-active
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 5 complete for the backend platform
-- **Current planning state:** Phase 6 active; P6-T05 complete; next is P6-T06 (Deployment and Config Wiring)
-- **Latest completed implementation task:** P6-T05 — Session Persistence (BotSession, migration 007, load/save in chat)
+- **Current planning state:** Phase 6 active; P6-T06 complete; next is P6-T07 (Phase 6 Test Coverage)
+- **Latest completed implementation task:** P6-T06 — Deployment and Config Wiring
 - **Current baseline:** 71 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 

@@ -1,6 +1,6 @@
 # Auth and Security
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15 (P8-T01 — resolved pending security decisions)
 
 ## 1. Current Backend Auth
 
@@ -58,9 +58,11 @@ For Phase 7 voice support:
 - no transcript text in logs unless explicitly redacted and justified
 - use IDs and status codes for operational tracing
 
-## 7. Pending Security Decisions
+## 7. Resolved Security Decisions (Phase 7)
 
-- final Telegram allowlist fields
-- raw audio retention length
-- transcript retention length
-- whether transcription is remote or local
+All items previously pending have been decided and implemented:
+
+- **Telegram allowlist field**: `chat_id` only (`TELEGRAM_ALLOWED_CHAT_ID`). `user_id` allowlisting is deferred to a future phase.
+- **Raw audio retention**: deleted **immediately** after successful transcription via `delete_local_voice_file`. A sweep cleanup (`cleanup_voice_media`) handles any survivors. Retention window is configurable via `VOICE_RETENTION_SECONDS` (default: 3600 seconds).
+- **Transcript retention**: transcripts are not stored independently. They exist only transiently in memory during the `transcribe_and_reply` task and are immediately passed to `handle_chat`. No transcript is written to disk or DB.
+- **Transcription provider**: **OpenAI Whisper API** (managed, remote). Local Whisper is deferred — no model management burden for Phase 7. See `app/workers/transcribe.py`.

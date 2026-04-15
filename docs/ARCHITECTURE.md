@@ -191,7 +191,7 @@ Telegram handlers embedded directly into the FastAPI process:
 | `app/services/` | domain services and business rules | current |
 | `app/retrieval/` | chunking, embeddings, retrieval | current |
 | `app/workers/` | sync and indexing workers | current |
-| `app/assistant/` | bounded internal assistant tool facade and session policy | planned |
+| `app/assistant/` | bounded internal assistant service facade and session policy | current (Phase 6 facade); Telegram runtime still planned |
 | `app/telegram/` | Telegram runtime, routing, presenters, voice ingress | planned |
 | `app/workers/transcription*` | async voice transcription jobs | planned |
 
@@ -207,6 +207,9 @@ The assistant layer should call a bounded service facade such as:
 - `get_patterns`
 - `get_theme_history`
 - `trigger_sync`
+
+Phase 6 now introduces `app/assistant/facade.py::AssistantFacade` as that backend boundary.
+It wraps internal services and read queries directly, returns DTO-style values rather than ORM objects, and keeps session ownership inside the facade.
 
 Deferred or tightly gated tools:
 

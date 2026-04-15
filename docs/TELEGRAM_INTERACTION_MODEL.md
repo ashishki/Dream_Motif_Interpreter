@@ -68,11 +68,15 @@ The Telegram assistant should:
 - `search_dreams`
 - `get_dream`
 - `list_recent_dreams`
-- `get_recurring_patterns`
-- `get_co_occurrence_patterns`
-- `get_theme_timeline`
+- `get_patterns`
 - `get_theme_history`
 - `trigger_sync`
+
+Phase 6 boundary note:
+
+- Telegram should call the bounded `AssistantFacade` in `app/assistant/`
+- the facade returns DTO-style values and owns its DB sessions internally
+- raw ORM/session access is not part of the assistant surface
 
 Deferred tools:
 

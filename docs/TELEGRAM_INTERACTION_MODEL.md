@@ -1,6 +1,6 @@
 # Telegram Interaction Model
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15 (P8-T02 — curation deferral made explicit)
 
 ## 1. Purpose
 
@@ -123,13 +123,32 @@ If a request cannot be fulfilled:
 - prefer grounded partial help over fabricated confidence
 - preserve the same `insufficient_evidence` philosophy used in the backend
 
-## 11. Future Expansion Rule
+## 11. Chat-Driven Curation — Deferred (P8-T02 Decision)
 
-Do not add chat-driven archive mutations until:
+**Decision (2026-04-15):** chat-driven archive mutations are deferred beyond Phase 8.
 
-- the text assistant is stable
-- the audit and confirmation UX is explicit
-- the failure modes are well understood
+Telegram is currently **read-oriented**. The active tool catalog contains only:
+- `search_dreams`, `get_dream`, `list_recent_dreams`, `get_patterns`, `get_theme_history` — read-only
+- `trigger_sync` — write (re-import), not curation
+
+The following tools remain deferred and are not implemented:
+- `confirm_theme`
+- `reject_theme`
+- `rollback_theme`
+- `approve_category`
+
+Rationale for continued deferral:
+- the text assistant is stable (Phase 6–7 complete) ✓
+- an explicit, auditable confirmation UX is NOT yet designed ✗
+- failure modes for conversational mutations are NOT yet documented ✗
+
+Preconditions before enabling any curation tool:
+1. Design a two-phase confirmation UX (intent → explicit confirmation message → execute).
+2. Ensure all mutation calls produce an `AnnotationVersion` audit record.
+3. Define rollback UX for cases where the user issues an erroneous confirm.
+4. Document the failure modes (partial failure, concurrent mutations, sync conflicts).
+
+Until all four preconditions are met, chat-driven mutation tools must not be added to the TOOLS catalog or AssistantFacade.
 
 Implementation sequencing for this surface is tracked in:
 

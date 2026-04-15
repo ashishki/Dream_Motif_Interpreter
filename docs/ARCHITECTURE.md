@@ -1,7 +1,7 @@
 # Architecture — Dream Motif Interpreter
 
 Version: 2.0  
-Last updated: 2026-04-14  
+Last updated: 2026-04-15  
 Status: Active for current backend; target-state guidance for Phase 6+
 
 ## 1. System Definition
@@ -57,18 +57,29 @@ Current storage ownership:
 - PostgreSQL is the canonical system of record
 - Redis stores job state and approval-token state
 
-## 4. Important Current-State Caveat
+## 4. Current Backend Execution Boundary
 
-The repository documentation from Phases 1-5 describes a complete ingest -> analyse -> index path.
-The codebase clearly contains the required service pieces, but the currently visible worker wiring does not yet show the full orchestration path in one place.
+The active runtime wiring is now explicit:
 
-Observed examples:
+1. `POST /sync` in `app/api/dreams.py` enqueues `app.workers.ingest.ingest_document`.
+2. `ingest_document()` fetches Google Docs paragraphs and calls `_store_entries()`.
+3. `_store_entries()` segments the document, upserts `DreamEntry` rows by `content_hash`, and returns the resolved `dream_id` values for both newly inserted and already-known entries.
+4. `_collect_pipeline_targets()` inspects downstream state for those `dream_id` values:
+   - if a dream has no `DreamTheme` rows, it is queued for analysis
+   - if a dream has no `DreamChunk` rows, it is queued for indexing
+5. `_run_post_store_pipeline()` runs the missing downstream stages in order:
+   - `AnalysisService.analyse_dream_with_session_factory()` for dreams missing analysis
+   - `app.workers.index.index_dream()` for dreams missing indexed chunks
+6. `index_dream()` delegates to `RagIngestionService.index_dream()`, which chunks the dream text, embeds it, and upserts `DreamChunk` rows on `(dream_id, chunk_index)`.
 
-- `AnalysisService` exists in [app/services/analysis.py](/home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/app/services/analysis.py)
-- indexing exists in [app/retrieval/ingestion.py](/home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/app/retrieval/ingestion.py)
-- the sync worker in [app/workers/ingest.py](/home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/app/workers/ingest.py) visibly stores entries, but does not visibly call analysis or indexing
+Resulting runtime contract:
 
-This mismatch should be resolved before Phase 6 implementation begins.
+- Newly synced dreams are analysed and indexed automatically.
+- Re-syncing the same dream does not create duplicate `DreamEntry` or `DreamChunk` rows because storage uses `content_hash` and `(dream_id, chunk_index)` idempotency keys.
+- Re-syncing a dream that already has both themes and chunks skips those downstream stages.
+- Re-syncing a dream that is present but missing themes or chunks repairs the missing stage on the next sync run.
+
+This is the boundary Phase 6 should rely on.
 
 ## 5. Core Architectural Principles
 

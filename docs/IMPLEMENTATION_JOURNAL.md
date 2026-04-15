@@ -23,6 +23,15 @@ Status: append-only
 
 ## Entries
 
+### 2026-04-15 — P6-T01 — Reconcile Backend Execution Boundary
+
+- Scope: `app/workers/ingest.py`, `app/workers/index.py`, `app/services/analysis.py`, `tests/integration/test_workers.py`, `docs/ARCHITECTURE.md`
+- Why this work happened: Phase 6 planning could not safely proceed while the documented sync -> analyse -> index path was ambiguous in the runtime wiring
+- Decisions applied: keep the backend in a bounded workflow shape; the ingest worker now owns orchestration of downstream analysis and indexing instead of leaving that path implicit
+- Evidence collected: `python3 -m pytest tests/integration/test_workers.py -q --tb=short` → `6 passed`; the worker path now stores dream entries, detects missing downstream artifacts, runs `AnalysisService` for missing themes, and runs `RagIngestionService` through `app/workers/index.py` for missing chunks
+- Follow-ups: none for the execution-boundary ambiguity; newly synced dreams are now automatically analysed and indexed, and resync skips already-complete downstream stages
+- Notes for next agent: the ingest worker is the canonical execution boundary for Phase 6 assumptions; if a dream exists but is missing themes or chunks, a later sync run repairs only the missing stage instead of duplicating stored records
+
 ### 2026-04-14 — DOC-PHASE6 — Telegram and Voice Documentation Rewrite
 
 - Scope: `README.md`, `docs/ARCHITECTURE.md`, `docs/spec.md`, `docs/PHASE_PLAN.md`, `docs/PRODUCT_OVERVIEW.md`, `docs/ENVIRONMENT.md`, `docs/DEPLOY.md`, `docs/TELEGRAM_INTERACTION_MODEL.md`, `docs/VOICE_PIPELINE.md`, `docs/AUTH_SECURITY.md`, `docs/TESTING_STRATEGY.md`, `docs/RUNBOOK_TELEGRAM_BOT.md`, `docs/RUNBOOK_VOICE_PIPELINE.md`, `docs/DECISION_LOG.md`, `docs/CODEX_PROMPT.md`, and ADRs 003-007

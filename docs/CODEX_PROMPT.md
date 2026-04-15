@@ -1,18 +1,18 @@
 # CODEX_PROMPT.md
 
-Version: 1.21
-Date: 2026-04-14
-Phase: 6-planning
+Version: 1.22
+Date: 2026-04-15
+Phase: 6-active
 
 ---
 
 ## Current State
 
-- **Phase:** 6 planning
-- **Baseline:** 98 passing tests, 9 skipped
+- **Phase:** 6 active (P6-T01 complete)
+- **Baseline:** 99 passing tests, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-14 (Phase 6+ documentation rewrite for Telegram and voice evolution)
+- **Last updated:** 2026-04-15 (P6-T01 — backend execution boundary wired; analysis and indexing now run automatically after sync)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,9 +21,9 @@ Phase: 6-planning
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 5 complete for the backend platform
-- **Current planning state:** Phase 6+ target architecture, roadmap, and operations docs prepared for Telegram text, voice, and deployment evolution
-- **Latest completed implementation task:** FIX-C9 — Technical Debt — P3 Findings
-- **Current baseline:** 98 passing tests, 9 skipped
+- **Current planning state:** Phase 6 active; P6-T01 complete; next is P6-T02 (Assistant Service Facade)
+- **Latest completed implementation task:** P6-T01 — Reconcile Backend Execution Boundary
+- **Current baseline:** 99 passing tests, 9 skipped
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -41,17 +41,14 @@ Phase: 6-planning
 
 ## Next Task
 
-Implementation planning and execution for the Phase 6 Telegram interaction foundation.
+P6-T02 — Assistant Service Facade.
 Read first:
 
-- `docs/ARCHITECTURE.md`
-- `docs/PHASE_PLAN.md`
-- `docs/tasks_phase6.md`
+- `docs/ARCHITECTURE.md` (§10 Assistant Boundary)
+- `docs/tasks_phase6.md` (P6-T02 entry)
 - `docs/TELEGRAM_INTERACTION_MODEL.md`
-- `docs/VOICE_PIPELINE.md`
-- `docs/ENVIRONMENT.md`
-- `docs/AUTH_SECURITY.md`
-- `~/Documents/dev/ai-stack/projects/film-school-assistant` as the implementation reference for interaction-layer patterns
+- `docs/adr/ADR-004-bounded-assistant-tool-facade.md`
+- `/home/gdev/film-school-assistant` as the implementation reference for interaction-layer patterns
 
 Before coding, resolve the documented open decisions around:
 
@@ -331,6 +328,7 @@ none
 
 ## Completed Tasks
 
+- **P6-T01** — Reconcile Backend Execution Boundary — 2026-04-15 — 99 tests passing, 9 skipped — ingest worker now calls AnalysisService and index_dream after storing entries; _collect_pipeline_targets detects missing themes/chunks; resync skips complete stages; fetch_document offloaded via asyncio.to_thread; ARCHITECTURE.md §4 updated with explicit runtime contract
 - **FIX-C9** — Technical Debt — P3 Findings — 2026-04-14 — 98 tests passing, 9 skipped — CODE-7/13/16/40/41 and ARCH-10/11/12/12-E/15 closed via environment-aware host binding, retrieval query expansion fallback, structured fragment metadata, shared DB session factory extraction, eval history append logic, and ADR documentation
 - **FIX-C8** — Technical Debt — P2 Findings — 2026-04-14 — 95 tests passing, 9 skipped — CODE-48/49/50 closed via guarded initial Redis status writes, shared Redis client shutdown, and malformed bulk-confirm token handling; prompt continuity refreshed
 - **T20** — End-to-End Integration Test — 2026-04-14 — 93 tests passing, 9 skipped — end-to-end sync-to-search coverage added with test-only pipeline orchestration; flow now exercises sync, analysis, search, bulk curation approval, pattern APIs, rollback history, and cleanup assertions

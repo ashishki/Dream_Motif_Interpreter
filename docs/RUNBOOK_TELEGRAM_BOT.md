@@ -1,10 +1,10 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-04-15
+Last updated: 2026-04-15 (P6-T06 update)
 
 ## 1. Purpose
 
-Operate the Telegram bot runtime for Dream Motif Interpreter once Phase 6+ is implemented.
+Operate the Telegram bot runtime for Dream Motif Interpreter (Phase 6+ implemented).
 
 ## 2. Primary Responsibilities
 
@@ -16,15 +16,30 @@ Operate the Telegram bot runtime for Dream Motif Interpreter once Phase 6+ is im
 
 ## 3. Startup Checklist
 
-- bot token present
-- allowed chat ID configured
-- Postgres reachable
-- OpenAI, Anthropic, and Google Docs credentials configured if assistant-backed search or sync paths are used
+- `TELEGRAM_BOT_TOKEN` set in environment
+- `TELEGRAM_ALLOWED_CHAT_ID` set to the single authorized chat ID
+- `ANTHROPIC_API_KEY` set (required for the bounded tool-use loop)
+- `DATABASE_URL` reachable and migrations applied (including 007_add_bot_sessions)
+- `REDIS_URL` reachable
 
-Startup command:
+Startup command (direct):
 
 ```bash
-python3 -m app.telegram.bot
+python3 -m app.telegram
+```
+
+Startup via Compose:
+
+```bash
+docker compose up telegram-bot
+```
+
+The bot process runs long polling. No public webhook endpoint is required for Phase 6.
+
+Optional tuning:
+
+```env
+ASSISTANT_MODEL=claude-haiku-4-5-20251001   # default; override for a different model tier
 ```
 
 ## 4. Common Failure Modes

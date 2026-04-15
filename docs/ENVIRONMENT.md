@@ -28,24 +28,30 @@ MAX_INDEX_AGE_HOURS=24
 BULK_CONFIRM_TOKEN_TTL_SECONDS=600
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ALLOWED_CHAT_ID=0
+ASSISTANT_MODEL=claude-haiku-4-5-20251001
 ```
 
-## 2. Planned Phase 6+ Variables
+`ASSISTANT_MODEL` — Claude model used by the bounded tool-use loop. Defaults to `claude-haiku-4-5-20251001`.
 
-The Telegram bot runtime now uses:
+## 2. Phase 6 Telegram Variables
+
+The Telegram bot runtime requires:
 
 ```env
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_ALLOWED_CHAT_ID=...
+ANTHROPIC_API_KEY=...
 ```
 
-Current Phase 6 contract:
+Phase 6 contract:
 
 - `TELEGRAM_BOT_TOKEN` is required only for the separate bot process.
-- `TELEGRAM_ALLOWED_CHAT_ID` is the single-chat allowlist for Phase 6.
-- The bot runtime uses long polling via `python3 -m app.telegram.bot`.
+- `TELEGRAM_ALLOWED_CHAT_ID` is the single authorized chat ID.
+- `ANTHROPIC_API_KEY` is required for the bounded tool-use conversation loop.
+- The bot runtime uses long polling: `python3 -m app.telegram`.
+- Session history is persisted in the `bot_sessions` table — run migration 007 before starting the bot.
 
-Still deferred for later phases:
+Deferred for later phases:
 
 - `TELEGRAM_ALLOWED_USER_ID`
 - voice/media retention variables

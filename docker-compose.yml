@@ -25,5 +25,17 @@ services:
       timeout: 5s
       retries: 5
 
+  telegram-bot:
+    build: .
+    command: python3 -m app.telegram
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:

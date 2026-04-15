@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15 (P6-T06 update)
 
 ## 1. Deployment Philosophy
 
@@ -17,24 +17,33 @@ Recommended canonical deployment documentation:
 Current backend services:
 
 - API process
-- worker process
-- PostgreSQL
+- worker process (arq)
+- PostgreSQL (pgvector)
 - Redis
 
-The repository already includes [docker-compose.yml](/home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docker-compose.yml) for PostgreSQL and Redis.
+`docker-compose.yml` in the repository root defines `postgres` and `redis` infrastructure services.
 
-## 3. Planned Telegram-Enabled Topology
+## 3. Phase 6 Telegram-Enabled Topology
 
-Recommended target service set:
+Phase 6 service set:
 
 ```text
-postgres
-redis
-api
-worker
-telegram-bot
-optional: media-cleanup
-optional: scheduled-sync
+postgres       — primary persistent store (dreams, themes, bot sessions)
+redis          — ephemeral job-state, arq worker coordination
+api            — FastAPI HTTP layer (python3 -m uvicorn app.main:app)
+worker         — arq background jobs (python3 -m arq app.workers.ingest.WorkerSettings)
+telegram-bot   — long-polling Telegram bot (python3 -m app.telegram)
+```
+
+The `telegram-bot` service is defined in `docker-compose.yml` and starts with `--restart unless-stopped`.
+
+Pre-start prerequisite: run `alembic upgrade head` to apply migrations including `007_add_bot_sessions`.
+
+Optional future services (Phase 7+):
+
+```text
+media-cleanup
+scheduled-sync
 ```
 
 ## 4. Recommended Initial Telegram Deployment Mode

@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ENV: str
 
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_ALLOWED_CHAT_ID: int = 0
+
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     RETRIEVAL_THRESHOLD: float = 0.35
     MAX_INDEX_AGE_HOURS: int = 24

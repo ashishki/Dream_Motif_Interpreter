@@ -7,7 +7,7 @@ from telegram.ext import Application, ApplicationBuilder, MessageHandler, TypeHa
 
 from app.assistant.facade import AssistantFacade
 from app.shared.config import Settings, get_settings
-from app.telegram.handlers import chat_guard, error_handler, text_message_handler
+from app.telegram.handlers import chat_guard, error_handler, text_message_handler, voice_message_handler
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ def build_application(
     facade: AssistantFacade,
     *,
     session_factory: object | None = None,
+    voice_media_dir: str = "/tmp/dream_voice",
 ) -> Application:
     settings = get_settings()
     _validate_bot_settings(settings)
@@ -29,19 +30,28 @@ def build_application(
     application.bot_data["facade"] = facade
     application.bot_data["allowed_chat_id"] = settings.TELEGRAM_ALLOWED_CHAT_ID
     application.bot_data["session_factory"] = session_factory
+    application.bot_data["voice_media_dir"] = voice_media_dir
 
     application.add_handler(TypeHandler(Update, chat_guard), group=-1000)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
+    application.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
     application.add_error_handler(error_handler)
     return application
 
 
-def main(facade: AssistantFacade, *, session_factory: object | None = None) -> None:
+def main(
+    facade: AssistantFacade,
+    *,
+    session_factory: object | None = None,
+    voice_media_dir: str = "/tmp/dream_voice",
+) -> None:
     """Start the Telegram bot. Accepts a pre-constructed facade to keep domain imports
     out of the telegram package. Call from app/telegram/__main__.py or tests."""
     settings = get_settings()
     _validate_bot_settings(settings)
-    application = build_application(facade, session_factory=session_factory)
+    application = build_application(
+        facade, session_factory=session_factory, voice_media_dir=voice_media_dir
+    )
 
     LOGGER.info("Starting Telegram bot with long polling")
     try:

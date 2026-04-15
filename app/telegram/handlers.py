@@ -6,7 +6,8 @@ from telegram import Update
 from telegram.error import TelegramError
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
-from app.assistant.facade import AssistantFacade, SearchResult
+from app.assistant.chat import handle_chat
+from app.assistant.facade import AssistantFacade
 
 LOGGER = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
@@ -28,8 +29,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     facade = _get_facade(context)
-    result = await facade.search_dreams(message.text)
-    await message.reply_text(_format_search_result(result))
+    reply = await handle_chat(message.text, facade)
+    await message.reply_text(reply)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -53,17 +54,3 @@ def _get_facade(context: ContextTypes.DEFAULT_TYPE) -> AssistantFacade:
     if not isinstance(facade, AssistantFacade):
         raise RuntimeError("Telegram bot facade not configured")
     return facade
-
-
-def _format_search_result(result: SearchResult) -> str:
-    if result.insufficient_reason is not None:
-        return f"I could not find enough archive evidence for that request: {result.insufficient_reason}."
-
-    if not result.items:
-        return "I could not find matching dream archive entries."
-
-    lines = ["Archive matches:"]
-    for item in result.items[:3]:
-        date_label = item.date.isoformat() if item.date is not None else "unknown-date"
-        lines.append(f"- {date_label} [{item.relevance_score:.2f}] {item.chunk_text}")
-    return "\n".join(lines)

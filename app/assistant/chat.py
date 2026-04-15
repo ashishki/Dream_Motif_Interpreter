@@ -1,0 +1,102 @@
+"""Bounded conversational tool-use loop for the dream archive assistant."""
+from __future__ import annotations
+
+import logging
+import os
+from typing import Any
+
+from anthropic import AsyncAnthropic
+
+from app.assistant.facade import AssistantFacade
+from app.assistant.tools import TOOLS, execute_tool
+
+LOGGER = logging.getLogger(__name__)
+
+_SYSTEM_PROMPT = (
+    "You are a careful, grounded dream archive assistant. "
+    "Answer in the same language the user writes in. "
+    "Use only the provided tools to access archive data — never invent dream content or themes. "
+    "When archive evidence is weak or absent, say so directly without fabricating. "
+    "Keep responses concise and grounded in what the archive contains. "
+    "Make a clear distinction between 'what the archive records' and 'what you infer'."
+)
+
+_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+_MAX_TOOL_ROUNDS = 5
+
+
+async def handle_chat(message_text: str, facade: AssistantFacade) -> str:
+    """Process a user text message through the bounded tool-use loop.
+
+    Returns a plain text response suitable for sending back to the user.
+    Never raises — errors are returned as user-facing strings.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        LOGGER.error("ANTHROPIC_API_KEY is not set — chat unavailable")
+        return "The assistant is not available: API key not configured."
+
+    model = os.environ.get("ASSISTANT_MODEL", _DEFAULT_MODEL)
+    client = AsyncAnthropic(api_key=api_key)
+
+    messages: list[dict[str, Any]] = [{"role": "user", "content": message_text}]
+    round_counter = 0
+    last_text = ""
+
+    while True:
+        try:
+            response = await client.messages.create(
+                model=model,
+                system=_SYSTEM_PROMPT,
+                max_tokens=1024,
+                messages=messages,
+                tools=TOOLS,
+            )
+        except Exception:
+            LOGGER.exception("Claude chat request failed")
+            return "Something went wrong while contacting the assistant. Please try again."
+
+        current_text = _extract_text(response)
+        if current_text:
+            last_text = current_text
+
+        if response.stop_reason != "tool_use":
+            break
+
+        tool_blocks = [b for b in response.content if getattr(b, "type", None) == "tool_use"]
+        tool_results: list[str] = []
+        for block in tool_blocks:
+            result = await execute_tool(block.name, block.input, facade)
+            tool_results.append(result)
+
+        messages.append({"role": "assistant", "content": response.content})
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result,
+                    }
+                    for block, result in zip(tool_blocks, tool_results, strict=True)
+                ],
+            }
+        )
+
+        round_counter += 1
+        if round_counter >= _MAX_TOOL_ROUNDS:
+            LOGGER.warning("Tool-use loop guard fired after %s rounds", round_counter)
+            break
+
+    if not last_text:
+        return "No response from the assistant."
+    return last_text
+
+
+def _extract_text(response: Any) -> str:
+    parts: list[str] = []
+    for block in response.content:
+        if getattr(block, "type", None) == "text" and getattr(block, "text", ""):
+            parts.append(block.text)
+    return "".join(parts).strip()

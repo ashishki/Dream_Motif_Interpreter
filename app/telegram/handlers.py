@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from telegram import Update
@@ -48,13 +49,12 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle Telegram voice messages from the authorized user.
 
-    Lifecycle (P7-T01):
+    Lifecycle (P7-T01 + P7-T02):
     1. Validate voice attachment is present.
     2. Persist VoiceMediaEvent with metadata (AC-2).
     3. Download the file to local temp storage.
     4. Acknowledge that processing has started (AC-3).
-
-    Transcription enqueuing (step 5+) is deferred to P7-T02.
+    5. Enqueue async transcription task via asyncio.create_task.
     """
     message = update.effective_message
     chat = update.effective_chat
@@ -64,6 +64,7 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     session_factory = context.bot_data.get("session_factory")
     media_dir: str = context.bot_data.get("voice_media_dir", "/tmp/dream_voice")
+    bot_token: str = context.bot_data.get("bot_token", "")
     voice = message.voice
 
     event_id = None
@@ -108,11 +109,37 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     except TelegramError:
         LOGGER.warning("Failed to send voice processing acknowledgement", exc_info=True)
 
-    LOGGER.info(
-        "Voice ingress complete — transcription pending event_id=%s duration=%ss",
-        event_id,
-        voice.duration,
-    )
+    facade = context.bot_data.get("facade")
+    if (
+        event_id is not None
+        and session_factory is not None
+        and bot_token
+        and isinstance(facade, AssistantFacade)
+    ):
+        from app.workers.transcribe import transcribe_and_reply
+
+        task = asyncio.create_task(
+            transcribe_and_reply(
+                event_id=event_id,
+                local_path=local_path,
+                chat_id=chat.id,
+                telegram_bot_token=bot_token,
+                session_factory=session_factory,
+                facade=facade,
+            )
+        )
+        context.bot_data.setdefault("_transcription_tasks", set()).add(task)
+        task.add_done_callback(context.bot_data["_transcription_tasks"].discard)
+        LOGGER.info(
+            "Transcription task enqueued event_id=%s duration=%ss",
+            event_id,
+            voice.duration,
+        )
+    else:
+        LOGGER.info(
+            "Voice ingress complete — transcription skipped (missing config) event_id=%s",
+            event_id,
+        )
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -31,6 +31,7 @@ def build_application(
     application.bot_data["allowed_chat_id"] = settings.TELEGRAM_ALLOWED_CHAT_ID
     application.bot_data["session_factory"] = session_factory
     application.bot_data["voice_media_dir"] = voice_media_dir
+    application.bot_data["bot_token"] = settings.TELEGRAM_BOT_TOKEN
 
     application.add_handler(TypeHandler(Update, chat_guard), group=-1000)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))

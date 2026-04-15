@@ -1,6 +1,6 @@
 # Environment and Configuration
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
 ## 1. Current Backend Variables
 
@@ -26,25 +26,30 @@ EMBEDDING_MODEL=text-embedding-3-small
 RETRIEVAL_THRESHOLD=0.35
 MAX_INDEX_AGE_HOURS=24
 BULK_CONFIRM_TOKEN_TTL_SECONDS=600
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_CHAT_ID=0
 ```
 
 ## 2. Planned Phase 6+ Variables
 
-The Telegram-enabled system is expected to add variables such as:
+The Telegram bot runtime now uses:
 
 ```env
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_ALLOWED_CHAT_ID=...
-TELEGRAM_ALLOWED_USER_ID=...
-TELEGRAM_MODE=polling
-BOT_SESSION_RETENTION_DAYS=30
-VOICE_MEDIA_DIR=data/voice
-VOICE_MEDIA_RETENTION_HOURS=48
-TRANSCRIPTION_PROVIDER=managed
-TRANSCRIPTION_MODEL=...
 ```
 
-These names are planning placeholders until implementation finalizes the exact contract.
+Current Phase 6 contract:
+
+- `TELEGRAM_BOT_TOKEN` is required only for the separate bot process.
+- `TELEGRAM_ALLOWED_CHAT_ID` is the single-chat allowlist for Phase 6.
+- The bot runtime uses long polling via `python3 -m app.telegram.bot`.
+
+Still deferred for later phases:
+
+- `TELEGRAM_ALLOWED_USER_ID`
+- voice/media retention variables
+- transcription provider variables
 
 ## 3. Google Docs Credential Note
 

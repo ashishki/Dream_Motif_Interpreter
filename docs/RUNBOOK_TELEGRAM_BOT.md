@@ -1,6 +1,6 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
 ## 1. Purpose
 
@@ -18,11 +18,14 @@ Operate the Telegram bot runtime for Dream Motif Interpreter once Phase 6+ is im
 
 - bot token present
 - allowed chat ID configured
-- allowed user ID configured if required
 - Postgres reachable
-- Redis reachable
-- API/service dependencies reachable
-- media directory configured if voice is enabled
+- OpenAI, Anthropic, and Google Docs credentials configured if assistant-backed search or sync paths are used
+
+Startup command:
+
+```bash
+python3 -m app.telegram.bot
+```
 
 ## 4. Common Failure Modes
 
@@ -39,7 +42,6 @@ Check:
 Check:
 
 - chat ID configuration
-- user ID allowlist configuration
 - whether the bot was added to an unexpected chat
 
 ### Bot replies with backend failure

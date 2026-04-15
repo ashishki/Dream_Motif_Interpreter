@@ -23,6 +23,114 @@ Status: append-only
 
 ## Entries
 
+### 2026-04-15 — P8-T02 — Controlled Evaluation of Chat Curation
+
+- Scope: `docs/TELEGRAM_INTERACTION_MODEL.md`
+- Why this work happened: Phase 8 required an explicit allow/deny decision on chat-driven archive mutations before the phase could close
+- Decisions applied: D-007, D-008; defer decision confirmed
+- Evidence collected: facade and tool catalog reviewed — no mutation tools present; preconditions for enabling mutations (two-phase UX, audit trail, rollback UX, failure mode docs) are not yet met
+- Follow-ups: enabling curation mutations requires four explicit preconditions documented in TELEGRAM_INTERACTION_MODEL.md §11
+- Notes for next agent: Telegram remains read-oriented; `confirm_theme`, `reject_theme`, `rollback_theme`, `approve_category` remain absent from TOOLS catalog and AssistantFacade
+
+### 2026-04-15 — P8-T01 — Bot and Voice Observability Hardening
+
+- Scope: `docs/RUNBOOK_TELEGRAM_BOT.md`, `docs/RUNBOOK_VOICE_PIPELINE.md`, `docs/AUTH_SECURITY.md`
+- Why this work happened: Runbooks pre-dated Phase 7 implementation and described planned rather than actual behavior; security decisions remained open
+- Decisions applied: all Phase 7 security decisions resolved — chat_id allowlist confirmed, immediate audio deletion + sweep confirmed, OpenAI Whisper confirmed as provider, transcript not stored
+- Evidence collected: logging audit across `handlers.py`, `transcribe.py`, `cleanup.py` — all use event_id/chat_id/status identifiers, no raw content; 97 tests passing
+- Follow-ups: none; all AC met
+- Notes for next agent: logging uses structured identifiers throughout; `chars=` in transcription success log is a length count, never the transcript text
+
+### 2026-04-15 — P7-T04 — Voice Test Coverage
+
+- Scope: `tests/unit/test_telegram_voice.py` (extended), `tests/unit/test_voice_cleanup.py`, `tests/unit/test_transcription_worker.py`
+- Why this work happened: Phase 7 gate required automated coverage for voice success path, failure path, and cleanup behavior
+- Decisions applied: D-009
+- Evidence collected: 97 unit tests passing; voice handler, cleanup worker, transcription worker all covered
+- Follow-ups: none; all Phase 7 gate conditions met
+- Notes for next agent: `asyncio.create_task` mock in voice handler test requires closing coroutines to suppress RuntimeWarning
+
+### 2026-04-15 — P7-T03 — Media Retention and Cleanup
+
+- Scope: `app/workers/cleanup.py`, `app/workers/transcribe.py` (immediate deletion added), `docs/VOICE_PIPELINE.md`, `docs/ENVIRONMENT.md`
+- Why this work happened: Phase 7 requires bounded raw audio retention to prevent unbounded disk growth
+- Decisions applied: D-009; retention: immediate deletion after transcription + configurable sweep
+- Evidence collected: `delete_local_voice_file` called in `transcribe_and_reply` after success; `cleanup_voice_media` sweeps terminal events older than `VOICE_RETENTION_SECONDS`
+- Follow-ups: cleanup sweep should be scheduled via cron or arq
+- Notes for next agent: `VOICE_RETENTION_SECONDS` env var configures the sweep window (default 3600); immediate deletion is unconditional after a successful reply
+
+### 2026-04-15 — P7-T02 — Async Transcription Pipeline
+
+- Scope: `app/workers/transcribe.py`, `app/telegram/handlers.py` (task enqueue added), `pyproject.toml` (`openai>=1.0` added)
+- Why this work happened: Phase 7 requires async transcription that routes transcript through the standard text assistant path
+- Decisions applied: D-009; provider: OpenAI Whisper API (`whisper-1`)
+- Evidence collected: `transcribe_and_reply` runs as `asyncio.create_task`; Whisper API call in `asyncio.to_thread`; status progression: received → transcribed → done/failed; user notified on both success and failure paths
+- Follow-ups: none
+- Notes for next agent: the transcription worker sends its reply via a standalone `Bot(token=...)` instance — it does not have access to the polling Application context
+
+### 2026-04-15 — P7-T01 — Voice Ingress and Media Persistence
+
+- Scope: `app/telegram/voice.py`, `app/telegram/handlers.py`, `app/assistant/voice_media.py`, `app/models/voice.py`, `alembic/versions/008_add_voice_media_events.py`
+- Why this work happened: Phase 7 foundation — voice update handling, file download, and metadata persistence before transcription
+- Decisions applied: D-009
+- Evidence collected: `VoiceMediaEvent` model with status lifecycle; `download_voice_file` saves `.ogg` to `VOICE_MEDIA_DIR`; `create_voice_media_event` persists metadata before download
+- Follow-ups: P7-T02 (transcription), P7-T03 (cleanup)
+- Notes for next agent: `bot_token` is stored in `bot_data` during `build_application` so the background transcription task can construct a standalone `Bot` instance without access to the Application object
+
+### 2026-04-15 — P6-T07 — Phase 6 Test Coverage
+
+- Scope: `tests/unit/test_telegram_bot.py` (extended), `tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_session.py`
+- Why this work happened: Phase 6 gate required automated coverage for auth guard, text routing, and insufficient-evidence behavior
+- Decisions applied: D-007
+- Evidence collected: all three AC covered; auth guard tested with `ApplicationHandlerStop`; insufficient-evidence reply tested end-to-end
+- Follow-ups: none; Phase 6 gate conditions met
+- Notes for next agent: `handle_chat` tests mock the Anthropic client entirely; no API key needed for unit tests
+
+### 2026-04-15 — P6-T06 — Deployment and Config Wiring
+
+- Scope: `docker-compose.yml`, `docs/DEPLOY.md`, `docs/ENVIRONMENT.md`, `docs/RUNBOOK_TELEGRAM_BOT.md`
+- Why this work happened: Phase 6 deployability requires explicit service topology, env contract, and startup ordering
+- Decisions applied: D-011
+- Evidence collected: `telegram-bot` service added to Compose; deployment docs reflect actual service names and startup commands; migration requirements documented
+- Follow-ups: none
+- Notes for next agent: bot process uses long polling; no public webhook endpoint needed for private deployment
+
+### 2026-04-15 — P6-T05 — Session Persistence
+
+- Scope: `app/assistant/session.py`, `app/models/session.py`, `alembic/versions/007_add_bot_sessions.py`, `app/assistant/chat.py` (session integration)
+- Why this work happened: bot sessions must survive process restart; Redis is not the sole source of session truth
+- Decisions applied: D-010
+- Evidence collected: `BotSession` model with `history_json`; upsert via `INSERT ... ON CONFLICT DO UPDATE`; `MAX_HISTORY_MESSAGES=20` trim on each save; `handle_chat` loads and saves history around each request
+- Follow-ups: none
+- Notes for next agent: history stores only user/assistant role pairs — not the intermediate tool_use/tool_result messages, which keeps history compact for DB storage
+
+### 2026-04-15 — P6-T04 — Text Conversation Flow
+
+- Scope: `app/assistant/chat.py`, `app/assistant/tools.py`, `app/telegram/handlers.py` (text handler wired)
+- Why this work happened: Phase 6 requires natural-language text queries to trigger bounded archive tools
+- Decisions applied: D-007; bounded tool-use loop with `MAX_TOOL_ROUNDS=5` guard
+- Evidence collected: `handle_chat` uses Anthropic `messages.create(tools=TOOLS)`, loops on `tool_use` stop reason, falls back to last captured text after guard fires; `execute_tool` maps 6 tool names to facade methods
+- Follow-ups: P6-T05 (session persistence), P6-T07 (test coverage)
+- Notes for next agent: `TOOLS` catalog is read-only plus `trigger_sync`; no mutation tools wired; `_extract_text` handles both string and list content blocks from Anthropic responses
+
+### 2026-04-15 — P6-T03 — Telegram Bot Runtime
+
+- Scope: `app/telegram/bot.py`, `app/telegram/handlers.py`, `app/telegram/__main__.py`, `app/shared/config.py`
+- Why this work happened: Phase 6 requires an independent bot process that authenticates, routes, and responds
+- Decisions applied: D-006; TypeHandler at group=-1000 as chat guard
+- Evidence collected: `chat_guard` raises `ApplicationHandlerStop` for unauthorized chat_id; text and voice handlers registered; `build_application` wires all bot_data
+- Follow-ups: P6-T04 (conversation flow), P6-T05 (persistence), P6-T06 (deployment)
+- Notes for next agent: `allowed_chat_id` is stored in `bot_data` so handlers don't need env access directly
+
+### 2026-04-15 — P6-T02 — Assistant Service Facade
+
+- Scope: `app/assistant/facade.py`
+- Why this work happened: Telegram must not call raw ORM or domain services directly; a bounded gateway is required
+- Decisions applied: D-007; facade exposes only read + sync-trigger operations
+- Evidence collected: `AssistantFacade` wraps 6 methods; returns DTO-style frozen dataclasses; no raw ORM objects cross the boundary; `trigger_sync` requires an explicit `SyncJobEnqueuer` dependency
+- Follow-ups: P6-T03 (bot runtime), P6-T04 (tool loop)
+- Notes for next agent: `AssistantFacade` is the only object the Telegram layer is allowed to import from the assistant package; raw service imports from telegram/ are prohibited by the CF contract
+
 ### 2026-04-15 — P6-T01 — Reconcile Backend Execution Boundary
 
 - Scope: `app/workers/ingest.py`, `app/workers/index.py`, `app/services/analysis.py`, `tests/integration/test_workers.py`, `docs/ARCHITECTURE.md`

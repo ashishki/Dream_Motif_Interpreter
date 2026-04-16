@@ -9,7 +9,7 @@ Phase: 9-complete
 ## Current State
 
 - **Phase:** 9 complete — WS-9.1 through WS-9.6 implemented; WS-9.7 deferred to Phase 9.1 / Phase 10
-- **Baseline:** 187 tests passing
+- **Baseline:** 197 tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
 - **Last updated:** 2026-04-16 (Cycle 9 consolidation — Phase 9 WS-9.1–WS-9.6 complete; Cycle 9 review findings recorded)
@@ -23,7 +23,7 @@ Phase: 9-complete
 - **Phases completed:** Phase 1 through Phase 9 complete (WS-9.1–WS-9.6)
 - **Current planning state:** Phase 9 complete; WS-9.7 deferred; next: Phase 9.1 or Phase 10 planning
 - **Latest completed implementation task:** WS-9.6 — Assistant Tool + Facade Method + System Prompt Update
-- **Current baseline:** 187 unit tests passing
+- **Current baseline:** 197 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---

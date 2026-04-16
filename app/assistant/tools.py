@@ -146,9 +146,6 @@ def build_tools(motif_induction_enabled: bool = False) -> list[dict[str, Any]]:
     return tools
 
 
-TOOLS: list[dict[str, Any]] = build_tools(motif_induction_enabled=False)
-
-
 async def execute_tool(
     tool_name: str,
     tool_input: dict[str, Any],

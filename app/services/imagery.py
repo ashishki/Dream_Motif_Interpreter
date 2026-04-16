@@ -4,7 +4,7 @@ import json
 from typing import Any, TypedDict
 
 from app.llm.client import AnthropicLLMClient
-from app.shared.tracing import get_tracer
+from app.shared.tracing import get_meter, get_tracer
 
 
 class ImageryFragment(TypedDict):
@@ -23,6 +23,7 @@ class ImageryExtractor:
     def __init__(self, llm_client: Any | None = None, *, max_retries: int = 1) -> None:
         self._client = llm_client or AnthropicLLMClient(model="claude-haiku-4-5")
         self._max_retries = max_retries
+        self._extract_counter = get_meter(__name__).create_counter("motif.imagery_extract_total")
 
     async def extract(self, dream_text: str) -> list[ImageryFragment]:
         tracer = get_tracer(__name__)
@@ -34,10 +35,13 @@ class ImageryExtractor:
             for _attempt in range(self._max_retries + 1):
                 try:
                     raw_response = await self._client.complete(system_prompt, user_prompt)
-                    return self._parse_fragments(raw_response, dream_text)
+                    fragments = self._parse_fragments(raw_response, dream_text)
+                    self._extract_counter.add(1, {"status": "success"})
+                    return fragments
                 except (ImageryExtractionError, ValueError, json.JSONDecodeError) as exc:
                     last_error = exc
 
+        self._extract_counter.add(1, {"status": "failure"})
         raise ImageryExtractionError(
             "Imagery extraction failed after retry"
         ) from last_error

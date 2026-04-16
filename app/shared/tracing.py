@@ -5,7 +5,9 @@ from functools import lru_cache
 from typing import Any
 
 import structlog
-from opentelemetry import trace
+from opentelemetry import metrics, trace
+from opentelemetry.metrics import Meter
+from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult
 
@@ -31,6 +33,19 @@ def _get_provider() -> TracerProvider:
 def get_tracer(name: str = SERVICE_NAME) -> trace.Tracer:
     """Return the shared tracer. All code that creates spans must import from here."""
     return _get_provider().get_tracer(name)
+
+
+@lru_cache(maxsize=1)
+def _get_meter_provider() -> MeterProvider:
+    provider = MeterProvider()
+    metrics.set_meter_provider(provider)
+    return provider
+
+
+@lru_cache(maxsize=None)
+def get_meter(name: str = SERVICE_NAME) -> Meter:
+    """Return the shared meter. All code that creates metrics must import from here."""
+    return _get_meter_provider().get_meter(name)
 
 
 def _add_service_fields(

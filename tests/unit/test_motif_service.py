@@ -103,6 +103,9 @@ def _make_mock_session() -> MagicMock:
     session = MagicMock()
     session.add = MagicMock()
     session.commit = AsyncMock()
+    execute_result = MagicMock()
+    execute_result.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=execute_result)
     return session
 
 
@@ -167,6 +170,7 @@ async def test_motif_induction_rows_have_draft_status_and_model_version() -> Non
     row = session.add.call_args[0][0]
     assert row.status == "draft"
     assert row.model_version == _MODEL_VERSION
+    session.commit.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -372,6 +376,42 @@ async def test_empty_candidates_result_in_no_db_write() -> None:
     session.commit.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_run_returns_early_when_motif_inductions_already_exist() -> None:
+    existing_row_result = MagicMock()
+    existing_row_result.scalar_one_or_none.return_value = uuid.uuid4()
+
+    session = _make_mock_session()
+    session.execute = AsyncMock(return_value=existing_row_result)
+
+    imagery_extractor = _StubImageryExtractor(_make_fragments())
+    service = MotifService(
+        imagery_extractor=imagery_extractor,
+        motif_inductor=_StubMotifInductor(_make_candidates()),
+        motif_grounder=_StubMotifGrounder(),
+    )
+
+    await service.run(_make_dream_entry(), session)
+
+    assert imagery_extractor.call_count == 0
+    session.add.assert_not_called()
+    session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_commit_caller_provided_session_on_success() -> None:
+    service = MotifService(
+        imagery_extractor=_StubImageryExtractor(_make_fragments()),
+        motif_inductor=_StubMotifInductor(_make_candidates()),
+        motif_grounder=_StubMotifGrounder(),
+    )
+    session = _make_mock_session()
+
+    await service.run(_make_dream_entry(), session)
+
+    session.commit.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # AC-3 / AC-4: Feature flag behaviour in ingest pipeline
 # ---------------------------------------------------------------------------
@@ -389,6 +429,7 @@ async def test_ingest_calls_motif_service_when_flag_is_true() -> None:
     session_mock.__aenter__ = AsyncMock(return_value=session_mock)
     session_mock.__aexit__ = AsyncMock(return_value=False)
     session_mock.get = AsyncMock(return_value=dream_entry)
+    session_mock.commit = AsyncMock()
 
     session_factory = MagicMock(return_value=session_mock)
 
@@ -414,6 +455,7 @@ async def test_ingest_calls_motif_service_when_flag_is_true() -> None:
         )
 
     motif_service_mock.run.assert_called_once()
+    session_mock.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -447,3 +489,49 @@ async def test_ingest_skips_motif_service_when_flag_is_false() -> None:
         )
 
     motif_service_mock.run.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ingest_commits_after_motif_service_run_returns() -> None:
+    from app.workers import ingest as ingest_module
+
+    call_order: list[str] = []
+
+    async def _run(_: Any, session: Any) -> None:
+        call_order.append("run")
+
+    motif_service_mock = MagicMock()
+    motif_service_mock.run = AsyncMock(side_effect=_run)
+
+    dream_entry = _make_dream_entry()
+    session_mock = MagicMock()
+    session_mock.__aenter__ = AsyncMock(return_value=session_mock)
+    session_mock.__aexit__ = AsyncMock(return_value=False)
+    session_mock.get = AsyncMock(return_value=dream_entry)
+
+    async def _commit() -> None:
+        call_order.append("commit")
+
+    session_mock.commit = AsyncMock(side_effect=_commit)
+    session_factory = MagicMock(return_value=session_mock)
+
+    target = ingest_module.PipelineTarget(
+        dream_id=dream_entry.id,
+        needs_analysis=False,
+        needs_indexing=False,
+    )
+
+    with patch.object(ingest_module, "get_settings") as mock_settings:
+        settings = MagicMock()
+        settings.MOTIF_INDUCTION_ENABLED = True
+        mock_settings.return_value = settings
+
+        await ingest_module._run_post_store_pipeline(
+            ctx={},
+            session_factory=session_factory,
+            analysis_service=MagicMock(),
+            motif_service=motif_service_mock,
+            pipeline_targets=[target],
+        )
+
+    assert call_order == ["run", "commit"]

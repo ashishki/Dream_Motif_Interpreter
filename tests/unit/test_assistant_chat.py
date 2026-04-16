@@ -7,12 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.assistant.chat import handle_chat, _extract_text, _SYSTEM_PROMPT
+from app.assistant import tools as tools_module
+from app.assistant.chat import handle_chat, _extract_text
 from app.assistant.facade import (
     AssistantFacade,
     SearchResult,
     SearchResultItem,
 )
+from app.assistant.prompts import SYSTEM_PROMPT
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +230,7 @@ def test_system_prompt_forbids_word_interpretation_for_motifs() -> None:
     """The system prompt must instruct the assistant not to use 'interpretation'
     for inducted motifs. The word 'interpretation' may appear only paired with
     a negation or prohibition instruction."""
-    prompt_lower = _SYSTEM_PROMPT.lower()
+    prompt_lower = SYSTEM_PROMPT.lower()
     assert "interpretation" in prompt_lower
     idx = prompt_lower.index("interpretation")
     context = prompt_lower[max(0, idx - 80): idx + 80]
@@ -240,29 +242,37 @@ def test_system_prompt_forbids_word_interpretation_for_motifs() -> None:
 
 def test_system_prompt_contains_draft_motif_framing_rule() -> None:
     """The system prompt must instruct that draft motifs are unconfirmed suggestions."""
-    assert "draft" in _SYSTEM_PROMPT.lower()
-    assert "unconfirmed" in _SYSTEM_PROMPT.lower() or "suggestion" in _SYSTEM_PROMPT.lower()
+    assert "draft" in SYSTEM_PROMPT.lower()
+    assert "unconfirmed" in SYSTEM_PROMPT.lower() or "suggestion" in SYSTEM_PROMPT.lower()
 
 
 def test_system_prompt_contains_abstraction_framing_language() -> None:
     """The system prompt must use 'abstraction' or 'suggestion' as the correct
     framing vocabulary for inducted motifs."""
-    prompt_lower = _SYSTEM_PROMPT.lower()
+    prompt_lower = SYSTEM_PROMPT.lower()
     assert "abstraction" in prompt_lower or "suggestion" in prompt_lower
 
 
 def test_system_prompt_contains_confidence_level_framing() -> None:
     """The system prompt must address how to frame each confidence level."""
-    prompt_lower = _SYSTEM_PROMPT.lower()
+    prompt_lower = SYSTEM_PROMPT.lower()
     assert "high confidence" in prompt_lower
     assert "moderate" in prompt_lower
     assert "low confidence" in prompt_lower or "tentatively" in prompt_lower
 
 
+def test_system_prompt_is_importable_from_prompts_module() -> None:
+    assert "abstraction" in SYSTEM_PROMPT.lower()
+
+
+def test_tools_module_does_not_expose_tools_constant() -> None:
+    assert hasattr(tools_module, "TOOLS") is False
+
+
 def test_system_prompt_instructs_not_to_present_draft_as_confirmed() -> None:
     """The system prompt must instruct the assistant not to present draft motifs
     as conclusions or confirmed findings."""
-    prompt_lower = _SYSTEM_PROMPT.lower()
+    prompt_lower = SYSTEM_PROMPT.lower()
     assert "not as conclusions" in prompt_lower or "not a curated finding" in prompt_lower
 
 

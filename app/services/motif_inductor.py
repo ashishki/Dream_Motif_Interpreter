@@ -5,7 +5,7 @@ from typing import Any, TypedDict
 
 from app.llm.client import AnthropicLLMClient
 from app.services.imagery import ImageryFragment
-from app.shared.tracing import get_tracer
+from app.shared.tracing import get_meter, get_tracer
 
 _VALID_CONFIDENCE_LEVELS = {"high", "moderate", "low"}
 
@@ -31,6 +31,7 @@ class MotifInductor:
     def __init__(self, llm_client: Any | None = None, *, max_retries: int = 1) -> None:
         self._client = llm_client or AnthropicLLMClient(model="claude-sonnet-4-6")
         self._max_retries = max_retries
+        self._induction_counter = get_meter(__name__).create_counter("motif.induction_total")
 
     async def induce(self, fragments: list[ImageryFragment]) -> list[MotifCandidate]:
         tracer = get_tracer(__name__)
@@ -42,10 +43,13 @@ class MotifInductor:
             for _attempt in range(self._max_retries + 1):
                 try:
                     raw_response = await self._client.complete(system_prompt, user_prompt)
-                    return self._parse_candidates(raw_response, len(fragments))
+                    candidates = self._parse_candidates(raw_response, len(fragments))
+                    self._induction_counter.add(1, {"status": "success"})
+                    return candidates
                 except (MotifInductionError, ValueError, json.JSONDecodeError) as exc:
                     last_error = exc
 
+        self._induction_counter.add(1, {"status": "failure"})
         raise MotifInductionError(
             "Motif induction failed after retry"
         ) from last_error

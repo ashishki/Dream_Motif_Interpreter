@@ -101,6 +101,7 @@ Recommended profiles:
 ## 6. Phase 9–10 Feature Flag Variables (Planned)
 
 ```env
+# Feature flags are read once at process startup because get_settings() is lru-cached; restart required after a change.
 MOTIF_INDUCTION_ENABLED=false
 RESEARCH_AUGMENTATION_ENABLED=false
 RESEARCH_API_KEY=

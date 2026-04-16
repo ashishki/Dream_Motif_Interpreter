@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dream import DreamEntry
@@ -53,6 +54,15 @@ class MotifService:
 
         with tracer.start_as_current_span("motif_service.run") as span:
             span.set_attribute("dream_id", str(dream_id))
+
+            with tracer.start_as_current_span("db.query.motif_service.idempotency_check"):
+                existing_result = await session.execute(
+                    select(MotifInduction.id)
+                    .where(MotifInduction.dream_id == dream_id)
+                    .limit(1)
+                )
+            if existing_result.scalar_one_or_none() is not None:
+                return
 
             # Stage 1: extract imagery fragments
             try:
@@ -121,9 +131,6 @@ class MotifService:
                         model_version=_MODEL_VERSION,
                     )
                     session.add(row)
-
-            with tracer.start_as_current_span("db.query.motif_service.commit"):
-                await session.commit()
 
             logger.info(
                 "motif_service.run_complete",

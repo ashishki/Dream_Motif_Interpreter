@@ -7,6 +7,7 @@ theme_categories list.
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -36,6 +37,24 @@ class StubLLMClient:
         response = self._responses[min(self.calls, len(self._responses) - 1)]
         self.calls += 1
         return response
+
+
+class StubCounter:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, dict[str, str]]] = []
+
+    def add(self, amount: int, attributes: dict[str, str]) -> None:
+        self.calls.append((amount, attributes))
+
+
+class StubMeter:
+    def __init__(self, counter: StubCounter) -> None:
+        self.counter = counter
+        self.created_names: list[str] = []
+
+    def create_counter(self, name: str) -> StubCounter:
+        self.created_names.append(name)
+        return self.counter
 
 
 def _valid_response() -> str:
@@ -259,3 +278,31 @@ async def test_stub_client_is_used_without_api_key() -> None:
     inductor = MotifInductor(llm_client=client)
     candidates = await inductor.induce(FRAGMENTS)
     assert candidates is not None
+
+
+@pytest.mark.asyncio
+async def test_induce_increments_success_counter() -> None:
+    counter = StubCounter()
+    meter = StubMeter(counter)
+    client = StubLLMClient([_valid_response()])
+
+    with patch("app.services.motif_inductor.get_meter", return_value=meter):
+        inductor = MotifInductor(llm_client=client)
+        await inductor.induce(FRAGMENTS)
+
+    assert meter.created_names == ["motif.induction_total"]
+    assert counter.calls == [(1, {"status": "success"})]
+
+
+@pytest.mark.asyncio
+async def test_induce_increments_failure_counter() -> None:
+    counter = StubCounter()
+    meter = StubMeter(counter)
+    client = StubLLMClient(["not valid json {", "still not valid json {"])
+
+    with patch("app.services.motif_inductor.get_meter", return_value=meter):
+        inductor = MotifInductor(llm_client=client, max_retries=1)
+        with pytest.raises(MotifInductionError):
+            await inductor.induce(FRAGMENTS)
+
+    assert counter.calls == [(1, {"status": "failure"})]

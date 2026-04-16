@@ -5,6 +5,7 @@ All tests use a stub LLM client — no real API calls are made.
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -29,6 +30,24 @@ class StubLLMClient:
         response = self._responses[min(self.calls, len(self._responses) - 1)]
         self.calls += 1
         return response
+
+
+class StubCounter:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, dict[str, str]]] = []
+
+    def add(self, amount: int, attributes: dict[str, str]) -> None:
+        self.calls.append((amount, attributes))
+
+
+class StubMeter:
+    def __init__(self, counter: StubCounter) -> None:
+        self.counter = counter
+        self.created_names: list[str] = []
+
+    def create_counter(self, name: str) -> StubCounter:
+        self.created_names.append(name)
+        return self.counter
 
 
 def _valid_response(dream_text: str) -> str:
@@ -192,3 +211,31 @@ async def test_stub_client_is_used_without_api_key() -> None:
     extractor = ImageryExtractor(llm_client=client)
     fragments = await extractor.extract(DREAM_TEXT)
     assert fragments is not None
+
+
+@pytest.mark.asyncio
+async def test_extract_increments_success_counter() -> None:
+    counter = StubCounter()
+    meter = StubMeter(counter)
+    client = StubLLMClient([_valid_response(DREAM_TEXT)])
+
+    with patch("app.services.imagery.get_meter", return_value=meter):
+        extractor = ImageryExtractor(llm_client=client)
+        await extractor.extract(DREAM_TEXT)
+
+    assert meter.created_names == ["motif.imagery_extract_total"]
+    assert counter.calls == [(1, {"status": "success"})]
+
+
+@pytest.mark.asyncio
+async def test_extract_increments_failure_counter() -> None:
+    counter = StubCounter()
+    meter = StubMeter(counter)
+    client = StubLLMClient(["not valid json {", "still not valid json {"])
+
+    with patch("app.services.imagery.get_meter", return_value=meter):
+        extractor = ImageryExtractor(llm_client=client, max_retries=1)
+        with pytest.raises(ImageryExtractionError):
+            await extractor.extract(DREAM_TEXT)
+
+    assert counter.calls == [(1, {"status": "failure"})]

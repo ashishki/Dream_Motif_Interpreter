@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     MAX_INDEX_AGE_HOURS: int = 24
     BULK_CONFIRM_TOKEN_TTL_SECONDS: int = 600
 
+    # Feature flags are evaluated once per process because get_settings() is lru-cached.
     MOTIF_INDUCTION_ENABLED: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

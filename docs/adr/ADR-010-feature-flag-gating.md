@@ -26,6 +26,6 @@ The alternative — enabling capabilities at deployment — would mean any deplo
 
 - `MOTIF_INDUCTION_ENABLED` defaults to `false`. When `false`, ingest does not call `MotifService`, the `get_dream_motifs` tool is not registered, and no rows are written to `motif_inductions`.
 - `RESEARCH_AUGMENTATION_ENABLED` defaults to `false`. When `false`, the `research_motif_parallels` tool is not registered and `ResearchRetriever` is never called.
-- Both flags must be checked at runtime, not at startup, so that a flag change takes effect on the next operation without restarting the process.
+- `MOTIF_INDUCTION_ENABLED` and `RESEARCH_AUGMENTATION_ENABLED` are evaluated once at process startup due to `lru_cache` on `get_settings()`. A flag change requires a process restart to take effect.
 - Migrations `009_add_motif_inductions` and `010_add_research_results` may be applied independently of the flags. The tables can exist before the features are enabled.
 - `RESEARCH_API_KEY` is required only when `RESEARCH_AUGMENTATION_ENABLED=true`; it must not be required at startup if the flag is off.

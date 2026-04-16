@@ -11,6 +11,7 @@ AC-5: MotifService does NOT write to dream_themes.
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -394,6 +395,28 @@ async def test_run_returns_early_when_motif_inductions_already_exist() -> None:
     await service.run(_make_dream_entry(), session)
 
     assert imagery_extractor.call_count == 0
+    session.add.assert_not_called()
+    session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_skips_pipeline_when_rows_already_exist() -> None:
+    existing_row_result = MagicMock()
+    existing_row_result.scalar_one_or_none.return_value = uuid.uuid4()
+
+    session = _make_mock_session()
+    session.execute = AsyncMock(return_value=existing_row_result)
+
+    imagery_extractor = AsyncMock()
+    service = MotifService(
+        imagery_extractor=SimpleNamespace(extract=imagery_extractor),
+        motif_inductor=_StubMotifInductor(_make_candidates()),
+        motif_grounder=_StubMotifGrounder(),
+    )
+
+    await service.run(_make_dream_entry(), session)
+
+    imagery_extractor.assert_not_awaited()
     session.add.assert_not_called()
     session.commit.assert_not_called()
 

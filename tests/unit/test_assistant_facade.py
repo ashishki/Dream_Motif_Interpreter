@@ -276,6 +276,65 @@ async def test_get_dream_motifs_returns_empty_list_when_none_found() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_dream_motifs_excludes_rejected() -> None:
+    dream_id = uuid4()
+    created_at = datetime(2026, 4, 15, tzinfo=timezone.utc)
+    confirmed_motif = SimpleNamespace(
+        id=uuid4(),
+        label="threshold crossing",
+        rationale="A doorway marked a transition.",
+        confidence="high",
+        status="confirmed",
+        fragments=[{"text": "doorway"}],
+        model_version="v1",
+        created_at=created_at,
+    )
+    rejected_motif = SimpleNamespace(
+        id=uuid4(),
+        label="false trail",
+        rationale="This row should be excluded.",
+        confidence="low",
+        status="rejected",
+        fragments=[{"text": "trail"}],
+        model_version="v1",
+        created_at=created_at,
+    )
+
+    class _FilteringSession:
+        def __init__(self, motifs):
+            self._motifs = list(motifs)
+
+        async def execute(self, statement):
+            statement_sql = str(statement)
+            assert "motif_inductions.status !=" in statement_sql
+            return _FakeResult(
+                scalars=[motif for motif in self._motifs if motif.status != "rejected"]
+            )
+
+    session = _FilteringSession([confirmed_motif, rejected_motif])
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    result = await facade.get_dream_motifs(dream_id)
+
+    assert result == [
+        MotifInductionItem(
+            id=confirmed_motif.id,
+            label="threshold crossing",
+            rationale="A doorway marked a transition.",
+            confidence="high",
+            status="confirmed",
+            fragments=[{"text": "doorway"}],
+            model_version="v1",
+            created_at=created_at.isoformat(),
+        )
+    ]
+    assert all(item.id != rejected_motif.id for item in result)
+
+
+@pytest.mark.asyncio
 async def test_get_dream_motifs_dto_is_frozen() -> None:
     """MotifInductionItem is a frozen dataclass — mutation must raise."""
     dream_id = uuid4()

@@ -1,18 +1,18 @@
 # CODEX_PROMPT.md
 
-Version: 1.36
+Version: 1.37
 Date: 2026-04-16
-Phase: 9-complete
+Phase: 10-active
 
 ---
 
 ## Current State
 
-- **Phase:** 9 complete — WS-9.1 through WS-9.6 implemented; WS-9.7 deferred to Phase 9.1 / Phase 10
-- **Baseline:** 197 tests passing
+- **Phase:** 10 active — Research Augmentation
+- **Baseline:** 200 tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-16 (Cycle 9 consolidation — Phase 9 WS-9.1–WS-9.6 complete; Cycle 9 review findings recorded)
+- **Last updated:** 2026-04-16 (Phase 10 started; P3 gaps CODE-7/8/10 closed; tasks_phase10.md created)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -20,10 +20,10 @@ Phase: 9-complete
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 9 complete (WS-9.1–WS-9.6)
-- **Current planning state:** Phase 9 complete; WS-9.7 deferred; next: Phase 9.1 or Phase 10 planning
-- **Latest completed implementation task:** WS-9.6 — Assistant Tool + Facade Method + System Prompt Update
-- **Current baseline:** 197 unit tests passing
+- **Phases completed:** Phase 1 through Phase 9 complete (WS-9.1–WS-9.6 + P3 fixes)
+- **Current planning state:** Phase 10 active; task graph at `docs/tasks_phase10.md`; first task WS-10.1
+- **Latest completed implementation task:** Fix Queue FIX-1–6 + P3 gaps closed
+- **Current baseline:** 200 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -33,7 +33,8 @@ Phase: 9-complete
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
-- **Active task graph:** `docs/tasks_phase9.md`
+- **Active task graph:** `docs/tasks_phase10.md`
+- **Previous task graph (Phase 9):** `docs/tasks_phase9.md`
 - **Previous task graph (Phases 6–8):** `docs/tasks_phase6.md`
 - **Historical backend task graph:** `docs/tasks.md`
 - **Task-scoped context:** read `Context-Refs` in the active task graph before broad searching
@@ -42,16 +43,20 @@ Phase: 9-complete
 
 ## Next Task
 
-**WS-9.7 (optional) or Phase 10 planning**
+**WS-10.1 — DB Migration and ORM Model (research_results)**
 
-WS-9.1 through WS-9.6 are complete. WS-9.7 (Pattern Queries Extension) is optional and deferred to Phase 9.1 / Phase 10 — see DECISION_LOG.md D-012.
+Phase 10 task graph: `docs/tasks_phase10.md`
+First task: WS-10.1 — add `research_results` table, `ResearchResult` ORM model.
 
-Before resuming implementation: resolve Cycle 9 P2 Fix Queue items (CODE-1 through CODE-6) — see Fix Queue below.
+Context refs before starting:
+- `docs/RESEARCH_AUGMENTATION.md §5` — data model spec
+- `docs/adr/ADR-009-research-trust-boundary.md` — trust constraints
+- `docs/adr/ADR-010-feature-flag-gating.md` — flag strategy
+- `docs/tasks_phase10.md §WS-10.1` — acceptance criteria and file scope
 
-WS-9.7 context refs (if taken):
-- `docs/MOTIF_ABSTRACTION.md §5`
-- `docs/tasks_phase9.md §WS-9.7`
-- `docs/ARCHITECTURE.md §17`
+Read also before coding WS-10.2:
+- `docs/tasks_phase10.md §WS-10.2` — provider-agnostic retriever design
+- `docs/RESEARCH_AUGMENTATION.md §2 §3 §4` — confidence vocabulary and trust model
 
 ---
 
@@ -327,7 +332,7 @@ Read these instructions every time you pick up a task. Do not skip steps.
 ### Pre-Task Protocol (mandatory — do not skip)
 
 1. **Read `docs/IMPLEMENTATION_CONTRACT.md`** — before anything else. Know the rules before touching code.
-2. **Read the full active task in `docs/tasks_phase9.md` for Phase 9 work, in `docs/tasks_phase6.md` for Phase 6–8 reference, or in `docs/tasks.md` for historical/backend follow-up work** — including all acceptance criteria, file lists, and notes.
+2. **Read the full active task in `docs/tasks_phase10.md` for Phase 10 work, in `docs/tasks_phase9.md` for Phase 9 reference, or in `docs/tasks.md` for historical/backend follow-up work** — including all acceptance criteria, file lists, and notes.
 3. **Read all Depends-On tasks** — understand the interface contracts your task must satisfy.
 4. **Read task `Context-Refs` and continuity artifacts as needed** — required when the task resolves a finding, changes a risky boundary, or depends on prior decisions / evidence.
 5. **Run `pytest -q`** — capture the current baseline. Record: `N passing, M failed`. If M > 0, stop and report: you cannot add failures to an already-failing baseline.

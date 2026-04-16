@@ -221,6 +221,25 @@ async def test_handle_chat_stops_after_max_tool_rounds() -> None:
     assert isinstance(result, str)
 
 
+@pytest.mark.asyncio
+async def test_handle_chat_uses_build_tools_not_constant() -> None:
+    facade = _make_facade()
+    final_response = _make_response("end_turn", [_text_block("Here is your answer.")])
+    sentinel_tools = [{"name": "sentinel_tool"}]
+
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
+            with patch("app.assistant.chat.build_tools", return_value=sentinel_tools) as mock_build_tools:
+                client = AsyncMock()
+                client.messages.create = AsyncMock(return_value=final_response)
+                mock_client_cls.return_value = client
+
+                await handle_chat("what are my recent dreams?", facade)
+
+    mock_build_tools.assert_called_once()
+    assert client.messages.create.await_args.kwargs["tools"] is sentinel_tools
+
+
 # ---------------------------------------------------------------------------
 # System prompt — motif framing rules
 # ---------------------------------------------------------------------------

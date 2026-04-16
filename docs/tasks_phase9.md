@@ -341,3 +341,11 @@ Notes: |
 - `docs/tasks_phase6.md` is the active task graph for Phases 6–8 (complete)
 - `docs/tasks_phase9.md` is this file — the active task graph for Phase 9
 - when these files diverge, use this file for Phase 9 implementation work
+
+---
+
+## 5. Cycle 9 Review — Fix Tasks
+
+_Cycle 9 review (2026-04-16): P0 findings: 0. P1 findings: 0. No FIX tasks required at P0/P1 level._
+
+_Verified: no stop-ship conditions raised. Phase 9 gate conditions met. P2 findings are tracked in `docs/CODEX_PROMPT.md §Fix Queue` and `docs/audit/REVIEW_REPORT.md`._

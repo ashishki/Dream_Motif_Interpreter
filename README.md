@@ -4,7 +4,7 @@ Dream Motif Interpreter is a private, single-user dream-analysis system.
 
 It ingests dream entries from Google Docs, stores and curates dream themes, supports semantic and thematic retrieval, surfaces archive-level motif patterns, and provides a Telegram assistant interface for text and voice interaction.
 
-**Current status: Phases 1–8 complete**
+**Current status: Phases 1–9 complete**
 
 ---
 
@@ -35,6 +35,14 @@ It ingests dream entries from Google Docs, stores and curates dream themes, supp
 - All open security decisions resolved (transcript retention, media lifecycle, auth model)
 - Chat-driven archive mutations explicitly deferred pending audit-safe UX design
 
+### Motif Abstraction Layer (Phase 9)
+
+- Open-vocabulary motif induction pipeline (`ImageryExtractor` → `MotifInductor` → `MotifGrounder`)
+- Inducted motifs stored in `motif_inductions` table, separate from `dream_themes` at all layers
+- REST API for motif retrieval and status updates (`GET /motifs`, `PATCH /motifs/{id}/status`)
+- Assistant facade method `get_dream_motifs()` and bounded assistant tool
+- Feature-flag gated (`MOTIF_INDUCTION_ENABLED`, default `false`); WS-9.7 pattern queries deferred to Phase 9.1/10
+
 ---
 
 ## Repository Map
@@ -44,16 +52,17 @@ app/
   api/           FastAPI routes (sync, dreams, search, themes, patterns, versioning)
   assistant/     bounded assistant facade, chat loop, session persistence, voice media
   llm/           model wrappers and prompts
-  models/        SQLAlchemy models (dreams, themes, sessions, voice events)
+  models/        SQLAlchemy models (dreams, themes, sessions, voice events, motif_inductions)
   retrieval/     chunking, embedding, pgvector ingestion and query pipeline
-  services/      domain services (analysis, patterns, segmentation, taxonomy, versioning)
+  services/      domain services (analysis, patterns, segmentation, taxonomy, versioning,
+                 imagery, motif_inductor, motif_grounder, motif_service)
   shared/        config, tracing, DB session factory
   telegram/      bot runtime, handlers, voice download
   workers/       background jobs (ingest, indexing, transcription, cleanup)
 
-alembic/         schema migrations (001–008)
+alembic/         schema migrations (001–009)
 docs/            architecture, planning, runbooks, ADRs
-tests/           unit and integration coverage (97 tests)
+tests/           unit and integration coverage (187 unit / ~238 total passing)
 ```
 
 ---

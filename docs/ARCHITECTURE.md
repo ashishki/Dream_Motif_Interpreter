@@ -1,8 +1,8 @@
 # Architecture — Dream Motif Interpreter
 
 Version: 3.0
-Last updated: 2026-04-15 (Phase 8 complete — all target state implemented)
-Status: Active — reflects implemented system through Phase 8
+Last updated: 2026-04-16 (Phase 9 complete — WS-9.1–WS-9.6 implemented; WS-9.7 deferred)
+Status: Active — reflects implemented system through Phase 9
 
 ## 1. System Definition
 
@@ -303,7 +303,7 @@ See [Deployment](DEPLOY.md).
 
 ## 16. Testing
 
-Current coverage (Phase 8 baseline): **97 unit tests passing**.
+Current coverage (Phase 9 baseline): **187 unit tests passing / ~238 total passing (including integration)**.
 
 Covered areas:
 
@@ -317,7 +317,7 @@ Covered areas:
 
 See [Testing Strategy](TESTING_STRATEGY.md).
 
-## 17. Motif Abstraction Layer (Planned — Phase 9)
+## 17. Motif Abstraction Layer (Implemented — Phase 9)
 
 Motif abstraction is a separate analytical layer that operates independently of the existing theme extraction pipeline.
 
@@ -326,7 +326,7 @@ Motif abstraction is a separate analytical layer that operates independently of 
 - `ThemeExtractor` + `Grounder` (existing): assigns a dream to predefined categories from `theme_categories`. Closed vocabulary. Model selects from known options. Results stored in `dream_themes`.
 - `ImageryExtractor` + `MotifInductor` + `MotifGrounder` (Phase 9): derives abstract motif labels from concrete imagery without a predefined vocabulary. Open vocabulary. Model forms the abstraction itself. Results stored in `motif_inductions`. These two subsystems coexist; they are never merged.
 
-### Planned components
+### Implemented components
 
 | Component | Responsibility |
 |-----------|----------------|
@@ -335,6 +335,8 @@ Motif abstraction is a separate analytical layer that operates independently of 
 | `app/services/motif_grounder.py` (`MotifGrounder`) | Verify imagery fragment offsets against source text |
 | `app/services/motif_service.py` (`MotifService`) | Orchestrate the induction pipeline; integrate with ingest |
 | `app/api/motifs.py` | REST API for motif retrieval and status updates |
+| `app/models/motif.py` | SQLAlchemy ORM model for `motif_inductions` table |
+| `alembic/versions/009_add_motif_inductions.py` | Migration adding the `motif_inductions` table |
 | `motif_inductions` table | Stores inducted motifs with label, rationale, confidence, status, fragments |
 
 ### Trust level
@@ -385,13 +387,12 @@ See [FEEDBACK_LOOP.md](FEEDBACK_LOOP.md).
 
 Current tables (implemented):
 
-- `dream_entries`, `dream_chunks`, `dream_themes`, `theme_categories`, `annotation_versions`, `bot_sessions`, `voice_media_events`
+- `dream_entries`, `dream_chunks`, `dream_themes`, `theme_categories`, `annotation_versions`, `bot_sessions`, `voice_media_events`, `motif_inductions`
 
 Planned additions:
 
 | Table | Phase | Purpose |
 |-------|-------|---------|
-| `motif_inductions` | 9 | Open-vocabulary inducted motifs; separate from `dream_themes` |
 | `research_results` | 10 | External research parallels; external trust boundary |
 | `assistant_feedback` | 11 | User rating scores; quality signal only |
 

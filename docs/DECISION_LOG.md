@@ -1,7 +1,7 @@
 # Decision Log — Dream Motif Interpreter
 
-Version: 2.0  
-Last updated: 2026-04-15 (Phase 8 complete — all proposed decisions confirmed)
+Version: 2.1
+Last updated: 2026-04-16 (Phase 9 complete — D-012 added)
 
 ## Rules
 
@@ -24,8 +24,9 @@ Last updated: 2026-04-15 (Phase 8 complete — all proposed decisions confirmed)
 | D-009 | 2026-04-14 | Active | Voice support entered as Phase 7 with async transcription via OpenAI Whisper | ADR-005 |
 | D-010 | 2026-04-14 | Active | Bot session state persisted in PostgreSQL `bot_sessions`; Redis for ephemeral only | ADR-006 |
 | D-011 | 2026-04-14 | Active | Compose-first is the canonical deployment; `telegram-bot` service added to docker-compose.yml | ADR-007 |
+| D-012 | 2026-04-16 | Active | WS-9.7 (Pattern Queries Extension) deferred to Phase 9.1 / Phase 10; pattern analysis over inducted motifs is only meaningful after a confirmed motif accumulation period that has not yet occurred | `docs/tasks_phase9.md §WS-9.7`, `docs/ARCHITECTURE.md §17` |
 
 ## Notes
 
-- All decisions through D-011 are Active — confirmed and implemented through Phase 8.
+- All decisions through D-012 are Active — confirmed and implemented through Phase 9.
 - The presence of a decision in this log implies the corresponding implementation exists unless explicitly marked otherwise.

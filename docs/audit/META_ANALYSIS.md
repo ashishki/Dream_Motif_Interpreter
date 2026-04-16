@@ -1,73 +1,82 @@
 ---
-# META_ANALYSIS — Cycle 6
-_Date: 2026-04-14 · Type: full_
+# META_ANALYSIS — Cycle 9
+_Date: 2026-04-16 · Type: full_
 
 ## Project State
 
-Phase 4 (T13–T17) is in progress: T13, T14, T15 complete; T16 and T17 remain. Next: T16 — User Curation API (Theme Confirmation and Taxonomy Management).
+Phase 9 (WS-9.1 through WS-9.6) is functionally complete ahead of the formal gate review. All core deliverables are present in source: DB migration (009), ORM model, ImageryExtractor, MotifInductor, MotifGrounder, MotifService orchestrator, ingest feature-flag integration, REST API routes (`app/api/motifs.py`), assistant facade method (`get_dream_motifs`), tool registration with flag gate, and system prompt framing rules. WS-9.7 (Pattern Queries Extension) is optional and not yet implemented.
 
-Baseline: 74 pass, 9 skip.
-Previous cycle (Cycle 5) close: 55 pass, 9 skip (after FIX-C5 patches); subsequently T13 → 57 pass, T14 → 70 pass, T15 → 74 pass. Net +19 pass since Cycle 5 close. No regressions recorded.
+Next: WS-9.7 — Pattern Queries Extension (optional; may be deferred to Phase 9.1 or Phase 10).
+
+Baseline: 238 pass, 9 skip (actual pytest run 2026-04-16).
+
+Note: `docs/CODEX_PROMPT.md §Current State` records the baseline as "97 → 164 after WS-9.1" and lists WS-9.2 + WS-9.3 as the next task. Both figures are stale — actual baseline is 238 passing, WS-9.2 through WS-9.6 are already implemented. CODEX_PROMPT.md must be updated before implementation resumes.
+
+Previous cycle baseline (Cycle 6 REVIEW_REPORT.md, 2026-04-14): 74 pass, 9 skip. Net +164 pass since Cycle 6 close, covering Phase 7–8 delivery (P6-T01, P6-T02, FIX-C8, FIX-C9, T17–T20) and Phase 9 WS-9.1 through WS-9.6. No intervening REVIEW_REPORT exists for T17–T20 or WS-9.1–9.6; this cycle is the first full audit covering those components.
 
 ---
 
 ## Open Findings
 
+All 58 findings from Cycle 8 (as recorded in CODEX_PROMPT.md) are marked Closed. REVIEW_REPORT.md is from Cycle 6 (2026-04-14) and is stale with respect to T17–T20 and all Phase 9 work. The following findings are raised for this cycle based on source inspection and task-graph gap analysis.
+
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
-| CODE-7 | P3 | `app/main.py` binds `host="0.0.0.0"` unconditionally; should default to `127.0.0.1` for non-production ENV. | `app/main.py` | Open — carry-forward Cycles 1–5 |
-| CODE-13 | P3 | `_segment_with_llm_fallback` stale `NotImplementedError` comment still references "T08" (now complete); no LLM fallback path test. Remove `type:ignore`; update comment to correct future task. | `app/services/segmentation.py:214–222` | Open — carry-forward Cycle 2+ |
-| CODE-16 | P3 | `003_seed_categories.py` inserts with `status='active'` with no governance exception comment. Add bootstrap-exception inline comment. | `alembic/versions/003_seed_categories.py:46` | Open — carry-forward Cycle 2+ |
-| CODE-22 | P2 | Integration RAG tests skip only on missing `OPENAI_API_KEY`; DB guard absent. (Superseded in practice by CODE-30, now Closed — needs explicit status reconciliation.) | `tests/integration/test_rag_ingestion.py` | Open — verify closure via CODE-30; mark superseded if confirmed |
-| CODE-40 | P3 | `scripts/eval.py` hard-codes `TASK_ID = "T12"`. Should be a runtime argument or derived from context. | `scripts/eval.py` | Open — new Cycle 5 |
-| CODE-41 | P3 | `scripts/eval.py` `_evaluation_history_table` overwrites full history on every write run instead of appending. | `scripts/eval.py` | Open — new Cycle 5 |
-| ARCH-6 | P2 | `interpretation_note` literal field not enforced in Pydantic API response models; LLM output framing is prompt-level only. Resolves at T15/T16. | `app/llm/grounder.py:67`, `app/llm/theme_extractor.py:63` | Open — T15 shipped without explicit closure; re-check in T16 scope |
-| ARCH-9 | P3 | `ARCHITECTURE.md §File Layout` migration listing ends at `004_fix_status_ck.py`; migrations 005 and 006 absent from diagram. | `docs/ARCHITECTURE.md:366–370` | Open — doc drift; Cycle 4+ |
-| ARCH-10 | P3 | Query expansion (LLM call to `claude-haiku-4-5`) not wired in `query.py`; declared in ARCHITECTURE.md §RAG Architecture. | `app/retrieval/query.py:84–110` | Open — Cycle 4+; resolves at post-T15 search API task |
-| ARCH-11 | P3 | `EvidenceBlock.matched_fragments` is `list[str]`; spec.md §Retrieval requires `match_type` labels and character offsets per fragment. Partial contract. | `app/retrieval/query.py:28–34` | Open — Cycle 4+; was flagged must-resolve before T15; T15 shipped; confirm state and assign FIX-C6 or T16 scope |
+| CODE-51 | P2 | `docs/CODEX_PROMPT.md §Current State` baseline is stale: records "97 → 164 after WS-9.1" but actual baseline is 238 passing, 9 skipped. `§Next Task` lists WS-9.2 + WS-9.3 as next but both are already implemented. Must be updated before the next implementation task begins. | `docs/CODEX_PROMPT.md` | Open — new Cycle 9 |
+| CODE-52 | P2 | `app/assistant/prompts.py` is listed as a required deliverable in `docs/tasks_phase9.md §WS-9.6 Files` but does not exist. Motif framing rules are embedded in `app/assistant/chat.py` as inline string literals. Confirm that this satisfies WS-9.6 AC-3 ("system prompt includes framing rules") or create `app/assistant/prompts.py` as a follow-up task. | `app/assistant/chat.py`, `app/assistant/prompts.py` (absent) | Open — new Cycle 9; verify or resolve |
+| CODE-53 | P2 | WS-9.5 AC-4 requires rejected motifs to not appear in the default GET response, or the behavior must be explicitly defined. `app/api/motifs.py` must be inspected to confirm the filter is implemented and covered by a test case in `tests/unit/test_motifs_api.py`. | `app/api/motifs.py`, `tests/unit/test_motifs_api.py` | Open — new Cycle 9; inspect required |
+| CODE-54 | P2 | WS-9.6 AC-2 requires `get_dream_motifs` to be absent from the tool catalog when `MOTIF_INDUCTION_ENABLED=false`. `app/assistant/tools.py:149` initialises `TOOLS` with `motif_induction_enabled=False` at module import time. WS-9.4 notes require the flag to be re-evaluated at request time, not at startup. Confirm whether `build_tools()` is called per request or once at import; if the latter, a flag change without redeploy will not take effect for the assistant tool catalog. | `app/assistant/tools.py:137–149` | Open — new Cycle 9; flag evaluation timing requires verification |
+| CODE-55 | P3 | `docs/audit/REVIEW_REPORT.md` is stale (Cycle 6, 2026-04-14). Tasks T17–T20 and WS-9.1 through WS-9.6 have never been covered by a review report. This cycle's PROMPT_1 and PROMPT_2 outputs must cover the full gap. | `docs/audit/REVIEW_REPORT.md` | Open — new Cycle 9; addressed by this review cycle |
+| CODE-56 | P3 | WS-9.7 (Pattern Queries Extension) is not implemented. No motif-related logic exists in `app/api/patterns.py` or `app/services/patterns.py`. The task is marked optional in `docs/tasks_phase9.md §WS-9.7`. Confirm deferral decision is recorded in `docs/DECISION_LOG.md`; if not, add an entry before Phase 10 planning begins. | `app/api/patterns.py`, `app/services/patterns.py`, `docs/DECISION_LOG.md` | Open — new Cycle 9; deferral confirmation needed |
 
 ---
 
 ## PROMPT_1 Scope (architecture)
 
-- **T16 curation API surface**: New endpoints `PATCH /dreams/{id}/themes/{theme_id}/confirm`, `PATCH /dreams/{id}/themes/{theme_id}/reject`, `POST /curate/bulk-confirm`, `POST /curate/bulk-confirm/{token}/approve`, `PATCH /themes/categories/{id}/approve` — all absent from current `app/api/` (`themes.py` not yet present). Review endpoint design, auth boundary, and AnnotationVersion write-ahead contract.
-- **Bulk-confirm token flow**: UUID token in Redis with 10-minute TTL; two-phase commit pattern — assess state-machine correctness and token lifecycle (happy path, expiry returning HTTP 410, concurrent approve race).
-- **AnnotationVersion write contract**: Every mutation must write an `AnnotationVersion` row before the mutation commits — transactional ordering, rollback safety, and whether the existing schema supports this without a new migration.
-- **ARCH-6 resolution path**: Verify whether T15 `app/api/search.py` + `app/api/dreams.py` now enforce `interpretation_note` in Pydantic response models, or whether the gap persists into T16 (theme-level responses).
-- **ARCH-11 resolution path**: Confirm whether `EvidenceBlock.matched_fragments` contract was strengthened in T15; if not, assess impact on T16 theme responses and assign remediation.
-- **Redis dependency consolidation**: T14 introduced sync job status in Redis; T16 adds bulk-confirm tokens — verify Redis client/config is shared and not duplicated; TTL policy consistency.
-- **`app/workers/` readiness for T17**: Workers directory currently has only `__init__.py`; T16 does not add workers, but the shared session factory pattern referenced in T17 notes should be confirmed as consistent with T14/T15 session handling before T17 begins.
+- motif induction pipeline end-to-end: dataflow `ImageryExtractor` → `MotifInductor` → `MotifGrounder` → `MotifService` → `motif_inductions` table; verify the separation invariant from `dream_themes` at every layer (migration, ORM, service, API)
+- feature flag gating: `MOTIF_INDUCTION_ENABLED` in `app/shared/config.py`; confirm the flag is read at ingest time (not startup) in `app/workers/ingest.py`; assess whether `build_tools()` in `app/assistant/tools.py` is evaluated per request or per import
+- assistant tool registration: `build_tools()` call site, whether the tool catalog is rebuilt on each chat request when the flag is true, and whether a flag toggle takes effect without a redeploy
+- API surface: `app/api/motifs.py` route registration in `app/main.py`; confirm GET, PATCH, and history endpoints are wired; confirm rejected-motif filter behavior
+- system prompt framing: framing rules are in `app/assistant/chat.py`, not in a dedicated `prompts.py`; assess whether this satisfies WS-9.6 AC-3 and the file-list deliverable
+- WS-9.7 deferral: confirm no partial or stub implementation exists in `app/api/patterns.py` or `app/services/patterns.py` that could cause confusion with taxonomy-based pattern routes
 
 ---
 
 ## PROMPT_2 Scope (code, priority order)
 
-1. `app/api/themes.py` (new — T16 primary deliverable; does not yet exist)
-2. `tests/integration/test_curation_api.py` (new — T16 test file; does not yet exist)
-3. `app/api/search.py` (changed at T15 — verify ARCH-6 `interpretation_note` enforcement; check ARCH-11 fragment metadata in response models)
-4. `app/api/dreams.py` (changed at T14/T15 — confirm rejected-theme exclusion logic absent pre-T16; no regression introduced)
-5. `app/models/theme.py` + `alembic/versions/` (regression check — AnnotationVersion model present; `ck_dream_themes_status` CHECK constraint live via migration 004; assess whether T16 mutations require a new migration)
-6. `app/shared/config.py` (regression check — Redis settings present; confirm bulk-confirm token TTL config slot exists or needs addition)
-7. `scripts/eval.py` (CODE-40/CODE-41 — P3 open findings; low priority but scope for targeted fix)
-8. `app/services/segmentation.py:214–222` (CODE-13 — stale NotImplementedError comment; trivial P3 carry-forward)
-9. `alembic/versions/003_seed_categories.py:46` (CODE-16 — missing governance comment; trivial P3 carry-forward)
-10. `app/main.py` (CODE-7 — host binding; P3 carry-forward; security-adjacent; check before any deploy step)
+1. `app/services/motif_service.py` (new — WS-9.4 orchestrator; core correctness and flag-check timing)
+2. `app/services/imagery.py` (new — WS-9.2 ImageryExtractor; grounded fragment production)
+3. `app/services/motif_inductor.py` (new — WS-9.2 MotifInductor; open-vocabulary label generation; confirm no predefined taxonomy leak)
+4. `app/services/motif_grounder.py` (new — WS-9.3 MotifGrounder; offset-verification logic vs. `app/llm/grounder.py` pattern)
+5. `app/api/motifs.py` (new — WS-9.5 REST routes; GET filter, PATCH status update, history endpoint)
+6. `app/models/motif.py` (new — WS-9.1 ORM model; column types, FK, CHECK constraint)
+7. `alembic/versions/009_add_motif_inductions.py` (new — WS-9.1 migration; idempotency, no `dream_themes` modification)
+8. `app/assistant/tools.py` (changed — WS-9.6 tool registration; `build_tools()` flag gate timing)
+9. `app/assistant/facade.py` (changed — WS-9.6 `get_dream_motifs`; DTO return, no ORM leakage)
+10. `app/assistant/chat.py` (changed — WS-9.6 system prompt framing rules; confirm all AC-3–AC-5 framing requirements are met)
+11. `app/workers/ingest.py` (changed — WS-9.4 ingest integration; flag check at ingest time)
+12. `app/shared/config.py` (changed — `MOTIF_INDUCTION_ENABLED` flag; default false confirmed)
+13. `tests/unit/test_motif_service.py` (new — regression check; AC coverage)
+14. `tests/unit/test_motif_grounder.py` (new — regression check; offset-verification paths)
+15. `tests/unit/test_motif_inductor.py` (new — regression check; stub LLM client path)
+16. `tests/unit/test_imagery_extractor.py` (new — regression check; stub LLM client path)
+17. `tests/unit/test_motifs_api.py` (new — regression check; rejected-motif filter, status update)
+18. `tests/unit/test_motif_model.py` (new — regression check; CHECK constraint, FK)
 
 ---
 
 ## Cycle Type
 
-Full — Phase 4 mid-cycle checkpoint. T13, T14, and T15 are all complete with a clean baseline (74 pass / 9 skip). T16 and T17 are the remaining Phase 4 tasks. No hotfix queue is open; no P1 findings are outstanding. Cycle 6 covers T16 implementation plus resolution or explicit carry-forward disposition of ARCH-6, ARCH-11, and CODE-22.
+Full — Phase 9 core implementation (WS-9.1 through WS-9.6) is complete and has never been covered by a review cycle. REVIEW_REPORT.md is stale by two phases (T17–T20 and all Phase 9 work). All new components require architecture and code inspection. No hotfix queue is open; no P0 or P1 findings are outstanding entering the cycle.
 
 ---
 
 ## Notes for PROMPT_3
 
-- **ARCH-6 disposition**: CODEX_PROMPT.md listed ARCH-6 as resolving at T15/T16. T15 shipped without explicit closure. PROMPT_2 must verify `app/api/search.py` for `interpretation_note` enforcement; if still open, assign to T16 scope or create FIX-C6 item.
-- **ARCH-11 disposition**: Same pattern — flagged "must resolve before T15" but T15 is now closed. Confirm actual state in `app/retrieval/query.py` and flag for T16 or FIX-C6 if contract is still partial.
-- **CODE-22 cleanup**: CODE-30 is Closed (DB guard added). CODE-22 should be explicitly marked superseded or confirmed closed to eliminate ambiguity in the findings table.
-- **Baseline delta tracking**: +19 pass from Cycle 5 close to current (55 → 74). PROMPT_3 consolidation should snapshot this clearly; CODEX_PROMPT.md version should be bumped to v1.11 after Cycle 6 closes.
-- **Phase 4 gate proximity**: T16 + T17 complete Phase 4. Phase gate requires: no P1 open findings; all T16/T17 ACs passing; RAG eval baseline held (currently 1.00/1.00/1.00). PROMPT_3 should confirm Phase 5 entry readiness checklist after both tasks land.
-- **Redis as hard dependency**: Bulk-confirm token (T16) is the first user-facing Redis state not tied to a background job. Consolidation note: Redis is already a dependency (T14 sync status) — T16 deepens this dependency; T17 further extends it. Ensure Redis failure modes are documented before Phase 5.
-
+- Primary consolidation focus: verify that the `dream_themes` / `motif_inductions` separation invariant holds throughout the full stack. Any finding that inducted motifs can be written to or read from `dream_themes` at any layer is a stop-ship condition.
+- Secondary focus: `MOTIF_INDUCTION_ENABLED` flag evaluation timing. The WS-9.4 note is explicit — the flag must be checked at ingest time, not at startup. The same timing question applies to the assistant tool catalog (`build_tools()`). Confirm both or raise a P2 finding.
+- Tertiary focus: `app/assistant/prompts.py` absence. The WS-9.6 file list names it as a required deliverable. If the framing lives only in `chat.py`, either confirm the task file is wrong or raise a targeted follow-up task to extract framing to `prompts.py`.
+- CODEX_PROMPT.md staleness (CODE-51) must be resolved before the next implementation session. Update baseline to 238 passing, mark WS-9.2 through WS-9.6 as complete, and set Next Task to WS-9.7 or Phase 10 planning.
+- WS-9.7 deferral (CODE-56): record the deferral decision in `docs/DECISION_LOG.md` before Phase 10 planning if not already present.
+- Baseline delta for PROMPT_3 snapshot: 74 pass (Cycle 6 close) → 238 pass (Cycle 9 open). Net +164.
 ---

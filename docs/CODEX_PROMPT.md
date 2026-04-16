@@ -1,18 +1,18 @@
 # CODEX_PROMPT.md
 
-Version: 1.35
-Date: 2026-04-15
-Phase: 9-planned
+Version: 1.36
+Date: 2026-04-16
+Phase: 9-complete
 
 ---
 
 ## Current State
 
-- **Phase:** 9 planned — Phase 8 complete
-- **Baseline:** 164 tests passing (97 → 164 after WS-9.1)
+- **Phase:** 9 complete — WS-9.1 through WS-9.6 implemented; WS-9.7 deferred to Phase 9.1 / Phase 10
+- **Baseline:** 187 tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-15 (P8-T02 — curation deferral explicit; Telegram is read-oriented; Phase 8 gate conditions met)
+- **Last updated:** 2026-04-16 (Cycle 9 consolidation — Phase 9 WS-9.1–WS-9.6 complete; Cycle 9 review findings recorded)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -20,10 +20,10 @@ Phase: 9-planned
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 8 complete
-- **Current planning state:** Phase 9 planned; task graph at `docs/tasks_phase9.md`; first task WS-9.1
-- **Latest completed implementation task:** P8-T02 — Controlled Evaluation of Chat Curation (deferred decision documented)
-- **Current baseline:** 97 unit tests passing
+- **Phases completed:** Phase 1 through Phase 9 complete (WS-9.1–WS-9.6)
+- **Current planning state:** Phase 9 complete; WS-9.7 deferred; next: Phase 9.1 or Phase 10 planning
+- **Latest completed implementation task:** WS-9.6 — Assistant Tool + Facade Method + System Prompt Update
+- **Current baseline:** 187 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -42,29 +42,61 @@ Phase: 9-planned
 
 ## Next Task
 
-**WS-9.2 + WS-9.3 — LLM Pipeline (ImageryExtractor + MotifInductor) + MotifGrounder**
+**WS-9.7 (optional) or Phase 10 planning**
 
-Both tasks are unblocked (WS-9.1 complete). Run in parallel.
+WS-9.1 through WS-9.6 are complete. WS-9.7 (Pattern Queries Extension) is optional and deferred to Phase 9.1 / Phase 10 — see DECISION_LOG.md D-012.
 
-WS-9.2 context refs:
-- `docs/MOTIF_ABSTRACTION.md §2` — pipeline design
-- `docs/adr/ADR-008-motif-induction-vs-taxonomy.md`
-- `docs/tasks_phase9.md §WS-9.2`
+Before resuming implementation: resolve Cycle 9 P2 Fix Queue items (CODE-1 through CODE-6) — see Fix Queue below.
 
-WS-9.3 context refs:
-- `docs/MOTIF_ABSTRACTION.md §2 Stage 3`
-- `app/llm/grounder.py` — offset-verification reference
-- `docs/tasks_phase9.md §WS-9.3`
+WS-9.7 context refs (if taken):
+- `docs/MOTIF_ABSTRACTION.md §5`
+- `docs/tasks_phase9.md §WS-9.7`
+- `docs/ARCHITECTURE.md §17`
 
 ---
 
 ## Fix Queue
 
-### FIX-C9: Closed
+─── Fix Queue (resolve before Phase 10 queue) ────────────────────────
 
-All 9 carry-forward P3 findings are now closed. No new tasks remain.
+🟡 FIX-1 [P2] — MotifService must not commit caller-provided session
+  File: app/services/motif_service.py:126 · Change: remove `await session.commit()`; let ingest.py caller own the commit · Test: verify ingest.py commits after MotifService.run() returns without error
+
+🟡 FIX-2 [P2] — Add idempotency guard to MotifService.run()
+  File: app/services/motif_service.py:114–123 · Change: early-return if motif_inductions rows already exist for dream_id · Test: call run() twice for same dream_id; assert row count unchanged on second call
+
+🟡 FIX-3 [P2] — Remove or document lru_cache on get_settings() per ADR-010
+  File: app/shared/config.py:33 · Change: Option A — remove @lru_cache; Option B — update ADR-010 and ENVIRONMENT.md to document restart requirement · Test: if Option A, assert settings re-reads env var after os.environ patch
+
+🟡 FIX-4 [P2] — Extract _SYSTEM_PROMPT to app/assistant/prompts.py
+  File: app/assistant/chat.py:18–42 · Change: move _SYSTEM_PROMPT and framing rules to app/assistant/prompts.py; import in chat.py · Test: assert chat.py imports SYSTEM_PROMPT from app.assistant.prompts
+
+🟡 FIX-5 [P2] — Add OTel metrics counters to ImageryExtractor and MotifInductor LLM paths
+  File: app/services/imagery.py, app/services/motif_inductor.py · Change: add labeled OTel counter/histogram instruments on LLM call paths (OBS-2) · Test: assert counter incremented after a stub LLM call
+
+🟡 FIX-6 [P2] — Remove stale TOOLS module-level constant from tools.py
+  File: app/assistant/tools.py:149 · Change: delete `TOOLS` constant; all callers use build_tools() · Test: assert tools module has no TOOLS attribute at import time
 
 ## Open Findings
+
+_Cycle 9 — 2026-04-16 · 12 new findings: P0: 0, P1: 0, P2: 6, P3: 6 (9 Open, 3 Closed by Doc Updater 2026-04-16); Cycle 8 findings: 58 Closed, 0 Open_
+
+| ID | Sev | Description | Files | Status |
+|----|-----|-------------|-------|--------|
+| CODE-1 | P2 | `MotifService.run()` calls `await session.commit()` on caller-provided session; double-commit risk | `app/services/motif_service.py:126` | **Open** — new Cycle 9; see FIX-1 |
+| CODE-2 | P2 | No idempotency guard in `MotifService.run()`; duplicate rows on re-ingest; confirmed-status overwritten | `app/services/motif_service.py:114–123` | **Open** — new Cycle 9; see FIX-2 |
+| CODE-3 | P2 | `get_settings()` `@lru_cache` freezes `MOTIF_INDUCTION_ENABLED`; violates ADR-010 | `app/shared/config.py:33` | **Open** — new Cycle 9; see FIX-3 |
+| CODE-4 | P2 | `app/assistant/prompts.py` absent; WS-9.6 deliverable unmet | `app/assistant/chat.py:18–42` | **Open** — new Cycle 9; see FIX-4 |
+| CODE-5 | P2 | No OTel metrics counters on ImageryExtractor / MotifInductor LLM paths; OBS-2 violation | `app/services/imagery.py`, `app/services/motif_inductor.py` | **Open** — new Cycle 9; see FIX-5 |
+| CODE-6 | P2 | Stale `TOOLS` module-level constant built at import time with flag=False; latent defect | `app/assistant/tools.py:149` | **Open** — new Cycle 9; see FIX-6 |
+| CODE-7 | P3 | No idempotency test for `MotifService.run()` | `tests/unit/test_motif_service.py` | **Open** — new Cycle 9; add after CODE-2 fix |
+| CODE-8 | P3 | No test asserting `handle_chat` uses `build_tools()` not `TOOLS` | `tests/unit/test_assistant_chat.py` | **Open** — new Cycle 9; add after CODE-6 fix |
+| CODE-9 | P3 | `docs/retrieval_eval.md` Evaluation History missing Cycle 9 advisory row | `docs/retrieval_eval.md` | **Closed** — advisory row added 2026-04-16 by Doc Updater |
+| CODE-10 | P3 | No test for `facade.get_dream_motifs()` rejected-motifs filter | `tests/unit/test_assistant_facade.py` | **Open** — new Cycle 9 |
+| ARCH-5 | P3 | `docs/ARCHITECTURE.md` §17 Phase 9 listed as Planned; §16 baseline stale (97 vs 238) | `docs/ARCHITECTURE.md:306,340` | **Closed** — doc patch applied 2026-04-16 by Doc Updater |
+| ARCH-7 | P3 | WS-9.7 deferral not recorded in `docs/DECISION_LOG.md` | `docs/DECISION_LOG.md` | **Closed** — D-012 added 2026-04-16 by Doc Updater |
+
+_Cycle 8 findings (all Closed — archived below):_
 
 _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (58 Closed, 0 Open)_
 

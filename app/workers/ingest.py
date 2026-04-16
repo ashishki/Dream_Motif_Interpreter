@@ -15,7 +15,9 @@ from app.models.dream import DreamChunk, DreamEntry
 from app.models.theme import DreamTheme
 from app.services.analysis import AnalysisService
 from app.services.gdocs_client import GDocsAuthError, GDocsClient
+from app.services.motif_service import MotifService
 from app.services.segmentation import segment_paragraphs
+from app.shared.config import get_settings
 from app.workers.index import index_dream
 from app.shared.tracing import get_logger, get_tracer
 
@@ -52,6 +54,7 @@ async def ingest_document(ctx: dict[str, Any], *, job_id: uuid.UUID, doc_id: str
     session_factory: async_sessionmaker[AsyncSession] = ctx["session_factory"]
     gdocs_client: SupportsFetchDocument = ctx.get("gdocs_client", GDocsClient())
     analysis_service: AnalysisService = ctx.get("analysis_service") or AnalysisService()
+    motif_service: MotifService = ctx.get("motif_service") or MotifService()
 
     try:
         await write_sync_job_state(redis_client, job_id, SyncJobState(status="running"))
@@ -80,6 +83,7 @@ async def ingest_document(ctx: dict[str, Any], *, job_id: uuid.UUID, doc_id: str
                 ctx=ctx,
                 session_factory=session_factory,
                 analysis_service=analysis_service,
+                motif_service=motif_service,
                 pipeline_targets=pipeline_targets,
             )
         except GDocsAuthError:
@@ -184,6 +188,7 @@ async def _run_post_store_pipeline(
     ctx: dict[str, Any],
     session_factory: async_sessionmaker[AsyncSession],
     analysis_service: AnalysisService,
+    motif_service: MotifService,
     pipeline_targets: list[PipelineTarget],
 ) -> None:
     tracer = get_tracer(__name__)
@@ -203,6 +208,11 @@ async def _run_post_store_pipeline(
                 )
             if target.needs_indexing:
                 await index_dream(index_worker_ctx, dream_id=target.dream_id)
+            if get_settings().MOTIF_INDUCTION_ENABLED:
+                async with session_factory() as session:
+                    dream_entry = await session.get(DreamEntry, target.dream_id)
+                    if dream_entry is not None:
+                        await motif_service.run(dream_entry, session)
 
 
 def _no_llm_boundary_detector(paragraphs: list[str]) -> list[_FallbackSegmentDraft]:

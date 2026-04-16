@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     MAX_INDEX_AGE_HOURS: int = 24
     BULK_CONFIRM_TOKEN_TTL_SECONDS: int = 600
 
+    MOTIF_INDUCTION_ENABLED: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

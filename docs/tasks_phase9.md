@@ -60,7 +60,7 @@ WS-9.5 → WS-9.7 (optional)
 
 ---
 
-## WS-9.1: DB Migration and ORM Models
+## WS-9.1: DB Migration and ORM Models ✅
 
 Owner:      codex
 Phase:      9

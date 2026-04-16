@@ -1,6 +1,6 @@
 ---
-# STRATEGY_NOTE — Phase 2 Review
-_Date: 2026-04-12 · Reviewing: Phase 2 (T06–T09) → Phase 3 (T10–T12)_
+# STRATEGY_NOTE — Phase 9 Review
+_Date: 2026-04-16 · Reviewing: Phase 9 (WS-9.1–WS-9.7)_
 
 ## Recommendation: Proceed
 
@@ -8,26 +8,41 @@ _Date: 2026-04-12 · Reviewing: Phase 2 (T06–T09) → Phase 3 (T10–T12)_
 
 | Check | Verdict | Notes |
 |-------|---------|-------|
-| Phase coherence | COHERENT | Phase 3 goal: segment corpus is indexed, hybrid retrieval works, `insufficient_evidence` path is tested and mandatory, retrieval evaluation baseline is recorded. T10 (rag:ingestion — chunk/embed/index), T11 (rag:query — hybrid retrieval/evidence assembly/staleness), T12 (rag:query — 10-query eval dataset, baseline metrics) map directly and completely to that goal. Dependency chain T10→T11→T12 is correctly ordered. No task addresses a concern outside Phase 3's business goal; no required RAG task is missing. |
-| Open findings gate | CLEAR | CODEX_PROMPT.md Fix Queue = "empty". No P0 or P1 findings exist. Open findings are CODE-2, CODE-3, CODE-4, CODE-5, CODE-6 (all P2) and CODE-7, CODE-8, CODE-10 (all P3). None are P0 or P1; the gate is not blocked. |
-| Architectural drift | ALIGNED | T06 delivered `app/services/segmentation.py` (deterministic boundary detection + LLM fallback), T07 delivered `app/services/taxonomy.py` and migration `002_seed_categories.py` (approval state machine + 10 seeded active categories), T08 delivered `app/llm/theme_extractor.py` and `app/services/analysis.py` (LLM extraction → draft DreamTheme records), T09 delivered `app/llm/grounder.py` (salience ranking + fragment grounding). All four components are declared in ARCHITECTURE.md §Component Table with correct file paths and responsibilities. Test baseline grew from 17 passing (end of Phase 1) to 32 passing, 4 skipped — consistent with the four tasks and the skipped live-API integration tests. No undeclared components were introduced. |
-| Solution shape / governance / runtime drift | ALIGNED | T06: deterministic primary segmentation with LLM fallback only when the deterministic pass finds 0 boundaries in a document > 1000 words — matches ARCHITECTURE.md §Deterministic vs LLM-Owned Subproblems. T07: human approval required before promote/rename/merge/delete — satisfies Standard governance and all five Human Approval Boundaries declared in ARCHITECTURE.md. T08: all LLM-generated theme assignments stored with `status='draft'`; no draft auto-promoted — satisfies Minimum Viable Control Surface. T09: claude-sonnet-4-6 used for salience ranking and fragment grounding — matches ARCHITECTURE.md §Inference / Model Strategy. No agent loops, dynamic tool selection, shell mutation, package installation, or privileged runtime behavior was introduced. Workflow shape is maintained. |
-| ADR compliance | N/A | `docs/adr/` does not exist; no ADRs have been filed. No architectural decision changes occurred during Phase 2 that would require an ADR under current rules. |
-| RAG Profile gate | READY | Phase 3 correctly carries T10 tagged `rag:ingestion` and T11/T12 tagged `rag:query`. CODEX_PROMPT.md RAG State block is accurate: corpus declared but not yet chunked, embedded, or indexed; no retrieval baseline exists; index schema v1 declared but not yet implemented; next RAG tasks = T10/T11/T12. `docs/retrieval_eval.md` is initialized with the schema, corpus description, and evaluation dataset template — this is the correct state before T10 (the baseline is established in T12, not before). No RAG-specific risks (stale index, schema drift, missing `insufficient_evidence` path) can arise before Phase 3: retrieval components do not yet exist. The `insufficient_evidence` path is scheduled and tested in T11-AC2; its mandatory status is explicit in ARCHITECTURE.md §RAG Architecture. One pre-phase-3 attention item is noted in Warnings. |
+| Phase coherence | COHERENT | All WS-9.x tasks map directly to the Phase 9 goal: inductively derive abstract motifs from concrete imagery without a predefined vocabulary, store results in motif_inductions, expose via API and assistant tool, and gate everything behind MOTIF_INDUCTION_ENABLED. WS-9.7 is correctly marked optional. No out-of-scope tasks are present; no required task is missing. |
+| Open findings gate | CLEAR | All 58 findings are Closed. Fix Queue FIX-C9 states: "All 9 carry-forward P3 findings are now closed. No new tasks remain." There are no P0 or P1 open items. Gate is not blocked. |
+| Architectural drift | ALIGNED | Completed tasks (P6-T01, P6-T02, T16–T20, FIX-C8, FIX-C9) align with ARCHITECTURE.md. Planned Phase 9 components (app/services/imagery.py, app/services/motif_inductor.py, app/services/motif_grounder.py, app/services/motif_service.py, app/api/motifs.py, motif_inductions table) are all explicitly declared in ARCHITECTURE.md §17 and §20. No undeclared components are being introduced. |
+| Solution shape / governance / runtime drift | ALIGNED | System remains Workflow shape, Standard governance, T1 runtime. MotifService is a bounded, feature-flagged LLM pipeline — not an autonomous agent loop. MOTIF_INDUCTION_ENABLED defaults false. No shell mutation, privileged execution, or dynamic tool selection is introduced. The assistant tool extension in WS-9.6 is bounded: a read-only facade method with flag-gated catalog registration. The open-vocabulary induction step is a single bounded LLM call, not a planning or agentic loop. |
+| ADR compliance | HONOURED (all applicable) | See ADR detail table below |
+| RAG Profile gate | READY | RAG state block in CODEX_PROMPT.md is current. retrieval_eval.md has a populated 10-query evaluation dataset with recorded baseline metrics (hit@3=1.00, MRR=1.00, no-answer accuracy=1.00). Open retrieval findings: none. No stale index, schema drift, or missing insufficient_evidence path. Phase 9 does not modify the RAG pipeline. |
+
+## ADR Compliance Detail
+
+| ADR | Verdict | Notes |
+|-----|---------|-------|
+| ADR-001: Append-only annotation versioning | HONOURED | WS-9.1 AC-4 requires AnnotationVersion support for motif status transitions; append-only semantics carried forward to the new entity type |
+| ADR-002: Single-user API key auth | HONOURED | WS-9.5 API routes are within the existing authenticated surface; no new auth model introduced |
+| ADR-003: Telegram adapter inside core repo | HONOURED | WS-9.6 extends app/assistant/ and app/telegram/ within the same repository; no second repo introduced |
+| ADR-004: Bounded assistant tool facade | HONOURED | WS-9.6 adds get_dream_motifs via AssistantFacade.get_dream_motifs(); returns DTOs, no ORM leakage; tool absent from catalog when MOTIF_INDUCTION_ENABLED=false |
+| ADR-005: Managed transcription first | HONOURED | Phase 9 does not touch transcription; OpenAI Whisper remains the provider |
+| ADR-006: Persisted bot session state | HONOURED | Phase 9 does not modify the session model; bot_sessions table is unchanged |
+| ADR-007: Compose-first deployment | HONOURED | Phase 9 does not introduce new runtime processes; deployment topology unchanged |
+| ADR-008: Inducted motifs and taxonomy themes separate | HONOURED (planned) | ADR is Proposed; task graph enforces separation throughout: WS-9.1 AC-5 ("does not modify dream_themes"), WS-9.2 AC-4 ("neither component writes to dream_themes"), WS-9.4 AC-5 ("MotifService does not write to dream_themes"), WS-9.7 AC-2 ("motif-based results clearly distinguished from taxonomy-based results"). tasks_phase9.md execution rule §3 also restates the prohibition explicitly. |
+| ADR-009: Research trust boundary | N/A | Phase 10 concern; ResearchRetriever and research_results are not in scope for Phase 9 |
+| ADR-010: Feature flag gating | HONOURED (planned) | MOTIF_INDUCTION_ENABLED defaults false per WS-9.4 AC-3/AC-4; flag must be checked at runtime not startup per WS-9.4 Notes and ADR-010 §Consequences; RESEARCH_AUGMENTATION_ENABLED is not activated in Phase 9 |
 
 ## Findings / Blockers
 
-_None. All checks passed. No blockers._
+_None. Recommendation is Proceed._
 
 ## Warnings
 
-1. **CODE-8 should be resolved before T10 begins** — `DreamTheme.fragments` has no `server_default='[]'::jsonb` (CODEX_PROMPT.md CODE-8, P3, open). T10 does not directly insert `DreamTheme` records, but T10's integration tests run against the same schema. If T08-produced rows with null `fragments` are present when T10 executes JSONB queries that assume non-null fragments, silent failures are possible. Resolve CODE-8 (add `server_default` in a migration patch) as the first act of Phase 3, before T10's implementation begins.
+1. **ADR-003 and ADR-004 are still "Proposed" status.** Both govern the Telegram layer that has been fully implemented and validated through Phase 8. These should be updated to "Accepted" before or alongside Phase 9 WS-9.1 kickoff to accurately reflect that the decisions are binding and have been acted upon.
 
-2. **CODE-2 (P2) should be resolved early in Phase 3** — `GDocsClient` non-auth `HttpError` branch is untested (`tests/unit/test_gdocs_client.py`). T10 depends on T05 (`GDocsClient`), and the ingestion worker path calls `fetch_document()`. An unexercised error branch in a direct dependency of a phase's first task is a latent risk. Fixing CODE-2 before T10 is complete is recommended.
+2. **ADR-008 and ADR-010 are "Proposed" and become binding in Phase 9.** Both should be promoted to "Accepted" as part of WS-9.1 kickoff, before any Phase 9 implementation begins, so the record correctly reflects their binding status.
 
-3. **ADR directory still absent** — `docs/adr/` does not exist. ARCHITECTURE.md §Continuity and Retrieval Model lists it as a canonical truth artifact. Phase 3 introduces the first concrete index schema version (v1) and fixes the embedding model (`text-embedding-3-small`). If either changes mid-phase (e.g., embedding model swap, chunking strategy revision, relevance threshold change), an ADR is required. The directory should be created before such a decision arises. T10 notes the index schema version must be stored in a config constant — if that constant is changed before a baseline is recorded, an ADR must accompany the change.
+3. **retrieval_eval.md Evaluation History is missing the T15 entry.** CODEX_PROMPT.md §Evaluation State records a T15 run (2026-04-14, no regression), but retrieval_eval.md §Evaluation History stops at T12 (2026-04-13). The gap creates a traceability risk for future reviewers. The T15 entry should be appended to retrieval_eval.md §Evaluation History before Phase 9 begins.
 
-4. **CI has still not run against the repository** — CODEX_PROMPT.md records "Last CI run: not yet configured". Phase 3 carries the first `rag:*` tagged tasks; the post-task protocol requires evaluation before marking them DONE. CI green is the phase gate for Phase 1 and is a prerequisite for reliable test baselines throughout. At minimum, Phase 3 should not close its gate without a successful GitHub Actions run.
+4. **WS-9.7 (Pattern Queries Extension) deferral should be recorded explicitly.** The task is marked optional and may be deferred to Phase 9.1 or Phase 10. The Orchestrator should confirm the deferral decision in DECISION_LOG.md before Phase 9 starts, so the Phase 9 gate condition is unambiguous.
 
-5. **Retrieval evaluation baseline is Phase 3's only hard gate on retrieval quality** — `docs/retrieval_eval.md` contains no measured metrics; all entries are TBD or blank. T12 establishes the baseline and closes the Phase 3 gate. Any schedule compression that defers T12 would leave the project without a measured retrieval baseline before Phase 4's API layer exposes search to the user. T12 must not be skipped or deferred.
+5. **CI is still not configured** (CODEX_PROMPT.md §Current State: "Last CI run: not yet configured"). Phase 9 will increase the test count. Without CI, regressions can only be caught locally. This is a pre-existing risk carried from prior phases; it does not block Phase 9 but should be addressed before the system reaches production.
 ---

@@ -9,7 +9,7 @@ Phase: 9-planned
 ## Current State
 
 - **Phase:** 9 planned — Phase 8 complete
-- **Baseline:** 97 unit tests passing
+- **Baseline:** 164 tests passing (97 → 164 after WS-9.1)
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
 - **Last updated:** 2026-04-15 (P8-T02 — curation deferral explicit; Telegram is read-oriented; Phase 8 gate conditions met)
@@ -42,16 +42,19 @@ Phase: 9-planned
 
 ## Next Task
 
-**WS-9.1 — Database Migration and ORM Models**
+**WS-9.2 + WS-9.3 — LLM Pipeline (ImageryExtractor + MotifInductor) + MotifGrounder**
 
-Phase 9 task graph: `docs/tasks_phase9.md`
-First task: WS-9.1 — add `motif_inductions` table, `MotifInduction` ORM model, and `AnnotationVersion` support for `entity_type = 'motif_induction'`.
+Both tasks are unblocked (WS-9.1 complete). Run in parallel.
 
-Context refs before starting:
-- `docs/MOTIF_ABSTRACTION.md` — full design spec for the motif abstraction layer
-- `docs/adr/ADR-008-motif-induction-vs-taxonomy.md` — why motif_inductions must never merge with dream_themes
-- `docs/adr/ADR-010-feature-flag-gating.md` — feature flag strategy
-- `docs/tasks_phase9.md §WS-9.1` — acceptance criteria and file scope
+WS-9.2 context refs:
+- `docs/MOTIF_ABSTRACTION.md §2` — pipeline design
+- `docs/adr/ADR-008-motif-induction-vs-taxonomy.md`
+- `docs/tasks_phase9.md §WS-9.2`
+
+WS-9.3 context refs:
+- `docs/MOTIF_ABSTRACTION.md §2 Stage 3`
+- `app/llm/grounder.py` — offset-verification reference
+- `docs/tasks_phase9.md §WS-9.3`
 
 ---
 

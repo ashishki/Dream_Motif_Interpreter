@@ -17,6 +17,7 @@ _Append-only. One row per review cycle._
 | 6 | Phase 4 | 2026-04-14 | T13–T15 + rag:query trigger | No | 0 | 0 | 5 |
 | 7 | Phase 4 boundary | 2026-04-14 | T13–T17 full Phase 4 | No | 0 | 0 | 4 |
 | 8 | Phase 5 boundary | 2026-04-14 | T18–T20 full Phase 5 | No | 0 | 0 | 4 |
+| 9 | Phase 8 boundary | 2026-04-15 | P6-T01/T02, P7-voice, P8-observability full | No | 0 | 0 | 0 |
 
 ---
 
@@ -33,6 +34,7 @@ _Append-only. One row per review cycle._
 | 6 | `docs/audit/archive/PHASE4_CYCLE6_REVIEW.md` | Phase 4 (T13–T15, rag:query) | OK — 0 P0/P1, 5 P2, 5 P3; Stop-Ship: No |
 | 7 | `docs/audit/archive/PHASE4_CYCLE7_REVIEW.md` | Phase 4 boundary (T13–T17 full) | OK — 0 P0/P1, 4 P2 (CODE-48/49/50 + DOC-1), 9 P3; Stop-Ship: No |
 | 8 | `docs/audit/archive/PHASE5_CYCLE8_REVIEW.md` | Phase 5 boundary (T18–T20 full) | OK — 0 P0/P1, 4 P2 carry-forward, 9 P3; Stop-Ship: No; Phase Gate: PASS |
+| 9 | `docs/archive/PHASE8_REVIEW.md` | Phase 8 boundary (Phases 6–8 full) | OK — 0 P0/P1/P2; Strategy: Proceed; Phase Gate: PASS |
 
 ---
 

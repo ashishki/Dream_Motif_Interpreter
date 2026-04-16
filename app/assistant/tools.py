@@ -5,8 +5,7 @@ from typing import Any
 
 from app.assistant.facade import AssistantFacade
 
-
-TOOLS: list[dict[str, Any]] = [
+_BASE_TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_dreams",
         "description": (
@@ -113,6 +112,42 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+_GET_DREAM_MOTIFS_TOOL: dict[str, Any] = {
+    "name": "get_dream_motifs",
+    "description": (
+        "Retrieve the inducted abstract motifs for a specific dream entry. "
+        "Returns computational abstraction suggestions with confidence levels and status. "
+        "Use when the user asks about abstract patterns or motifs for a specific dream. "
+        "These are model-derived suggestions, not curated findings."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "dream_id": {
+                "type": "string",
+                "description": "UUID of the dream entry.",
+            },
+        },
+        "required": ["dream_id"],
+        "additionalProperties": False,
+    },
+}
+
+
+def build_tools(motif_induction_enabled: bool = False) -> list[dict[str, Any]]:
+    """Return the tool catalog.
+
+    When motif_induction_enabled is True, the get_dream_motifs tool is
+    included. When False, it is absent from the catalog entirely.
+    """
+    tools = list(_BASE_TOOLS)
+    if motif_induction_enabled:
+        tools.append(_GET_DREAM_MOTIFS_TOOL)
+    return tools
+
+
+TOOLS: list[dict[str, Any]] = build_tools(motif_induction_enabled=False)
+
 
 async def execute_tool(
     tool_name: str,
@@ -202,5 +237,30 @@ async def execute_tool(
             return "doc_id is required to trigger a sync."
         ref = await facade.trigger_sync(doc_id)
         return f"Sync job queued: {ref.job_id} (doc_id={ref.doc_id}, status={ref.status})"
+
+    if tool_name == "get_dream_motifs":
+        raw_id = str(tool_input.get("dream_id", "")).strip()
+        try:
+            dream_id = uuid.UUID(raw_id)
+        except ValueError:
+            return f"Invalid dream_id: {raw_id!r}"
+        motifs = await facade.get_dream_motifs(dream_id)
+        if not motifs:
+            return "No abstract motifs found for this dream."
+        lines = [f"Abstract motif suggestions for dream {raw_id}:"]
+        for motif in motifs:
+            confidence_label = motif.confidence or "unknown"
+            if motif.status == "draft":
+                status_note = "(unconfirmed suggestion)"
+            elif motif.status == "confirmed":
+                status_note = "(confirmed by user)"
+            else:
+                status_note = f"({motif.status})"
+            lines.append(
+                f"- [{confidence_label} confidence] {motif.label} {status_note}"
+            )
+            if motif.rationale:
+                lines.append(f"  Rationale: {motif.rationale}")
+        return "\n".join(lines)
 
     return f"Unknown tool: {tool_name}"

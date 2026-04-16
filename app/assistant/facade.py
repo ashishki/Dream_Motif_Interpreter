@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.dream import DreamEntry
+from app.models.motif import MotifInduction
 from app.models.theme import DreamTheme, ThemeCategory
 from app.retrieval.query import EvidenceBlock, InsufficientEvidence, RagQueryService
 from app.services.analysis import AnalysisService
@@ -94,6 +95,18 @@ class ThemeHistoryEntry:
     entity_type: str
     entity_id: uuid.UUID
     snapshot: dict[str, Any]
+    created_at: str
+
+
+@dataclass(frozen=True)
+class MotifInductionItem:
+    id: uuid.UUID
+    label: str
+    rationale: str | None
+    confidence: str | None
+    status: str
+    fragments: list[dict[str, Any]]
+    model_version: str | None
     created_at: str
 
 
@@ -207,6 +220,20 @@ class AssistantFacade:
             for version in versions
         ]
 
+    async def get_dream_motifs(self, dream_id: uuid.UUID) -> list[MotifInductionItem]:
+        tracer = get_tracer(__name__)
+
+        async with self._session_factory() as session:
+            with tracer.start_as_current_span("assistant.get_dream_motifs"):
+                result = await session.execute(
+                    select(MotifInduction)
+                    .where(MotifInduction.dream_id == dream_id)
+                    .where(MotifInduction.status != "rejected")
+                    .order_by(MotifInduction.created_at.asc(), MotifInduction.id.asc())
+                )
+
+        return [_motif_induction_item(motif) for motif in result.scalars().all()]
+
     async def trigger_sync(self, doc_id: str) -> SyncJobRef:
         if self._sync_job_enqueuer is None:
             raise RuntimeError("AssistantFacade trigger_sync requires a sync job enqueuer")
@@ -271,4 +298,17 @@ def _co_occurrence_pattern_item(pattern: CoOccurrencePattern) -> CoOccurrencePat
     return CoOccurrencePatternItem(
         category_ids=tuple(sorted(pattern.category_ids, key=str)),
         count=pattern.count,
+    )
+
+
+def _motif_induction_item(motif: MotifInduction) -> MotifInductionItem:
+    return MotifInductionItem(
+        id=motif.id,
+        label=motif.label,
+        rationale=motif.rationale,
+        confidence=motif.confidence,
+        status=motif.status,
+        fragments=list(motif.fragments) if motif.fragments else [],
+        model_version=motif.model_version,
+        created_at=motif.created_at.isoformat(),
     )

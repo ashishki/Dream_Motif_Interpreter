@@ -7,7 +7,13 @@ from uuid import uuid4
 
 import pytest
 
-from app.assistant.facade import AssistantFacade, DreamDetail, SearchResult, SyncJobRef
+from app.assistant.facade import (
+    AssistantFacade,
+    DreamDetail,
+    MotifInductionItem,
+    SearchResult,
+    SyncJobRef,
+)
 from app.retrieval.query import EvidenceBlock, FragmentMatch, InsufficientEvidence
 
 
@@ -182,6 +188,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "get_patterns",
         "get_theme_history",
         "trigger_sync",
+        "get_dream_motifs",
     }
 
 
@@ -212,3 +219,94 @@ async def test_trigger_sync_enqueues_job_and_returns_ref() -> None:
         job_id=result.job_id,
         doc_id="doc-789",
     )
+
+
+@pytest.mark.asyncio
+async def test_get_dream_motifs_returns_frozen_dto_list() -> None:
+    """get_dream_motifs returns a list of MotifInductionItem frozen dataclasses (no ORM)."""
+    dream_id = uuid4()
+    motif_id = uuid4()
+    created_at = datetime(2026, 4, 15, tzinfo=timezone.utc)
+    motif = SimpleNamespace(
+        id=motif_id,
+        label="obstructed vertical movement",
+        rationale="The dreamer encountered blocked stairs and a locked elevated door.",
+        confidence="high",
+        status="draft",
+        fragments=[{"text": "crumbling stairs", "offset_start": 0, "offset_end": 16}],
+        model_version="v1",
+        created_at=created_at,
+    )
+    session = _FakeSession(
+        execute_results=[_FakeResult(scalars=[motif])],
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    result = await facade.get_dream_motifs(dream_id)
+
+    assert len(result) == 1
+    item = result[0]
+    assert isinstance(item, MotifInductionItem)
+    assert item.id == motif_id
+    assert item.label == "obstructed vertical movement"
+    assert item.confidence == "high"
+    assert item.status == "draft"
+    assert item.model_version == "v1"
+    assert item.created_at == created_at.isoformat()
+    assert item.fragments == [{"text": "crumbling stairs", "offset_start": 0, "offset_end": 16}]
+
+
+@pytest.mark.asyncio
+async def test_get_dream_motifs_returns_empty_list_when_none_found() -> None:
+    dream_id = uuid4()
+    session = _FakeSession(
+        execute_results=[_FakeResult(scalars=[])],
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    result = await facade.get_dream_motifs(dream_id)
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_dream_motifs_dto_is_frozen() -> None:
+    """MotifInductionItem is a frozen dataclass — mutation must raise."""
+    dream_id = uuid4()
+    motif_id = uuid4()
+    created_at = datetime(2026, 4, 15, tzinfo=timezone.utc)
+    motif = SimpleNamespace(
+        id=motif_id,
+        label="dissolution",
+        rationale="Things fell apart.",
+        confidence="moderate",
+        status="draft",
+        fragments=[],
+        model_version="v1",
+        created_at=created_at,
+    )
+    session = _FakeSession(
+        execute_results=[_FakeResult(scalars=[motif])],
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    result = await facade.get_dream_motifs(dream_id)
+    item = result[0]
+
+    import dataclasses
+
+    assert dataclasses.is_dataclass(item)
+    try:
+        item.label = "mutated"  # type: ignore[misc]
+        raise AssertionError("Expected FrozenInstanceError")
+    except Exception as exc:
+        assert "frozen" in type(exc).__name__.lower() or "can't" in str(exc).lower()

@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api.dreams import _get_redis_client, is_valid_api_key, router as dreams_router
+from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
 from app.api.motifs import router as motifs_router
 from app.api.patterns import router as patterns_router
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     application = FastAPI(title="Dream Motif Interpreter", version="0.1.0", lifespan=lifespan)
     application.include_router(health_router)
     application.include_router(dreams_router)
+    application.include_router(feedback_router)
     application.include_router(motifs_router)
     application.include_router(research_router)
     application.include_router(patterns_router)

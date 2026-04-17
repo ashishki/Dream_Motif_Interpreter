@@ -12,7 +12,7 @@ Phase: 10-fix
 - **Baseline:** 216 tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-17 (Cycle 10 consolidation; WS-10.1–10.5 complete; FIX-7/FIX-8/FIX-9 added; all Cycle 9 carry-forwards closed)
+- **Last updated:** 2026-04-17 (FIX-7/FIX-8/FIX-9 applied and closed; Phase 10 fix queue clear; Next: Phase 11 Strategy)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,7 +21,7 @@ Phase: 10-fix
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 10 complete (WS-10.1–WS-10.5); all Cycle 9 carry-forwards closed
-- **Current planning state:** Phase 10 fix queue active (FIX-7/FIX-8/FIX-9 + P3 doc patches); Phase 11 planning pending
+- **Current planning state:** Phase 10 complete; Fix Queue clear; Phase 11 (Feedback Loop) next
 - **Latest completed implementation task:** WS-10.5 — Assistant Tool + Facade Method
 - **Current baseline:** 216 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
@@ -43,18 +43,15 @@ Phase: 10-fix
 
 ## Next Task
 
-**FIX-7 — ResearchRetriever OTel Instrumentation**
+**Phase 11 — Feedback Loop (Strategy Review)**
 
-Phase 10 Fix Queue. Resolve FIX-7 and FIX-8 before any Phase 11 work begins.
+FIX-7, FIX-8, FIX-9 are CLOSED (applied 2026-04-17). Fix Queue is clear.
+Next: run Phase 11 Strategy Review, then implement `docs/tasks_phase11.md`.
 
-Context refs before starting:
-- `docs/IMPLEMENTATION_CONTRACT.md OBS-1/OBS-2` — external call instrumentation requirements
-- `app/research/retriever.py` — target file for span and counter addition
-- `app/research/synthesizer.py` — target file for FIX-8 span and counter addition
-- `app/shared/tracing.py` — shared `get_tracer`/`get_meter` pattern to follow
-- FIX-9 (doc patches): `docs/retrieval_eval.md` advisory row + `docs/IMPLEMENTATION_JOURNAL.md` Phase 10 entry + `docs/ARCHITECTURE.md` §9/§18/§22 doc drift fixes
-
-Fix Queue resolution order: FIX-7 → FIX-8 → FIX-9 (doc patches)
+Context refs:
+- `docs/PHASE_PLAN.md §11` — Feedback Loop design
+- `docs/FEEDBACK_LOOP.md` — quality signal spec
+- `docs/CODEX_PROMPT.md §Fix Queue` — confirm all closed before starting
 
 ---
 
@@ -62,13 +59,13 @@ Fix Queue resolution order: FIX-7 → FIX-8 → FIX-9 (doc patches)
 
 ─── Fix Queue (resolve before Phase 11 queue) ────────────────────────
 
-🟡 FIX-7 [P2] — ResearchRetriever external HTTP call missing OTel span and counter
+✅ FIX-7 [P2] — ResearchRetriever external HTTP call missing OTel span and counter
   File: app/research/retriever.py:27–82 · Change: wrap retrieve() body in tracer.start_as_current_span("research_retriever.retrieve"); emit get_meter(__name__).create_counter("research.retrieve_total") with {"status": "success"|"failure"} attribute; record latency as span attribute research_retrieve_ms · Test: assert counter incremented and span created after stub HTTP call
 
-🟡 FIX-8 [P2] — ResearchSynthesizer LLM call missing OTel span and counter
+✅ FIX-8 [P2] — ResearchSynthesizer LLM call missing OTel span and counter
   File: app/research/synthesizer.py · Change: wrap synthesize() body in tracer.start_as_current_span("research_synthesizer.synthesize"); emit get_meter(__name__).create_counter("research.synthesis_total") with {"status": "success"|"failure"} attribute · Test: assert counter incremented and span created after stub LLM call
 
-🟡 FIX-9 [P3] — Doc patches: retrieval_eval advisory row + IMPLEMENTATION_JOURNAL Phase 10 entry + ARCHITECTURE.md drift
+✅ FIX-9 [P3] — Doc patches: retrieval_eval advisory row + IMPLEMENTATION_JOURNAL Phase 10 entry + ARCHITECTURE.md drift
   Files: docs/retrieval_eval.md, docs/IMPLEMENTATION_JOURNAL.md, docs/ARCHITECTURE.md · Change: (a) add Cycle 10 advisory row to retrieval_eval.md Evaluation History confirming RAG layer unchanged in Phase 10; (b) append Phase 10 journal entry with WS-10.1–10.5 scope, decisions D-013/ADR-009/ADR-010, test baseline 216; (c) add app/research/ row and ResearchService to ARCHITECTURE.md §9; update §18 header to (Implemented — Phase 10); renumber duplicate §18 (Resolved Architectural Decisions) to §22 · Test: doc review — no automated test required
 
 ─── Closed Fix Queue items (Cycle 9 → Cycle 10) ──────────────────────

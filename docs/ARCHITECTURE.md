@@ -185,6 +185,7 @@ Telegram handlers embedded directly into the FastAPI process:
 | `app/api/` | public HTTP API for archive access and curation | implemented |
 | `app/services/` | domain services and business rules | implemented |
 | `app/retrieval/` | chunking, embeddings, retrieval | implemented |
+| `app/research/` | external research retrieval, synthesis, and orchestration services | implemented (Phase 10) |
 | `app/workers/` | sync, indexing, transcription, and cleanup workers | implemented |
 | `app/assistant/` | bounded assistant facade, chat loop, session persistence, voice media helpers | implemented (Phase 6–7) |
 | `app/telegram/` | bot runtime, auth guard, text/voice handlers, file download | implemented (Phase 6–7) |
@@ -349,7 +350,7 @@ Inducted motifs are computational abstractions, draft by default, and require hu
 
 See [MOTIF_ABSTRACTION.md](MOTIF_ABSTRACTION.md) and [ADR-008](adr/ADR-008-motif-induction-vs-taxonomy.md).
 
-## 18. Research Augmentation Layer (Planned — Phase 10)
+## 18. Research Augmentation Layer
 
 Research augmentation is an on-demand external search layer for mythology, folklore, cultural, and taboo parallels to confirmed inducted motifs.
 
@@ -357,12 +358,13 @@ Research augmentation is an on-demand external search layer for mythology, folkl
 
 `ResearchRetriever` is an external trust boundary. All content retrieved by this component originates outside the system and cannot be verified by the archive. It is never stored in dream archive tables.
 
-### Planned components
+### Components
 
 | Component | Responsibility |
 |-----------|----------------|
 | `app/research/retriever.py` (`ResearchRetriever`) | Call external search API; external trust boundary |
 | `app/research/synthesizer.py` (`ResearchSynthesizer`) | Summarise retrieved results into labeled parallels |
+| `app/research/service.py` (`ResearchService`) | Orchestrate retrieval, synthesis, and persistence for motif research |
 | `research_results` table | Stores parallels with source URL and retrieval timestamp |
 
 ### Trust level
@@ -411,7 +413,7 @@ Architecture-affecting decisions are documented in `docs/adr/`:
 - ADR-009: research trust boundary and confidence vocabulary (planned)
 - ADR-010: feature flag gating for Phase 9 and Phase 10 (planned)
 
-## 18. Resolved Architectural Decisions
+## 22. Resolved Architectural Decisions
 
 All Phase 6–8 decisions are resolved:
 

@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Any, Literal, TypedDict
 
 from app.llm.client import AnthropicLLMClient
+from app.shared.tracing import get_meter, get_tracer
 
 
 AllowedConfidence = Literal["speculative", "plausible", "uncertain"]
@@ -26,18 +27,40 @@ class ResearchSynthesisError(Exception):
 class ResearchSynthesizer:
     def __init__(self, llm_client: Any | None = None) -> None:
         self._client = llm_client or AnthropicLLMClient(model="claude-sonnet-4-6")
+        self._tracer = get_tracer(__name__)
+        self._meter = get_meter(__name__)
+        self._synthesis_counter = self._meter.create_counter(
+            "research.synthesis_total",
+            description="Research synthesis calls",
+        )
 
     async def synthesize(
         self, motif_label: str, sources: list[dict[str, str]]
     ) -> list[ResearchParallel]:
-        system_prompt = self._build_system_prompt()
-        user_prompt = self._build_user_prompt(motif_label, sources)
+        with self._tracer.start_as_current_span("research_synthesizer.synthesize") as span:
+            span.set_attribute("component", "research_synthesizer")
+            system_prompt = self._build_system_prompt()
+            user_prompt = self._build_user_prompt(motif_label, sources)
 
-        try:
-            raw_response = await self._client.complete(system_prompt, user_prompt)
-            return self._parse_parallels(raw_response)
-        except (json.JSONDecodeError, TypeError, ValueError, ResearchSynthesisError) as exc:
-            raise ResearchSynthesisError("Research synthesis failed to parse valid parallels") from exc
+            try:
+                try:
+                    raw_response = await self._client.complete(system_prompt, user_prompt)
+                    parallels = self._parse_parallels(raw_response)
+                except (
+                    json.JSONDecodeError,
+                    TypeError,
+                    ValueError,
+                    ResearchSynthesisError,
+                ) as exc:
+                    raise ResearchSynthesisError(
+                        "Research synthesis failed to parse valid parallels"
+                    ) from exc
+
+                self._synthesis_counter.add(1, {"status": "success"})
+                return parallels
+            except ResearchSynthesisError:
+                self._synthesis_counter.add(1, {"status": "failure"})
+                raise
 
     def _build_system_prompt(self) -> str:
         return (

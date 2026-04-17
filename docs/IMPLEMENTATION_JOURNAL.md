@@ -256,3 +256,12 @@ Status: append-only
 - Evidence collected: none yet — pre-implementation
 - Follow-ups: T01 Project Skeleton is next
 - Notes for next agent: RAG profile is ON. Ingestion and query pipelines must be in separate modules. Annotation versioning is mandatory for all DreamTheme and ThemeCategory mutations. Dream content must never appear in logs or spans. Human approval gate is required for taxonomy promotion.
+
+### 2026-04-17 — Phase 10 — Research Augmentation
+
+- Scope: WS-10.1–WS-10.5 (Research Augmentation)
+- Why this work happened: Phase 10 required the research augmentation path, storage, service orchestration, API surface, and assistant tool gating for external motif parallels
+- Decisions applied: D-013 (provider-agnostic retriever), ADR-009 (research trust boundary), ADR-010 (feature flag gating)
+- Evidence collected: 216 unit tests pass; research_results migration (010); ResearchRetriever + ResearchSynthesizer; ResearchService; GET/POST /motifs/{id}/research; research_motif_parallels assistant tool gated by RESEARCH_AUGMENTATION_ENABLED
+- Follow-ups: FIX-7/FIX-8 OTel instrumentation; ARCHITECTURE.md doc drift (FIX-9c)
+- Notes for next agent: Research augmentation is an external trust-boundary path separate from dream-archive RAG and remains gated behind `RESEARCH_AUGMENTATION_ENABLED`

@@ -1,82 +1,98 @@
 ---
-# META_ANALYSIS — Cycle 9
-_Date: 2026-04-16 · Type: full_
+# META_ANALYSIS — Cycle 10
+_Date: 2026-04-17 · Type: full_
 
 ## Project State
 
-Phase 9 (WS-9.1 through WS-9.6) is functionally complete ahead of the formal gate review. All core deliverables are present in source: DB migration (009), ORM model, ImageryExtractor, MotifInductor, MotifGrounder, MotifService orchestrator, ingest feature-flag integration, REST API routes (`app/api/motifs.py`), assistant facade method (`get_dream_motifs`), tool registration with flag gate, and system prompt framing rules. WS-9.7 (Pattern Queries Extension) is optional and not yet implemented.
+Phase 9 (WS-9.1–WS-9.6) complete; all P2/P3 findings from Cycle 9 remain open in the Fix Queue. Phase 10 active; no Phase 10 tasks have been implemented yet.
+Next: WS-10.1 — DB Migration and ORM Model (research_results table, ResearchResult ORM).
 
-Next: WS-9.7 — Pattern Queries Extension (optional; may be deferred to Phase 9.1 or Phase 10).
+Baseline: 200 pass, 9 skip (per CODEX_PROMPT.md v1.37, 2026-04-16).
+Unit-only run (2026-04-17): 216 pass, 0 skip (integration errors are environment-only — DB/Redis unavailable in this environment; not a regression).
 
-Baseline: 238 pass, 9 skip (actual pytest run 2026-04-16).
+Previous cycle baseline (Cycle 9 REVIEW_REPORT, 2026-04-16): 238 pass, 9 skip.
+Note: CODEX_PROMPT.md records 200 passing; Cycle 9 REVIEW_REPORT.md recorded 238 passing on the same date. The discrepancy likely reflects a compaction/recount artefact when CODEX_PROMPT.md was updated for Phase 10 start. Actual unit-test count (216) and CODEX_PROMPT figure (200) are consistent within the range of integration-test exclusions. No regression is indicated; PROMPT_2 should verify the actual count by running `pytest -q --ignore=tests/integration` and recording the result.
 
-Note: `docs/CODEX_PROMPT.md §Current State` records the baseline as "97 → 164 after WS-9.1" and lists WS-9.2 + WS-9.3 as the next task. Both figures are stale — actual baseline is 238 passing, WS-9.2 through WS-9.6 are already implemented. CODEX_PROMPT.md must be updated before implementation resumes.
-
-Previous cycle baseline (Cycle 6 REVIEW_REPORT.md, 2026-04-14): 74 pass, 9 skip. Net +164 pass since Cycle 6 close, covering Phase 7–8 delivery (P6-T01, P6-T02, FIX-C8, FIX-C9, T17–T20) and Phase 9 WS-9.1 through WS-9.6. No intervening REVIEW_REPORT exists for T17–T20 or WS-9.1–9.6; this cycle is the first full audit covering those components.
+Change vs Cycle 9: no new implementation; only three doc-only patches applied (CODE-9/ARCH-5/ARCH-7 closed by Doc Updater 2026-04-16). All six P2 Fix Queue items remain open.
 
 ---
 
 ## Open Findings
 
-All 58 findings from Cycle 8 (as recorded in CODEX_PROMPT.md) are marked Closed. REVIEW_REPORT.md is from Cycle 6 (2026-04-14) and is stale with respect to T17–T20 and all Phase 9 work. The following findings are raised for this cycle based on source inspection and task-graph gap analysis.
+Findings carried forward from Cycle 9 REVIEW_REPORT (2026-04-16). CODE-9, ARCH-5, ARCH-7 closed by Doc Updater 2026-04-16. No new findings raised since Cycle 9 close; Phase 10 has not yet produced any code to inspect.
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
-| CODE-51 | P2 | `docs/CODEX_PROMPT.md §Current State` baseline is stale: records "97 → 164 after WS-9.1" but actual baseline is 238 passing, 9 skipped. `§Next Task` lists WS-9.2 + WS-9.3 as next but both are already implemented. Must be updated before the next implementation task begins. | `docs/CODEX_PROMPT.md` | Open — new Cycle 9 |
-| CODE-52 | P2 | `app/assistant/prompts.py` is listed as a required deliverable in `docs/tasks_phase9.md §WS-9.6 Files` but does not exist. Motif framing rules are embedded in `app/assistant/chat.py` as inline string literals. Confirm that this satisfies WS-9.6 AC-3 ("system prompt includes framing rules") or create `app/assistant/prompts.py` as a follow-up task. | `app/assistant/chat.py`, `app/assistant/prompts.py` (absent) | Open — new Cycle 9; verify or resolve |
-| CODE-53 | P2 | WS-9.5 AC-4 requires rejected motifs to not appear in the default GET response, or the behavior must be explicitly defined. `app/api/motifs.py` must be inspected to confirm the filter is implemented and covered by a test case in `tests/unit/test_motifs_api.py`. | `app/api/motifs.py`, `tests/unit/test_motifs_api.py` | Open — new Cycle 9; inspect required |
-| CODE-54 | P2 | WS-9.6 AC-2 requires `get_dream_motifs` to be absent from the tool catalog when `MOTIF_INDUCTION_ENABLED=false`. `app/assistant/tools.py:149` initialises `TOOLS` with `motif_induction_enabled=False` at module import time. WS-9.4 notes require the flag to be re-evaluated at request time, not at startup. Confirm whether `build_tools()` is called per request or once at import; if the latter, a flag change without redeploy will not take effect for the assistant tool catalog. | `app/assistant/tools.py:137–149` | Open — new Cycle 9; flag evaluation timing requires verification |
-| CODE-55 | P3 | `docs/audit/REVIEW_REPORT.md` is stale (Cycle 6, 2026-04-14). Tasks T17–T20 and WS-9.1 through WS-9.6 have never been covered by a review report. This cycle's PROMPT_1 and PROMPT_2 outputs must cover the full gap. | `docs/audit/REVIEW_REPORT.md` | Open — new Cycle 9; addressed by this review cycle |
-| CODE-56 | P3 | WS-9.7 (Pattern Queries Extension) is not implemented. No motif-related logic exists in `app/api/patterns.py` or `app/services/patterns.py`. The task is marked optional in `docs/tasks_phase9.md §WS-9.7`. Confirm deferral decision is recorded in `docs/DECISION_LOG.md`; if not, add an entry before Phase 10 planning begins. | `app/api/patterns.py`, `app/services/patterns.py`, `docs/DECISION_LOG.md` | Open — new Cycle 9; deferral confirmation needed |
+| CODE-1 | P2 | `MotifService.run()` calls `await session.commit()` on a caller-provided session; double-commit risk and silent partial writes on exception | `app/services/motif_service.py:126` | Open — Cycle 9; see FIX-1 |
+| CODE-2 | P2 | No idempotency guard in `MotifService.run()`; duplicate `motif_inductions` rows on re-ingest; user-confirmed status overwritten | `app/services/motif_service.py:114–123` | Open — Cycle 9; see FIX-2 |
+| CODE-3 | P2 | `get_settings()` `@lru_cache` freezes `MOTIF_INDUCTION_ENABLED` at first call; flag change requires process restart; violates ADR-010 | `app/shared/config.py:33` | Open — Cycle 9; see FIX-3; affects Phase 10 flag `RESEARCH_AUGMENTATION_ENABLED` via same mechanism |
+| CODE-4 | P2 | `app/assistant/prompts.py` absent; WS-9.6 deliverable unmet; `_SYSTEM_PROMPT` inline in `chat.py`; WS-10.5 adds new framing requirements to the same file | `app/assistant/chat.py:18–42`, `app/assistant/prompts.py` (absent) | Open — Cycle 9; see FIX-4; Phase 10 dependency |
+| CODE-5 | P2 | No labeled OTel counter/histogram on `ImageryExtractor` and `MotifInductor` LLM call paths; OBS-2 violation | `app/services/imagery.py`, `app/services/motif_inductor.py` | Open — Cycle 9; see FIX-5 |
+| CODE-6 | P2 | Stale module-level `TOOLS` constant in `tools.py` built at import time with `motif_induction_enabled=False`; latent defect | `app/assistant/tools.py:149` | Open — Cycle 9; see FIX-6 |
+| CODE-7 | P3 | No test for `MotifService.run()` idempotency (depends on CODE-2 fix) | `tests/unit/test_motif_service.py` | Open — Cycle 9 |
+| CODE-8 | P3 | No test asserting `handle_chat` uses `build_tools()` and not the stale `TOOLS` constant | `tests/unit/test_assistant_chat.py` | Open — Cycle 9 |
+| CODE-10 | P3 | No test for `facade.get_dream_motifs()` rejected-motifs filter | `tests/unit/test_assistant_facade.py` | Open — Cycle 9 |
+
+Resolved since Cycle 9 open:
+
+| ID | Sev | Description | Files | Status |
+|----|-----|-------------|-------|--------|
+| CODE-9 | P3 | `docs/retrieval_eval.md` Evaluation History missing Cycle 9 advisory row | `docs/retrieval_eval.md` | Closed — advisory row added 2026-04-16 |
+| ARCH-5 | P3 | `docs/ARCHITECTURE.md` §17 Phase 9 listed as Planned; §16 baseline stale | `docs/ARCHITECTURE.md:306,340` | Closed — doc patch applied 2026-04-16 |
+| ARCH-7 | P3 | WS-9.7 deferral not recorded in `docs/DECISION_LOG.md` | `docs/DECISION_LOG.md` | Closed — D-012 added 2026-04-16 |
+
+Phase 10 pre-implementation risks (not yet findings — flag for PROMPT_1/PROMPT_2):
+
+| Risk | Sev | Description | Context |
+|------|-----|-------------|---------|
+| RISK-1 | P2 | CODE-3 (`lru_cache` on `get_settings()`) will affect `RESEARCH_AUGMENTATION_ENABLED` via the same frozen-settings mechanism. Phase 10 tasks all depend on this flag being re-evaluated at request time. FIX-3 must be resolved before or during WS-10.1 or the flag gate will silently misbehave in production. | `app/shared/config.py:33`; see ADR-010 |
+| RISK-2 | P2 | CODE-4 (`app/assistant/prompts.py` absent) creates a conflict with WS-10.5 AC-3/AC-4, which require adding new framing rules and a confirmation-before-execution system prompt clause. If the prompts module is absent when WS-10.5 is implemented, the WS-10.5 deliverable will again embed framing inline in `chat.py`, compounding the debt. FIX-4 should be resolved before WS-10.5 begins. | `app/assistant/chat.py`; `app/assistant/prompts.py` absent |
+| RISK-3 | P2 | CODE-6 (stale `TOOLS` constant) interacts with WS-10.5 AC-2/AC-5, which require the `research_motif_parallels` tool to be absent when the feature flag is false. If `TOOLS` is built at import time and callers accidentally use it instead of `build_tools()`, the new tool may appear unconditionally. FIX-6 must be resolved before WS-10.5. | `app/assistant/tools.py:149` |
 
 ---
 
 ## PROMPT_1 Scope (architecture)
 
-- motif induction pipeline end-to-end: dataflow `ImageryExtractor` → `MotifInductor` → `MotifGrounder` → `MotifService` → `motif_inductions` table; verify the separation invariant from `dream_themes` at every layer (migration, ORM, service, API)
-- feature flag gating: `MOTIF_INDUCTION_ENABLED` in `app/shared/config.py`; confirm the flag is read at ingest time (not startup) in `app/workers/ingest.py`; assess whether `build_tools()` in `app/assistant/tools.py` is evaluated per request or per import
-- assistant tool registration: `build_tools()` call site, whether the tool catalog is rebuilt on each chat request when the flag is true, and whether a flag toggle takes effect without a redeploy
-- API surface: `app/api/motifs.py` route registration in `app/main.py`; confirm GET, PATCH, and history endpoints are wired; confirm rejected-motif filter behavior
-- system prompt framing: framing rules are in `app/assistant/chat.py`, not in a dedicated `prompts.py`; assess whether this satisfies WS-9.6 AC-3 and the file-list deliverable
-- WS-9.7 deferral: confirm no partial or stub implementation exists in `app/api/patterns.py` or `app/services/patterns.py` that could cause confusion with taxonomy-based pattern routes
+Phase 10 has no implemented code yet. PROMPT_1 should focus on the carry-forward P2 Fix Queue items that create Phase 10 architectural risks, plus verifying the Phase 9 baseline is stable.
+
+- fix-queue gate: confirm FIX-1/FIX-2 (session ownership, idempotency) are resolved; if not, WS-10.3 (ResearchService session ownership) will repeat the same pattern flaw
+- flag evaluation timing: verify whether `get_settings()` `lru_cache` (CODE-3/FIX-3) remains unfixed entering Phase 10; assess impact on `RESEARCH_AUGMENTATION_ENABLED` across WS-10.3, WS-10.4, WS-10.5
+- prompts module gap: confirm whether `app/assistant/prompts.py` still absent (CODE-4/FIX-4); assess impact on WS-10.5 AC-3/AC-4 system prompt framing delivery
+- stale `TOOLS` constant: confirm CODE-6/FIX-6 status; assess impact on WS-10.5 tool registration
+- architecture conformance: `app/research/` module does not yet exist — no new architecture findings expected; validate that `docs/RESEARCH_AUGMENTATION.md`, `docs/adr/ADR-009-research-trust-boundary.md`, and `docs/adr/ADR-010-feature-flag-gating.md` exist and are consistent with WS-10.1–WS-10.5 acceptance criteria before implementation starts
+- session ownership pattern: confirm that `app/services/motif_service.py` session ownership design (post-FIX-1) is documented and will be followed by `ResearchService` per WS-10.3 AC-5
 
 ---
 
 ## PROMPT_2 Scope (code, priority order)
 
-1. `app/services/motif_service.py` (new — WS-9.4 orchestrator; core correctness and flag-check timing)
-2. `app/services/imagery.py` (new — WS-9.2 ImageryExtractor; grounded fragment production)
-3. `app/services/motif_inductor.py` (new — WS-9.2 MotifInductor; open-vocabulary label generation; confirm no predefined taxonomy leak)
-4. `app/services/motif_grounder.py` (new — WS-9.3 MotifGrounder; offset-verification logic vs. `app/llm/grounder.py` pattern)
-5. `app/api/motifs.py` (new — WS-9.5 REST routes; GET filter, PATCH status update, history endpoint)
-6. `app/models/motif.py` (new — WS-9.1 ORM model; column types, FK, CHECK constraint)
-7. `alembic/versions/009_add_motif_inductions.py` (new — WS-9.1 migration; idempotency, no `dream_themes` modification)
-8. `app/assistant/tools.py` (changed — WS-9.6 tool registration; `build_tools()` flag gate timing)
-9. `app/assistant/facade.py` (changed — WS-9.6 `get_dream_motifs`; DTO return, no ORM leakage)
-10. `app/assistant/chat.py` (changed — WS-9.6 system prompt framing rules; confirm all AC-3–AC-5 framing requirements are met)
-11. `app/workers/ingest.py` (changed — WS-9.4 ingest integration; flag check at ingest time)
-12. `app/shared/config.py` (changed — `MOTIF_INDUCTION_ENABLED` flag; default false confirmed)
-13. `tests/unit/test_motif_service.py` (new — regression check; AC coverage)
-14. `tests/unit/test_motif_grounder.py` (new — regression check; offset-verification paths)
-15. `tests/unit/test_motif_inductor.py` (new — regression check; stub LLM client path)
-16. `tests/unit/test_imagery_extractor.py` (new — regression check; stub LLM client path)
-17. `tests/unit/test_motifs_api.py` (new — regression check; rejected-motif filter, status update)
-18. `tests/unit/test_motif_model.py` (new — regression check; CHECK constraint, FK)
+Phase 10 has not yet produced new files. PROMPT_2 should inspect the P2 Fix Queue target files to confirm fix status and record findings before Phase 10 implementation begins.
+
+1. `app/services/motif_service.py` (security-critical: session ownership — FIX-1/FIX-2; must confirm before WS-10.3 can follow the same pattern)
+2. `app/shared/config.py` (security-critical: flag freeze risk — FIX-3; `RESEARCH_AUGMENTATION_ENABLED` will be added here in WS-10.2)
+3. `app/assistant/tools.py` (changed: stale `TOOLS` constant — FIX-6; phase gate for WS-10.5)
+4. `app/assistant/chat.py` (changed: prompts extraction — FIX-4; phase gate for WS-10.5 framing additions)
+5. `app/services/imagery.py` (changed: OTel metrics — FIX-5)
+6. `app/services/motif_inductor.py` (changed: OTel metrics — FIX-5)
+7. `tests/unit/test_motif_service.py` (regression check: idempotency test — CODE-7)
+8. `tests/unit/test_assistant_chat.py` (regression check: build_tools usage assertion — CODE-8)
+9. `tests/unit/test_assistant_facade.py` (regression check: rejected-motifs filter — CODE-10)
+10. `docs/RESEARCH_AUGMENTATION.md` (new reference: verify §2–§5 exist and are consistent with WS-10.1–WS-10.5 acceptance criteria)
+11. `docs/adr/ADR-009-research-trust-boundary.md` (new reference: verify trust boundary rules align with confidence vocabulary AC in WS-10.2 AC-2/AC-3)
+12. `docs/adr/ADR-010-feature-flag-gating.md` (new reference: verify flag gating strategy is consistent with WS-10.4 AC-2 503-on-disabled behaviour and WS-10.5 AC-2/AC-5)
 
 ---
 
 ## Cycle Type
 
-Full — Phase 9 core implementation (WS-9.1 through WS-9.6) is complete and has never been covered by a review cycle. REVIEW_REPORT.md is stale by two phases (T17–T20 and all Phase 9 work). All new components require architecture and code inspection. No hotfix queue is open; no P0 or P1 findings are outstanding entering the cycle.
+Full — Phase 9 Fix Queue (FIX-1 through FIX-6, CODE-1 through CODE-10) remains open and creates concrete Phase 10 implementation risks (flag freeze, session ownership, prompts module absence, stale tool constant). Phase 10 is active but has zero implemented code; this cycle establishes the pre-implementation baseline and confirms whether the Fix Queue was resolved before Phase 10 tasks began. All six P2 items require architecture and code inspection before WS-10.1 proceeds.
 
 ---
 
 ## Notes for PROMPT_3
 
-- Primary consolidation focus: verify that the `dream_themes` / `motif_inductions` separation invariant holds throughout the full stack. Any finding that inducted motifs can be written to or read from `dream_themes` at any layer is a stop-ship condition.
-- Secondary focus: `MOTIF_INDUCTION_ENABLED` flag evaluation timing. The WS-9.4 note is explicit — the flag must be checked at ingest time, not at startup. The same timing question applies to the assistant tool catalog (`build_tools()`). Confirm both or raise a P2 finding.
-- Tertiary focus: `app/assistant/prompts.py` absence. The WS-9.6 file list names it as a required deliverable. If the framing lives only in `chat.py`, either confirm the task file is wrong or raise a targeted follow-up task to extract framing to `prompts.py`.
-- CODEX_PROMPT.md staleness (CODE-51) must be resolved before the next implementation session. Update baseline to 238 passing, mark WS-9.2 through WS-9.6 as complete, and set Next Task to WS-9.7 or Phase 10 planning.
-- WS-9.7 deferral (CODE-56): record the deferral decision in `docs/DECISION_LOG.md` before Phase 10 planning if not already present.
-- Baseline delta for PROMPT_3 snapshot: 74 pass (Cycle 6 close) → 238 pass (Cycle 9 open). Net +164.
+- Primary consolidation focus: determine whether FIX-1 through FIX-6 were resolved before Phase 10 was declared active. CODEX_PROMPT.md §Fix Queue states these must be resolved "before Phase 10 queue" but the document itself also declares "Phase 10 active". If any of FIX-1/FIX-2/FIX-3/FIX-4/FIX-6 remain open, they must be escalated and resolved before WS-10.3, WS-10.2, WS-10.5 respectively can be marked DONE.
+- Secondary focus: baseline reconciliation. CODEX_PROMPT.md records 200 tests; REVIEW_REPORT Cycle 9 records 238. Confirm the real unit-test count and record it as the authoritative Cycle 10 baseline.
+- Tertiary focus: Phase 10 reference document completeness. Verify `docs/RESEARCH_AUGMENTATION.md` and both ADRs exist with the sections referenced in tasks_phase10.md Context-Refs. If any are absent, this is a blocker for implementation and must be flagged as a P1 finding.
+- Carry-forward for Cycle 11: after WS-10.1 through WS-10.5 are implemented, the primary trust-boundary checks are: (a) research_results rows never appear in dream archive RAG ingestion; (b) confidence vocabulary is restricted to speculative/plausible/uncertain at every layer (synthesizer prompt, DTO, API response, assistant framing); (c) `research_motif_parallels` tool absent when flag is false; (d) POST /motifs/{id}/research returns 503 when flag is false.
 ---

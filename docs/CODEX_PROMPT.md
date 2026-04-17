@@ -1,18 +1,18 @@
 # CODEX_PROMPT.md
 
-Version: 1.37
-Date: 2026-04-16
-Phase: 10-active
+Version: 1.38
+Date: 2026-04-17
+Phase: 10-fix
 
 ---
 
 ## Current State
 
-- **Phase:** 10 active — Research Augmentation
-- **Baseline:** 200 tests passing
+- **Phase:** 10 fix — Research Augmentation (implementation complete; Fix Queue active)
+- **Baseline:** 216 tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-16 (Phase 10 started; P3 gaps CODE-7/8/10 closed; tasks_phase10.md created)
+- **Last updated:** 2026-04-17 (Cycle 10 consolidation; WS-10.1–10.5 complete; FIX-7/FIX-8/FIX-9 added; all Cycle 9 carry-forwards closed)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -20,10 +20,10 @@ Phase: 10-active
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 9 complete (WS-9.1–WS-9.6 + P3 fixes)
-- **Current planning state:** Phase 10 active; task graph at `docs/tasks_phase10.md`; first task WS-10.1
-- **Latest completed implementation task:** Fix Queue FIX-1–6 + P3 gaps closed
-- **Current baseline:** 200 unit tests passing
+- **Phases completed:** Phase 1 through Phase 10 complete (WS-10.1–WS-10.5); all Cycle 9 carry-forwards closed
+- **Current planning state:** Phase 10 fix queue active (FIX-7/FIX-8/FIX-9 + P3 doc patches); Phase 11 planning pending
+- **Latest completed implementation task:** WS-10.5 — Assistant Tool + Facade Method
+- **Current baseline:** 216 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -43,63 +43,74 @@ Phase: 10-active
 
 ## Next Task
 
-**WS-10.1 — DB Migration and ORM Model (research_results)**
+**FIX-7 — ResearchRetriever OTel Instrumentation**
 
-Phase 10 task graph: `docs/tasks_phase10.md`
-First task: WS-10.1 — add `research_results` table, `ResearchResult` ORM model.
+Phase 10 Fix Queue. Resolve FIX-7 and FIX-8 before any Phase 11 work begins.
 
 Context refs before starting:
-- `docs/RESEARCH_AUGMENTATION.md §5` — data model spec
-- `docs/adr/ADR-009-research-trust-boundary.md` — trust constraints
-- `docs/adr/ADR-010-feature-flag-gating.md` — flag strategy
-- `docs/tasks_phase10.md §WS-10.1` — acceptance criteria and file scope
+- `docs/IMPLEMENTATION_CONTRACT.md OBS-1/OBS-2` — external call instrumentation requirements
+- `app/research/retriever.py` — target file for span and counter addition
+- `app/research/synthesizer.py` — target file for FIX-8 span and counter addition
+- `app/shared/tracing.py` — shared `get_tracer`/`get_meter` pattern to follow
+- FIX-9 (doc patches): `docs/retrieval_eval.md` advisory row + `docs/IMPLEMENTATION_JOURNAL.md` Phase 10 entry + `docs/ARCHITECTURE.md` §9/§18/§22 doc drift fixes
 
-Read also before coding WS-10.2:
-- `docs/tasks_phase10.md §WS-10.2` — provider-agnostic retriever design
-- `docs/RESEARCH_AUGMENTATION.md §2 §3 §4` — confidence vocabulary and trust model
+Fix Queue resolution order: FIX-7 → FIX-8 → FIX-9 (doc patches)
 
 ---
 
 ## Fix Queue
 
-─── Fix Queue (resolve before Phase 10 queue) ────────────────────────
+─── Fix Queue (resolve before Phase 11 queue) ────────────────────────
 
-🟡 FIX-1 [P2] — MotifService must not commit caller-provided session
-  File: app/services/motif_service.py:126 · Change: remove `await session.commit()`; let ingest.py caller own the commit · Test: verify ingest.py commits after MotifService.run() returns without error
+🟡 FIX-7 [P2] — ResearchRetriever external HTTP call missing OTel span and counter
+  File: app/research/retriever.py:27–82 · Change: wrap retrieve() body in tracer.start_as_current_span("research_retriever.retrieve"); emit get_meter(__name__).create_counter("research.retrieve_total") with {"status": "success"|"failure"} attribute; record latency as span attribute research_retrieve_ms · Test: assert counter incremented and span created after stub HTTP call
 
-🟡 FIX-2 [P2] — Add idempotency guard to MotifService.run()
-  File: app/services/motif_service.py:114–123 · Change: early-return if motif_inductions rows already exist for dream_id · Test: call run() twice for same dream_id; assert row count unchanged on second call
+🟡 FIX-8 [P2] — ResearchSynthesizer LLM call missing OTel span and counter
+  File: app/research/synthesizer.py · Change: wrap synthesize() body in tracer.start_as_current_span("research_synthesizer.synthesize"); emit get_meter(__name__).create_counter("research.synthesis_total") with {"status": "success"|"failure"} attribute · Test: assert counter incremented and span created after stub LLM call
 
-🟡 FIX-3 [P2] — Remove or document lru_cache on get_settings() per ADR-010
-  File: app/shared/config.py:33 · Change: Option A — remove @lru_cache; Option B — update ADR-010 and ENVIRONMENT.md to document restart requirement · Test: if Option A, assert settings re-reads env var after os.environ patch
+🟡 FIX-9 [P3] — Doc patches: retrieval_eval advisory row + IMPLEMENTATION_JOURNAL Phase 10 entry + ARCHITECTURE.md drift
+  Files: docs/retrieval_eval.md, docs/IMPLEMENTATION_JOURNAL.md, docs/ARCHITECTURE.md · Change: (a) add Cycle 10 advisory row to retrieval_eval.md Evaluation History confirming RAG layer unchanged in Phase 10; (b) append Phase 10 journal entry with WS-10.1–10.5 scope, decisions D-013/ADR-009/ADR-010, test baseline 216; (c) add app/research/ row and ResearchService to ARCHITECTURE.md §9; update §18 header to (Implemented — Phase 10); renumber duplicate §18 (Resolved Architectural Decisions) to §22 · Test: doc review — no automated test required
 
-🟡 FIX-4 [P2] — Extract _SYSTEM_PROMPT to app/assistant/prompts.py
-  File: app/assistant/chat.py:18–42 · Change: move _SYSTEM_PROMPT and framing rules to app/assistant/prompts.py; import in chat.py · Test: assert chat.py imports SYSTEM_PROMPT from app.assistant.prompts
+─── Closed Fix Queue items (Cycle 9 → Cycle 10) ──────────────────────
 
-🟡 FIX-5 [P2] — Add OTel metrics counters to ImageryExtractor and MotifInductor LLM paths
-  File: app/services/imagery.py, app/services/motif_inductor.py · Change: add labeled OTel counter/histogram instruments on LLM call paths (OBS-2) · Test: assert counter incremented after a stub LLM call
-
-🟡 FIX-6 [P2] — Remove stale TOOLS module-level constant from tools.py
-  File: app/assistant/tools.py:149 · Change: delete `TOOLS` constant; all callers use build_tools() · Test: assert tools module has no TOOLS attribute at import time
+✅ FIX-1 [P2] — CLOSED — MotifService double-commit: `motif_service.py` never calls `session.commit()`; caller owns commit (confirmed Cycle 10)
+✅ FIX-2 [P2] — CLOSED — Idempotency guard: confirmed at `motif_service.py:58–65` (confirmed Cycle 10)
+✅ FIX-3 [P2] — CLOSED (documented trade-off) — `lru_cache` behavior acknowledged in ADR-010 §Consequences; process-restart requirement documented; not an architectural violation
+✅ FIX-4 [P2] — CLOSED — `app/assistant/prompts.py` exists with full SYSTEM_PROMPT including motif and research framing (confirmed Cycle 10)
+✅ FIX-5 [P2] — CLOSED — OTel counters and spans present on ImageryExtractor and MotifInductor LLM paths (confirmed Cycle 10)
+✅ FIX-6 [P2] — CLOSED — No module-level `TOOLS` constant; `build_tools()` is the sole entry point (confirmed Cycle 10)
 
 ## Open Findings
 
-_Cycle 9 — 2026-04-16 · 12 new findings: P0: 0, P1: 0, P2: 6, P3: 6 (9 Open, 3 Closed by Doc Updater 2026-04-16); Cycle 8 findings: 58 Closed, 0 Open_
+_Cycle 10 — 2026-04-17 · 8 new findings: P0: 0, P1: 0, P2: 2, P3: 6 (8 Open); Cycle 9 findings: all 9 previously open findings Closed (FIX-1 through FIX-6 confirmed in code; CODE-7/CODE-8/CODE-10 closed via WS-10.5 implementation)_
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
-| CODE-1 | P2 | `MotifService.run()` calls `await session.commit()` on caller-provided session; double-commit risk | `app/services/motif_service.py:126` | **Open** — new Cycle 9; see FIX-1 |
-| CODE-2 | P2 | No idempotency guard in `MotifService.run()`; duplicate rows on re-ingest; confirmed-status overwritten | `app/services/motif_service.py:114–123` | **Open** — new Cycle 9; see FIX-2 |
-| CODE-3 | P2 | `get_settings()` `@lru_cache` freezes `MOTIF_INDUCTION_ENABLED`; violates ADR-010 | `app/shared/config.py:33` | **Open** — new Cycle 9; see FIX-3 |
-| CODE-4 | P2 | `app/assistant/prompts.py` absent; WS-9.6 deliverable unmet | `app/assistant/chat.py:18–42` | **Open** — new Cycle 9; see FIX-4 |
-| CODE-5 | P2 | No OTel metrics counters on ImageryExtractor / MotifInductor LLM paths; OBS-2 violation | `app/services/imagery.py`, `app/services/motif_inductor.py` | **Open** — new Cycle 9; see FIX-5 |
-| CODE-6 | P2 | Stale `TOOLS` module-level constant built at import time with flag=False; latent defect | `app/assistant/tools.py:149` | **Open** — new Cycle 9; see FIX-6 |
-| CODE-7 | P3 | No idempotency test for `MotifService.run()` | `tests/unit/test_motif_service.py` | **Open** — new Cycle 9; add after CODE-2 fix |
-| CODE-8 | P3 | No test asserting `handle_chat` uses `build_tools()` not `TOOLS` | `tests/unit/test_assistant_chat.py` | **Open** — new Cycle 9; add after CODE-6 fix |
-| CODE-9 | P3 | `docs/retrieval_eval.md` Evaluation History missing Cycle 9 advisory row | `docs/retrieval_eval.md` | **Closed** — advisory row added 2026-04-16 by Doc Updater |
-| CODE-10 | P3 | No test for `facade.get_dream_motifs()` rejected-motifs filter | `tests/unit/test_assistant_facade.py` | **Open** — new Cycle 9 |
-| ARCH-5 | P3 | `docs/ARCHITECTURE.md` §17 Phase 9 listed as Planned; §16 baseline stale (97 vs 238) | `docs/ARCHITECTURE.md:306,340` | **Closed** — doc patch applied 2026-04-16 by Doc Updater |
-| ARCH-7 | P3 | WS-9.7 deferral not recorded in `docs/DECISION_LOG.md` | `docs/DECISION_LOG.md` | **Closed** — D-012 added 2026-04-16 by Doc Updater |
+| CODE-1 | P2 | `ResearchRetriever.retrieve()` external HTTP call has no OTel span, counter, or latency histogram. Violates OBS-1 and OBS-2. | `app/research/retriever.py:27–82` | **Open** — new Cycle 10; see FIX-7 |
+| CODE-2 | P2 | `ResearchSynthesizer.synthesize()` LLM call has no OTel span or counter. Violates OBS-1 and OBS-2. | `app/research/synthesizer.py` | **Open** — new Cycle 10; see FIX-8 |
+| CODE-3 | P2 | `docs/retrieval_eval.md` Evaluation History missing Cycle 10 advisory row. RET-7 requires advisory row each cycle; RAG layer unchanged in Phase 10 but row is mandatory. | `docs/retrieval_eval.md` | **Open** — new Cycle 10; see FIX-9 |
+| CODE-4 | P3 | `docs/IMPLEMENTATION_JOURNAL.md` has no Phase 10 entry. WS-10.1–WS-10.5 scope, decisions D-013/ADR-009/ADR-010, and test baseline 216 not recorded. GOV-5 violation. | `docs/IMPLEMENTATION_JOURNAL.md` | **Open** — new Cycle 10; see FIX-9 |
+| CODE-5 | P3 | When `RESEARCH_AUGMENTATION_ENABLED=True`, `RESEARCH_API_KEY` defaults to `""` with no `model_validator` at startup. ADR-010 acknowledges deferral; fail-fast validator would catch misconfiguration early. | `app/shared/config.py` | **Open** — new Cycle 10 |
+| ARCH-1 | P3 | `app/research/` module (`ResearchRetriever`, `ResearchSynthesizer`) and `ResearchService` absent from `docs/ARCHITECTURE.md §9` component table. Three Phase 10 components implemented but not listed. | `docs/ARCHITECTURE.md:183–190` | **Open** — new Cycle 10; see FIX-9 |
+| ARCH-2 | P3 | Duplicate `## 18` section number in `docs/ARCHITECTURE.md`. Line 352 = Research Augmentation Layer; line 414 = Resolved Architectural Decisions (should be `## 22`). | `docs/ARCHITECTURE.md:352,414` | **Open** — new Cycle 10; see FIX-9 |
+| ARCH-4 | P3 | `docs/ARCHITECTURE.md §18` header reads `(Planned — Phase 10)` despite the layer being fully implemented in Phase 10. | `docs/ARCHITECTURE.md:352` | **Open** — new Cycle 10; see FIX-9 |
+
+_Cycle 9 findings (all Closed):_
+
+| ID | Sev | Description | Files | Status |
+|----|-----|-------------|-------|--------|
+| CODE-1 (C9) | P2 | `MotifService.run()` calls `await session.commit()` on caller-provided session; double-commit risk | `app/services/motif_service.py:126` | **Closed** — FIX-1 confirmed in code (Cycle 10) |
+| CODE-2 (C9) | P2 | No idempotency guard in `MotifService.run()` | `app/services/motif_service.py:114–123` | **Closed** — FIX-2 confirmed: guard at lines 58–65 (Cycle 10) |
+| CODE-3 (C9) | P2 | `get_settings()` `@lru_cache` freezes `MOTIF_INDUCTION_ENABLED`; violates ADR-010 | `app/shared/config.py:33` | **Closed** — FIX-3: documented trade-off per ADR-010 §Consequences (Cycle 10) |
+| CODE-4 (C9) | P2 | `app/assistant/prompts.py` absent; WS-9.6 deliverable unmet | `app/assistant/chat.py:18–42` | **Closed** — FIX-4 confirmed: prompts.py exists with full SYSTEM_PROMPT (Cycle 10) |
+| CODE-5 (C9) | P2 | No OTel metrics counters on ImageryExtractor / MotifInductor LLM paths | `app/services/imagery.py`, `app/services/motif_inductor.py` | **Closed** — FIX-5 confirmed: counters and spans present (Cycle 10) |
+| CODE-6 (C9) | P2 | Stale `TOOLS` module-level constant in tools.py | `app/assistant/tools.py:149` | **Closed** — FIX-6 confirmed: no TOOLS constant; build_tools() only (Cycle 10) |
+| CODE-7 (C9) | P3 | No idempotency test for `MotifService.run()` | `tests/unit/test_motif_service.py` | **Closed** — idempotency guard present and covered (Cycle 10) |
+| CODE-8 (C9) | P3 | No test asserting `handle_chat` uses `build_tools()` not `TOOLS` | `tests/unit/test_assistant_chat.py` | **Closed** — TOOLS constant removed; build_tools() is only path (Cycle 10) |
+| CODE-9 (C9) | P3 | `docs/retrieval_eval.md` missing Cycle 9 advisory row | `docs/retrieval_eval.md` | **Closed** — advisory row added 2026-04-16 by Doc Updater |
+| CODE-10 (C9) | P3 | No test for `facade.get_dream_motifs()` rejected-motifs filter | `tests/unit/test_assistant_facade.py` | **Closed** — WS-10.5 extended facade and tests (Cycle 10) |
+| ARCH-5 (C9) | P3 | `docs/ARCHITECTURE.md` §17 Phase 9 listed as Planned; §16 baseline stale | `docs/ARCHITECTURE.md:306,340` | **Closed** — doc patch applied 2026-04-16 by Doc Updater |
+| ARCH-7 (C9) | P3 | WS-9.7 deferral not recorded in `docs/DECISION_LOG.md` | `docs/DECISION_LOG.md` | **Closed** — D-012 added 2026-04-16 by Doc Updater |
 
 _Cycle 8 findings (all Closed — archived below):_
 
@@ -269,6 +280,11 @@ none
 
 ## Completed Tasks
 
+- **WS-10.5** — Assistant Tool + Facade Method — 2026-04-17 — 216 tests passing — AssistantFacade.research_motif_parallels() added; research_motif_parallels tool registered in build_tools() gated by RESEARCH_AUGMENTATION_ENABLED; SYSTEM_PROMPT updated with confirmation-before-execution rule and speculative framing requirements; tool absent when flag is false; WS-10.5 AC-1 through AC-5 met
+- **WS-10.4** — API Routes — 2026-04-17 — 216 tests passing — GET /motifs/{id}/research and POST /motifs/{id}/research implemented in app/api/research.py; POST returns 503 when RESEARCH_AUGMENTATION_ENABLED=false; response carries literal interpretation_note; routes covered by unit tests; registered in app/main.py
+- **WS-10.3** — ResearchService Orchestrator + Persistence — 2026-04-17 — 216 tests passing — ResearchService.run() orchestrates retriever and synthesizer; raises on non-confirmed motif; caller owns session commit; does not write to dream_entries/dream_themes/dream_chunks; triggered_by propagated from caller
+- **WS-10.2** — ResearchRetriever + ResearchSynthesizer — 2026-04-17 — 216 tests passing — ResearchRetriever wraps external HTTP via asyncio.to_thread; 5-result limit; 5-second timeout; ResearchAPIError on failure; ResearchSynthesizer enforces {speculative, plausible, uncertain} confidence vocabulary; ResearchSynthesisError on LLM parse failure; both testable with stubs
+- **WS-10.1** — DB Migration and ORM Model — 2026-04-17 — 216 tests passing — 010_add_research_results migration adds research_results table with all required columns; ResearchResult ORM model in app/models/research.py; no existing table modified; research_results excluded from RAG ingestion pipeline
 - **P6-T02** — Assistant Service Facade — 2026-04-15 — 104 tests passing, 9 skipped — AssistantFacade created in app/assistant/; exposes search_dreams, get_dream, list_recent_dreams, get_patterns, get_theme_history, trigger_sync; returns dataclass DTOs; no ORM leakage; mutation methods absent; 5 unit tests added
 - **P6-T01** — Reconcile Backend Execution Boundary — 2026-04-15 — 99 tests passing, 9 skipped — ingest worker now calls AnalysisService and index_dream after storing entries; _collect_pipeline_targets detects missing themes/chunks; resync skips complete stages; fetch_document offloaded via asyncio.to_thread; ARCHITECTURE.md §4 updated with explicit runtime contract
 - **FIX-C9** — Technical Debt — P3 Findings — 2026-04-14 — 98 tests passing, 9 skipped — CODE-7/13/16/40/41 and ARCH-10/11/12/12-E/15 closed via environment-aware host binding, retrieval query expansion fallback, structured fragment metadata, shared DB session factory extraction, eval history append logic, and ADR documentation

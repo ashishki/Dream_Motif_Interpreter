@@ -1,6 +1,7 @@
 """Bounded conversational tool-use loop for the dream archive assistant."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import os
 from typing import Any
@@ -20,6 +21,12 @@ _DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 _MAX_TOOL_ROUNDS = 5
 
 
+@dataclass(slots=True)
+class ChatResult:
+    text: str
+    tool_calls_made: list[str]
+
+
 async def handle_chat(
     message_text: str,
     facade: AssistantFacade,
@@ -27,6 +34,23 @@ async def handle_chat(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     chat_id: int | None = None,
 ) -> str:
+    return (
+        await handle_chat_with_metadata(
+            message_text,
+            facade,
+            session_factory=session_factory,
+            chat_id=chat_id,
+        )
+    ).text
+
+
+async def handle_chat_with_metadata(
+    message_text: str,
+    facade: AssistantFacade,
+    *,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+    chat_id: int | None = None,
+) -> ChatResult:
     """Process a user text message through the bounded tool-use loop.
 
     When session_factory and chat_id are provided, conversation history is
@@ -37,7 +61,10 @@ async def handle_chat(
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         LOGGER.error("ANTHROPIC_API_KEY is not set — chat unavailable")
-        return "The assistant is not available: API key not configured."
+        return ChatResult(
+            text="The assistant is not available: API key not configured.",
+            tool_calls_made=[],
+        )
 
     model = os.environ.get("ASSISTANT_MODEL", _DEFAULT_MODEL)
     client = AsyncAnthropic(api_key=api_key)
@@ -53,6 +80,7 @@ async def handle_chat(
     messages: list[dict[str, Any]] = history + [{"role": "user", "content": message_text}]
     round_counter = 0
     last_text = ""
+    tool_calls_made: list[str] = []
 
     while True:
         try:
@@ -68,7 +96,10 @@ async def handle_chat(
             )
         except Exception:
             LOGGER.exception("Claude chat request failed")
-            return "Something went wrong while contacting the assistant. Please try again."
+            return ChatResult(
+                text="Something went wrong while contacting the assistant. Please try again.",
+                tool_calls_made=tool_calls_made,
+            )
 
         current_text = _extract_text(response)
         if current_text:
@@ -80,6 +111,7 @@ async def handle_chat(
         tool_blocks = [b for b in response.content if getattr(b, "type", None) == "tool_use"]
         tool_results: list[str] = []
         for block in tool_blocks:
+            tool_calls_made.append(block.name)
             result = await execute_tool(block.name, block.input, facade)
             tool_results.append(result)
 
@@ -104,7 +136,7 @@ async def handle_chat(
             break
 
     if not last_text:
-        return "No response from the assistant."
+        return ChatResult(text="No response from the assistant.", tool_calls_made=tool_calls_made)
 
     if session_factory is not None and chat_id is not None:
         new_history = history + [
@@ -116,7 +148,7 @@ async def handle_chat(
         except Exception:
             LOGGER.warning("Failed to save session history for chat_id=%s", chat_id, exc_info=True)
 
-    return last_text
+    return ChatResult(text=last_text, tool_calls_made=tool_calls_made)
 
 
 def _extract_text(response: Any) -> str:

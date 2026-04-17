@@ -2,19 +2,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import MutableMapping
+from typing import Any
 
 from telegram import Update
 from telegram.error import TelegramError
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
-from app.assistant.chat import handle_chat
+from app.assistant.chat import ChatResult, handle_chat_with_metadata
 from app.assistant.facade import AssistantFacade
 from app.assistant.voice_media import create_voice_media_event
+from app.services.feedback_service import FeedbackService
 from app.telegram.voice import download_voice_file
 
 LOGGER = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
 VOICE_PROCESSING_ACK = "Processing your voice note..."
+FEEDBACK_PROMPT = "Rate this response: reply with 1–5."
+FEEDBACK_ACK = "Thanks, noted."
+_FEEDBACK_STATE_KEY = "_feedback_pending_by_chat"
 
 
 async def chat_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -32,18 +38,45 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if message is None or not message.text:
         return
 
-    facade = _get_facade(context)
     chat = update.effective_chat
     chat_id = chat.id if chat is not None else None
+    chat_key = str(chat_id) if chat_id is not None else None
+    pending_feedback = _feedback_state(context)
+    stripped_text = message.text.strip()
     session_factory = context.bot_data.get("session_factory")
 
-    reply = await handle_chat(
+    if (
+        chat_key is not None
+        and _is_rating_message(stripped_text)
+        and chat_key in pending_feedback
+        and session_factory is not None
+    ):
+        feedback_context = pending_feedback.pop(chat_key)
+        async with session_factory() as session:
+            await FeedbackService().record(chat_key, int(stripped_text), feedback_context, session)
+            await session.commit()
+        await message.reply_text(FEEDBACK_ACK)
+        return
+
+    if chat_key is not None:
+        pending_feedback.pop(chat_key, None)
+
+    facade = _get_facade(context)
+    result = await handle_chat_with_metadata(
         message.text,
         facade,
         session_factory=session_factory,
         chat_id=chat_id,
     )
-    await message.reply_text(reply)
+    reply_text = _format_reply_text(result)
+    sent_message = await message.reply_text(reply_text)
+
+    if chat_key is not None and _is_substantive_response(result.text):
+        pending_feedback[chat_key] = {
+            "message_id": int(getattr(sent_message, "message_id", 0)),
+            "response_summary": result.text[:200],
+            "tool_calls_made": list(result.tool_calls_made),
+        }
 
 
 async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -61,6 +94,8 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if message is None or chat is None or message.voice is None:
         LOGGER.warning("voice_message_handler called without voice attachment")
         return
+
+    _feedback_state(context).pop(str(chat.id), None)
 
     session_factory = context.bot_data.get("session_factory")
     media_dir: str = context.bot_data.get("voice_media_dir", "/tmp/dream_voice")
@@ -163,3 +198,29 @@ def _get_facade(context: ContextTypes.DEFAULT_TYPE) -> AssistantFacade:
     if not isinstance(facade, AssistantFacade):
         raise RuntimeError("Telegram bot facade not configured")
     return facade
+
+
+def _feedback_state(context: ContextTypes.DEFAULT_TYPE) -> MutableMapping[str, dict[str, Any]]:
+    return context.bot_data.setdefault(_FEEDBACK_STATE_KEY, {})
+
+
+def _is_rating_message(text: str) -> bool:
+    return len(text) == 1 and text in "12345"
+
+
+def _is_substantive_response(text: str) -> bool:
+    if not text:
+        return False
+    if text in {GENERIC_ERROR_MESSAGE, VOICE_PROCESSING_ACK, "No response from the assistant."}:
+        return False
+    return not (
+        text.startswith("The assistant is not available:")
+        or text.startswith("Something went wrong while contacting the assistant.")
+        or text.startswith("Could not download your voice message.")
+    )
+
+
+def _format_reply_text(result: ChatResult) -> str:
+    if not _is_substantive_response(result.text):
+        return result.text
+    return f"{result.text}\n\n{FEEDBACK_PROMPT}"

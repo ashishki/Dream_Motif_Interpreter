@@ -7,6 +7,7 @@ import pytest
 from telegram import Update
 from telegram.ext import ApplicationHandlerStop
 
+from app.assistant.chat import ChatResult
 from app.assistant.facade import AssistantFacade
 from app.telegram.handlers import chat_guard, text_message_handler
 
@@ -55,7 +56,10 @@ async def test_text_message_handler_routes_to_handle_chat() -> None:
         bot_data={"facade": facade, "session_factory": None, "allowed_chat_id": 42}
     )
 
-    with patch("app.telegram.handlers.handle_chat", new=AsyncMock(return_value="Here are your dreams.")) as mock_chat:
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(return_value=ChatResult("Here are your dreams.", [])),
+    ) as mock_chat:
         await text_message_handler(update, context)
 
     mock_chat.assert_awaited_once_with(
@@ -64,7 +68,9 @@ async def test_text_message_handler_routes_to_handle_chat() -> None:
         session_factory=None,
         chat_id=42,
     )
-    message.reply_text.assert_awaited_once_with("Here are your dreams.")
+    message.reply_text.assert_awaited_once_with(
+        "Here are your dreams.\n\nRate this response: reply with 1–5."
+    )
 
 
 @pytest.mark.asyncio
@@ -75,10 +81,13 @@ async def test_text_message_handler_sends_handle_chat_response() -> None:
         bot_data={"facade": facade, "session_factory": None, "allowed_chat_id": 7}
     )
 
-    with patch("app.telegram.handlers.handle_chat", new=AsyncMock(return_value="pong")):
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(return_value=ChatResult("pong", [])),
+    ):
         await text_message_handler(update, context)
 
-    message.reply_text.assert_awaited_once_with("pong")
+    message.reply_text.assert_awaited_once_with("pong\n\nRate this response: reply with 1–5.")
 
 
 # ---------------------------------------------------------------------------
@@ -97,10 +106,15 @@ async def test_text_message_handler_sends_insufficient_evidence_reply() -> None:
     )
 
     insufficient_reply = "The archive contains no evidence of dragon dreams."
-    with patch("app.telegram.handlers.handle_chat", new=AsyncMock(return_value=insufficient_reply)):
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(return_value=ChatResult(insufficient_reply, [])),
+    ):
         await text_message_handler(update, context)
 
-    message.reply_text.assert_awaited_once_with(insufficient_reply)
+    message.reply_text.assert_awaited_once_with(
+        f"{insufficient_reply}\n\nRate this response: reply with 1–5."
+    )
 
 
 @pytest.mark.asyncio
@@ -114,7 +128,7 @@ async def test_text_message_handler_skips_empty_message() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     context = SimpleNamespace(bot_data={"facade": facade, "session_factory": None})
 
-    with patch("app.telegram.handlers.handle_chat", new=AsyncMock()) as mock_chat:
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
         await text_message_handler(update, context)
 
     mock_chat.assert_not_awaited()

@@ -19,6 +19,7 @@ _Append-only. One row per review cycle._
 | 8 | Phase 5 boundary | 2026-04-14 | T18–T20 full Phase 5 | No | 0 | 0 | 4 |
 | 9 | Phase 8 boundary | 2026-04-15 | P6-T01/T02, P7-voice, P8-observability full | No | 0 | 0 | 0 |
 | 10 | Phase 9 boundary | 2026-04-16 | WS-9.1–WS-9.6 full | No | 0 | 0 | 6 |
+| 11 | Phase 10 strategy | 2026-04-17 | Phase 10 Research Augmentation pre-impl strategy review | No | 0 | 0 | 0 |
 
 ---
 
@@ -37,6 +38,7 @@ _Append-only. One row per review cycle._
 | 8 | `docs/audit/archive/PHASE5_CYCLE8_REVIEW.md` | Phase 5 boundary (T18–T20 full) | OK — 0 P0/P1, 4 P2 carry-forward, 9 P3; Stop-Ship: No; Phase Gate: PASS |
 | 9 | `docs/archive/PHASE8_REVIEW.md` | Phase 8 boundary (Phases 6–8 full) | OK — 0 P0/P1/P2; Strategy: Proceed; Phase Gate: PASS |
 | 10 | `docs/archive/PHASE9_REVIEW.md` | Phase 9 boundary (WS-9.1–9.6) | OK — 0 P0/P1, 6 P2, 6 P3; Stop-Ship: No; Phase Gate: PASS |
+| 11 | `docs/audit/STRATEGY_NOTE.md` | Phase 10 strategy (Research Augmentation) | Strategy: Proceed — ADR-009/010 promoted to Accepted, OD-5 resolved (D-013) |
 
 ---
 

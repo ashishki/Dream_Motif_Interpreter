@@ -30,3 +30,4 @@ Last updated: 2026-04-16 (Phase 9 complete — D-012 added)
 
 - All decisions through D-012 are Active — confirmed and implemented through Phase 9.
 - The presence of a decision in this log implies the corresponding implementation exists unless explicitly marked otherwise.
+| D-013 | 2026-04-17 | Active | ResearchRetriever uses a provider-agnostic design (configurable base_url + api_key from settings); Tavily is the reference external search provider but the implementation does not hard-code it | `docs/tasks_phase10.md §WS-10.2 Notes`, ADR-009 |

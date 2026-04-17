@@ -1,7 +1,7 @@
 # ADR-009: Research Results Must Carry Speculative Confidence Labels
 
 Date: 2026-04-15
-Status: Proposed
+Status: Accepted
 
 ## Context
 

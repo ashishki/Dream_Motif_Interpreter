@@ -1,7 +1,7 @@
 # ADR-010: Phase 9 and Phase 10 Capabilities Are Gated by Default-Off Feature Flags
 
 Date: 2026-04-15
-Status: Proposed
+Status: Accepted
 
 ## Context
 

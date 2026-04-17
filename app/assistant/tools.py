@@ -133,16 +133,41 @@ _GET_DREAM_MOTIFS_TOOL: dict[str, Any] = {
     },
 }
 
+_RESEARCH_MOTIF_PARALLELS_TOOL: dict[str, Any] = {
+    "name": "research_motif_parallels",
+    "description": (
+        "Search external sources for mythology, folklore, and cultural parallels to a "
+        "confirmed inducted motif. REQUIRES explicit user confirmation before calling."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "motif_id": {
+                "type": "string",
+                "description": "UUID of the confirmed inducted motif.",
+            },
+        },
+        "required": ["motif_id"],
+        "additionalProperties": False,
+    },
+}
 
-def build_tools(motif_induction_enabled: bool = False) -> list[dict[str, Any]]:
+
+def build_tools(
+    motif_induction_enabled: bool = False,
+    research_enabled: bool = False,
+) -> list[dict[str, Any]]:
     """Return the tool catalog.
 
     When motif_induction_enabled is True, the get_dream_motifs tool is
-    included. When False, it is absent from the catalog entirely.
+    included. When research_enabled is True, the research_motif_parallels tool
+    is included. Disabled tools are absent from the catalog entirely.
     """
     tools = list(_BASE_TOOLS)
     if motif_induction_enabled:
         tools.append(_GET_DREAM_MOTIFS_TOOL)
+    if research_enabled:
+        tools.append(_RESEARCH_MOTIF_PARALLELS_TOOL)
     return tools
 
 
@@ -258,6 +283,32 @@ async def execute_tool(
             )
             if motif.rationale:
                 lines.append(f"  Rationale: {motif.rationale}")
+        return "\n".join(lines)
+
+    if tool_name == "research_motif_parallels":
+        raw_id = str(tool_input.get("motif_id", "")).strip()
+        try:
+            motif_id = uuid.UUID(raw_id)
+        except ValueError:
+            return f"Invalid motif_id: {raw_id!r}"
+        parallels = await facade.research_motif_parallels(
+            motif_id,
+            triggered_by="assistant",
+        )
+        if not parallels:
+            return "No external parallels were returned for this motif."
+        lines = ["External motif parallels (speculative, not verified):"]
+        for parallel in parallels:
+            confidence = parallel.get("confidence") or "uncertain"
+            label = parallel.get("label") or "unlabeled parallel"
+            domain = parallel.get("domain") or "unknown domain"
+            source_url = parallel.get("source_url") or "no source URL"
+            retrieved_at = parallel.get("retrieved_at") or "unknown retrieval time"
+            lines.append(f"- [{confidence}] {label} ({domain})")
+            relevance_note = parallel.get("relevance_note")
+            if relevance_note:
+                lines.append(f"  Note: {relevance_note}")
+            lines.append(f"  Source: {source_url} | Retrieved: {retrieved_at}")
         return "\n".join(lines)
 
     return f"Unknown tool: {tool_name}"

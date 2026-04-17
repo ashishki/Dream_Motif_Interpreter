@@ -41,6 +41,8 @@ class _FakeSession:
     def __init__(self, *, get_result=None, execute_results=None):
         self._get_result = get_result
         self._execute_results = list(execute_results or [])
+        self.commit = AsyncMock()
+        self.refresh = AsyncMock()
 
     async def get(self, model, identity):
         del model, identity
@@ -189,6 +191,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "get_theme_history",
         "trigger_sync",
         "get_dream_motifs",
+        "research_motif_parallels",
     }
 
 
@@ -257,6 +260,59 @@ async def test_get_dream_motifs_returns_frozen_dto_list() -> None:
     assert item.model_version == "v1"
     assert item.created_at == created_at.isoformat()
     assert item.fragments == [{"text": "crumbling stairs", "offset_start": 0, "offset_end": 16}]
+
+
+@pytest.mark.asyncio
+async def test_research_motif_parallels_returns_list_of_dicts() -> None:
+    motif_id = uuid4()
+    created_at = datetime(2026, 4, 17, tzinfo=timezone.utc)
+    research_result = SimpleNamespace(
+        id=uuid4(),
+        motif_id=motif_id,
+        dream_id=uuid4(),
+        query_label="black river",
+        parallels=[
+            {
+                "domain": "folklore",
+                "label": "river as threshold",
+                "source_url": "https://example.com/river",
+                "relevance_note": "Both frame the river as a liminal crossing.",
+                "confidence": "plausible",
+            }
+        ],
+        sources=[
+            {
+                "url": "https://example.com/river",
+                "retrieved_at": "2026-04-17T10:00:00+00:00",
+            }
+        ],
+        triggered_by="chat-42",
+        created_at=created_at,
+    )
+    session = _FakeSession()
+    research_service = SimpleNamespace(run=AsyncMock(return_value=research_result))
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        research_service=research_service,
+    )
+
+    result = await facade.research_motif_parallels(motif_id, triggered_by="chat-42")
+
+    research_service.run.assert_awaited_once_with(motif_id, session, triggered_by="chat-42")
+    session.commit.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(research_result)
+    assert result == [
+        {
+            "domain": "folklore",
+            "label": "river as threshold",
+            "source_url": "https://example.com/river",
+            "retrieved_at": "2026-04-17T10:00:00+00:00",
+            "relevance_note": "Both frame the river as a liminal crossing.",
+            "confidence": "plausible",
+        }
+    ]
+    assert all(isinstance(item, dict) for item in result)
 
 
 @pytest.mark.asyncio

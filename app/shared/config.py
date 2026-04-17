@@ -27,6 +27,9 @@ class Settings(BaseSettings):
 
     # Feature flags are evaluated once per process because get_settings() is lru-cached.
     MOTIF_INDUCTION_ENABLED: bool = False
+    RESEARCH_API_BASE_URL: str = "https://api.tavily.com"
+    RESEARCH_API_KEY: str = ""
+    RESEARCH_AUGMENTATION_ENABLED: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

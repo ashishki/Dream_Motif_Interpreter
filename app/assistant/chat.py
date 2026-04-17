@@ -41,6 +41,7 @@ async def handle_chat(
 
     model = os.environ.get("ASSISTANT_MODEL", _DEFAULT_MODEL)
     client = AsyncAnthropic(api_key=api_key)
+    settings = get_settings()
 
     history: list[dict[str, Any]] = []
     if session_factory is not None and chat_id is not None:
@@ -60,7 +61,10 @@ async def handle_chat(
                 system=SYSTEM_PROMPT,
                 max_tokens=1024,
                 messages=messages,
-                tools=build_tools(get_settings().MOTIF_INDUCTION_ENABLED),
+                tools=build_tools(
+                    motif_induction_enabled=settings.MOTIF_INDUCTION_ENABLED,
+                    research_enabled=settings.RESEARCH_AUGMENTATION_ENABLED,
+                ),
             )
         except Exception:
             LOGGER.exception("Claude chat request failed")

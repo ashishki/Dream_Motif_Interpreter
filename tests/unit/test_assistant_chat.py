@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -226,17 +227,25 @@ async def test_handle_chat_uses_build_tools_not_constant() -> None:
     facade = _make_facade()
     final_response = _make_response("end_turn", [_text_block("Here is your answer.")])
     sentinel_tools = [{"name": "sentinel_tool"}]
+    settings = SimpleNamespace(
+        MOTIF_INDUCTION_ENABLED=True,
+        RESEARCH_AUGMENTATION_ENABLED=True,
+    )
 
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
         with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
             with patch("app.assistant.chat.build_tools", return_value=sentinel_tools) as mock_build_tools:
-                client = AsyncMock()
-                client.messages.create = AsyncMock(return_value=final_response)
-                mock_client_cls.return_value = client
+                with patch("app.assistant.chat.get_settings", return_value=settings):
+                    client = AsyncMock()
+                    client.messages.create = AsyncMock(return_value=final_response)
+                    mock_client_cls.return_value = client
 
-                await handle_chat("what are my recent dreams?", facade)
+                    await handle_chat("what are my recent dreams?", facade)
 
-    mock_build_tools.assert_called_once()
+    mock_build_tools.assert_called_once_with(
+        motif_induction_enabled=True,
+        research_enabled=True,
+    )
     assert client.messages.create.await_args.kwargs["tools"] is sentinel_tools
 
 
@@ -328,3 +337,19 @@ def test_build_tools_base_tools_always_present() -> None:
         for name in ("search_dreams", "get_dream", "list_recent_dreams", "get_patterns",
                      "get_theme_history", "trigger_sync"):
             assert name in tool_names, f"{name} missing when motif_induction_enabled={flag}"
+
+
+def test_build_tools_excludes_research_motif_parallels_when_flag_is_false() -> None:
+    from app.assistant.tools import build_tools
+
+    tools = build_tools(motif_induction_enabled=False, research_enabled=False)
+    tool_names = [t["name"] for t in tools]
+    assert "research_motif_parallels" not in tool_names
+
+
+def test_build_tools_includes_research_motif_parallels_when_flag_is_true() -> None:
+    from app.assistant.tools import build_tools
+
+    tools = build_tools(motif_induction_enabled=False, research_enabled=True)
+    tool_names = [t["name"] for t in tools]
+    assert "research_motif_parallels" in tool_names

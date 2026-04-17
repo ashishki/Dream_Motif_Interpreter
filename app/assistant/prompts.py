@@ -24,4 +24,11 @@ SYSTEM_PROMPT = (
     "low confidence — 'the model flagged this tentatively, recommend careful review'.\n"
     "6. Always distinguish between inducted motifs and taxonomy-based themes — they are different "
     "systems with different purposes and must not be conflated."
+    "\n\n"
+    "## Research Augmentation Rules\n"
+    "Before calling research_motif_parallels, state exactly what you will search for and ask for "
+    "explicit user confirmation. Only proceed after the user confirms.\n"
+    "All research_motif_parallels results are external suggestions. Use confidence vocabulary: "
+    "speculative, plausible, or uncertain. Never describe results as findings, confirmed, or "
+    "verified."
 )

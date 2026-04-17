@@ -14,6 +14,7 @@ from app.models.theme import DreamTheme, ThemeCategory
 from app.retrieval.query import EvidenceBlock, InsufficientEvidence, RagQueryService
 from app.services.analysis import AnalysisService
 from app.services.patterns import CoOccurrencePattern, PatternService, RecurringPattern
+from app.services.research_service import ResearchService
 from app.services.versioning import VersioningService
 from app.shared.tracing import get_tracer
 
@@ -131,6 +132,7 @@ class AssistantFacade:
         versioning_service: type[VersioningService] = VersioningService,
         sync_job_enqueuer: SyncJobEnqueuer | None = None,
         analysis_service: AnalysisService | None = None,
+        research_service: ResearchService | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._rag_query_service = rag_query_service
@@ -138,6 +140,7 @@ class AssistantFacade:
         self._versioning_service = versioning_service
         self._sync_job_enqueuer = sync_job_enqueuer
         self._analysis_service = analysis_service
+        self._research_service = research_service or ResearchService()
 
     async def search_dreams(self, query: str) -> SearchResult:
         result = await self._rag_query_service.retrieve(query)
@@ -234,6 +237,27 @@ class AssistantFacade:
 
         return [_motif_induction_item(motif) for motif in result.scalars().all()]
 
+    async def research_motif_parallels(
+        self,
+        motif_id: uuid.UUID,
+        triggered_by: str,
+    ) -> list[dict[str, Any]]:
+        tracer = get_tracer(__name__)
+
+        async with self._session_factory() as session:
+            with tracer.start_as_current_span("assistant.research_motif_parallels"):
+                research_result = await self._research_service.run(
+                    motif_id,
+                    session,
+                    triggered_by=triggered_by,
+                )
+            with tracer.start_as_current_span("assistant.research_motif_parallels.commit"):
+                await session.commit()
+            with tracer.start_as_current_span("assistant.research_motif_parallels.refresh"):
+                await session.refresh(research_result)
+
+        return _research_parallel_items(research_result)
+
     async def trigger_sync(self, doc_id: str) -> SyncJobRef:
         if self._sync_job_enqueuer is None:
             raise RuntimeError("AssistantFacade trigger_sync requires a sync job enqueuer")
@@ -258,6 +282,29 @@ def _search_result_item(block: EvidenceBlock) -> SearchResultItem:
             for fragment in block.matched_fragments
         ],
     )
+
+
+def _research_parallel_items(research_result: Any) -> list[dict[str, Any]]:
+    sources = research_result.sources if isinstance(research_result.sources, list) else []
+    source_lookup = {
+        source.get("url"): source.get("retrieved_at")
+        for source in sources
+        if isinstance(source, dict) and source.get("url")
+    }
+    parallels = research_result.parallels if isinstance(research_result.parallels, list) else []
+
+    return [
+        {
+            "domain": parallel.get("domain"),
+            "label": parallel.get("label"),
+            "source_url": parallel.get("source_url"),
+            "retrieved_at": source_lookup.get(parallel.get("source_url")),
+            "relevance_note": parallel.get("relevance_note"),
+            "confidence": parallel.get("confidence"),
+        }
+        for parallel in parallels
+        if isinstance(parallel, dict)
+    ]
 
 
 def _theme_item(*, theme: DreamTheme, category_name: str) -> DreamThemeItem:

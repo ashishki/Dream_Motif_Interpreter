@@ -1,4 +1,5 @@
 """Unit tests for P7-T01/P7-T04: Voice ingress, media persistence, and end-to-end success path."""
+
 from __future__ import annotations
 
 import uuid
@@ -39,7 +40,9 @@ def _make_voice_update(
     return update, message
 
 
-def _make_context(session_factory: object = None, voice_media_dir: str = "/tmp/test_voice") -> SimpleNamespace:
+def _make_context(
+    session_factory: object = None, voice_media_dir: str = "/tmp/test_voice"
+) -> SimpleNamespace:
     return SimpleNamespace(
         bot_data={
             "session_factory": session_factory,
@@ -60,8 +63,16 @@ async def test_voice_handler_accepts_authorized_voice_message() -> None:
     update, message = _make_voice_update()
     context = _make_context()
 
-    with patch("app.telegram.handlers.create_voice_media_event", new=AsyncMock(return_value=uuid.uuid4())), \
-         patch("app.telegram.handlers.download_voice_file", new=AsyncMock(return_value="/tmp/test_voice/file.ogg")):
+    with (
+        patch(
+            "app.telegram.handlers.create_voice_media_event",
+            new=AsyncMock(return_value=uuid.uuid4()),
+        ),
+        patch(
+            "app.telegram.handlers.download_voice_file",
+            new=AsyncMock(return_value="/tmp/test_voice/file.ogg"),
+        ),
+    ):
         await voice_message_handler(update, context)
 
     message.reply_text.assert_awaited_once()
@@ -81,8 +92,10 @@ async def test_voice_handler_skips_when_no_voice_attachment() -> None:
 
     context = _make_context()
 
-    with patch("app.telegram.handlers.create_voice_media_event", new=AsyncMock()) as mock_persist, \
-         patch("app.telegram.handlers.download_voice_file", new=AsyncMock()) as mock_dl:
+    with (
+        patch("app.telegram.handlers.create_voice_media_event", new=AsyncMock()) as mock_persist,
+        patch("app.telegram.handlers.download_voice_file", new=AsyncMock()) as mock_dl,
+    ):
         await voice_message_handler(update, context)
 
     mock_persist.assert_not_awaited()
@@ -118,8 +131,10 @@ async def test_voice_handler_persists_media_event_before_download() -> None:
         call_order.append("download")
         return "/tmp/test_voice/out.ogg"
 
-    with patch("app.telegram.handlers.create_voice_media_event", new=mock_persist), \
-         patch("app.telegram.handlers.download_voice_file", new=mock_download):
+    with (
+        patch("app.telegram.handlers.create_voice_media_event", new=mock_persist),
+        patch("app.telegram.handlers.download_voice_file", new=mock_download),
+    ):
         await voice_message_handler(update, context)
 
     assert "persist" in call_order
@@ -138,8 +153,12 @@ async def test_voice_handler_passes_correct_metadata_to_persist() -> None:
         captured.update(kwargs)
         return uuid.uuid4()
 
-    with patch("app.telegram.handlers.create_voice_media_event", new=mock_persist), \
-         patch("app.telegram.handlers.download_voice_file", new=AsyncMock(return_value="/tmp/x.ogg")):
+    with (
+        patch("app.telegram.handlers.create_voice_media_event", new=mock_persist),
+        patch(
+            "app.telegram.handlers.download_voice_file", new=AsyncMock(return_value="/tmp/x.ogg")
+        ),
+    ):
         await voice_message_handler(update, context)
 
     assert captured["chat_id"] == 5
@@ -158,8 +177,15 @@ async def test_voice_handler_sends_processing_acknowledgement() -> None:
     update, message = _make_voice_update()
     context = _make_context()
 
-    with patch("app.telegram.handlers.create_voice_media_event", new=AsyncMock(return_value=uuid.uuid4())), \
-         patch("app.telegram.handlers.download_voice_file", new=AsyncMock(return_value="/tmp/f.ogg")):
+    with (
+        patch(
+            "app.telegram.handlers.create_voice_media_event",
+            new=AsyncMock(return_value=uuid.uuid4()),
+        ),
+        patch(
+            "app.telegram.handlers.download_voice_file", new=AsyncMock(return_value="/tmp/f.ogg")
+        ),
+    ):
         await voice_message_handler(update, context)
 
     message.reply_text.assert_awaited_once_with("Processing your voice note...")
@@ -175,8 +201,16 @@ async def test_voice_handler_sends_error_reply_when_download_fails() -> None:
     update, message = _make_voice_update()
     context = _make_context(session_factory=MagicMock())
 
-    with patch("app.telegram.handlers.create_voice_media_event", new=AsyncMock(return_value=uuid.uuid4())), \
-         patch("app.telegram.handlers.download_voice_file", new=AsyncMock(side_effect=RuntimeError("timeout"))):
+    with (
+        patch(
+            "app.telegram.handlers.create_voice_media_event",
+            new=AsyncMock(return_value=uuid.uuid4()),
+        ),
+        patch(
+            "app.telegram.handlers.download_voice_file",
+            new=AsyncMock(side_effect=RuntimeError("timeout")),
+        ),
+    ):
         await voice_message_handler(update, context)
 
     message.reply_text.assert_awaited_once()
@@ -190,8 +224,12 @@ async def test_voice_handler_continues_without_session_factory() -> None:
     update, message = _make_voice_update()
     context = _make_context(session_factory=None)
 
-    with patch("app.telegram.handlers.create_voice_media_event", new=AsyncMock()) as mock_persist, \
-         patch("app.telegram.handlers.download_voice_file", new=AsyncMock(return_value="/tmp/f.ogg")):
+    with (
+        patch("app.telegram.handlers.create_voice_media_event", new=AsyncMock()) as mock_persist,
+        patch(
+            "app.telegram.handlers.download_voice_file", new=AsyncMock(return_value="/tmp/f.ogg")
+        ),
+    ):
         await voice_message_handler(update, context)
 
     mock_persist.assert_not_awaited()
@@ -228,6 +266,7 @@ async def test_voice_handler_enqueues_transcription_task_when_fully_configured()
 
     def mock_create_task(coro: object) -> MagicMock:
         import inspect
+
         if inspect.iscoroutine(coro):
             coro.close()
         enqueued_coros.append(coro)
@@ -235,9 +274,16 @@ async def test_voice_handler_enqueues_transcription_task_when_fully_configured()
         task.add_done_callback = MagicMock()
         return task
 
-    with patch("app.telegram.handlers.create_voice_media_event", new=AsyncMock(return_value=event_id)), \
-         patch("app.telegram.handlers.download_voice_file", new=AsyncMock(return_value="/tmp/voice.ogg")), \
-         patch("app.telegram.handlers.asyncio.create_task", side_effect=mock_create_task):
+    with (
+        patch(
+            "app.telegram.handlers.create_voice_media_event", new=AsyncMock(return_value=event_id)
+        ),
+        patch(
+            "app.telegram.handlers.download_voice_file",
+            new=AsyncMock(return_value="/tmp/voice.ogg"),
+        ),
+        patch("app.telegram.handlers.asyncio.create_task", side_effect=mock_create_task),
+    ):
         await voice_message_handler(update, context)
 
     assert len(enqueued_coros) == 1

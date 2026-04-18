@@ -9,6 +9,7 @@ transcribed or permanently failed.
 Raw audio is not canonical dream data. Transcripts are not either by default.
 Only content that passes explicit domain flows becomes archive truth.
 """
+
 from __future__ import annotations
 
 import logging
@@ -58,7 +59,9 @@ async def cleanup_voice_media(
     for event in events:
         file_path = Path(event.local_path)
         if not file_path.exists():
-            LOGGER.debug("Voice media already absent event_id=%s path=%s", event.id, event.local_path)
+            LOGGER.debug(
+                "Voice media already absent event_id=%s path=%s", event.id, event.local_path
+            )
             continue
         try:
             os.unlink(file_path)

@@ -4,6 +4,7 @@ One session per chat_id. Stores the recent conversation history as a JSON list
 so the assistant maintains context across process restarts.
 Session history is operational state — it is separate from the dream archive.
 """
+
 from __future__ import annotations
 
 import json

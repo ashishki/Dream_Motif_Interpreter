@@ -6,6 +6,7 @@ AC-3: GET /dreams/{dream_id}/motifs/history returns annotation version history.
 AC-4: Rejected motifs excluded from default GET response.
 AC-5: All routes covered by unit tests with stub DB session.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -151,14 +152,13 @@ class _FakeSessionFactory:
 # AC-1: GET /dreams/{dream_id}/motifs — returns all non-rejected motifs
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_list_motifs_returns_draft_and_confirmed() -> None:
     dream_id = uuid.uuid4()
     draft_motif = _make_motif(dream_id=dream_id, status="draft")
     confirmed_motif = _make_motif(dream_id=dream_id, status="confirmed")
-    session = _FakeSession(
-        execute_results=[_FakeResult([draft_motif, confirmed_motif])]
-    )
+    session = _FakeSession(execute_results=[_FakeResult([draft_motif, confirmed_motif])])
     factory = _FakeSessionFactory(session)
 
     with patch("app.api.motifs.get_session_factory", return_value=factory):
@@ -198,6 +198,7 @@ async def test_list_motifs_response_fields_present() -> None:
 # ---------------------------------------------------------------------------
 # AC-4: Rejected motifs excluded from default GET response
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_list_motifs_excludes_rejected_by_default() -> None:
@@ -245,12 +246,15 @@ async def test_list_motifs_interpretation_note_present() -> None:
         response = await list_motifs(dream_id=dream_id, include_rejected=False)
 
     for item in response.items:
-        assert "suggestions" in item.interpretation_note or "computational" in item.interpretation_note
+        assert (
+            "suggestions" in item.interpretation_note or "computational" in item.interpretation_note
+        )
 
 
 # ---------------------------------------------------------------------------
 # AC-2: PATCH /dreams/{dream_id}/motifs/{motif_id} updates status
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_patch_motif_updates_status() -> None:
@@ -347,6 +351,7 @@ async def test_patch_motif_annotation_entity_type_is_motif_induction() -> None:
 # AC-3: GET /dreams/{dream_id}/motifs/history
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_motif_history_returns_items() -> None:
     dream_id = uuid.uuid4()
@@ -399,6 +404,7 @@ async def test_get_motif_history_created_at_is_isoformat() -> None:
 # AC-5: Router is registered in the app
 # ---------------------------------------------------------------------------
 
+
 def test_motifs_router_registered_in_app() -> None:
     """The motifs router must be present in the FastAPI app route list."""
     import importlib
@@ -409,9 +415,7 @@ def test_motifs_router_registered_in_app() -> None:
     app = main_module.app
 
     motif_paths = [
-        route.path
-        for route in app.routes
-        if hasattr(route, "path") and "motifs" in route.path
+        route.path for route in app.routes if hasattr(route, "path") and "motifs" in route.path
     ]
     assert len(motif_paths) >= 3, (
         f"Expected at least 3 motif routes registered, found: {motif_paths}"

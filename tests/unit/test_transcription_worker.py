@@ -1,4 +1,5 @@
 """Unit tests for P7-T02: Async transcription pipeline."""
+
 from __future__ import annotations
 
 import uuid
@@ -36,11 +37,16 @@ async def test_transcribe_and_reply_calls_whisper_and_sends_reply() -> None:
     transcript = "I was flying over the ocean."
     reply_text = "The archive shows flying dreams on several occasions."
 
-    with patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)), \
-         patch("app.workers.transcribe.handle_chat", new=AsyncMock(return_value=reply_text)) as mock_chat, \
-         patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()) as mock_update, \
-         patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as mock_send:
-
+    with (
+        patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
+        patch(
+            "app.workers.transcribe.handle_chat", new=AsyncMock(return_value=reply_text)
+        ) as mock_chat,
+        patch(
+            "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
+        ) as mock_update,
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as mock_send,
+    ):
         await transcribe_and_reply(
             event_id=event_id,
             local_path="/tmp/voice.ogg",
@@ -71,11 +77,14 @@ async def test_transcribe_and_reply_routes_through_handle_chat() -> None:
     facade = _make_facade()
     session_factory = _make_session_factory()
 
-    with patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)), \
-         patch("app.workers.transcribe.handle_chat", new=AsyncMock(return_value="Some reply")) as mock_chat, \
-         patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()), \
-         patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()):
-
+    with (
+        patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
+        patch(
+            "app.workers.transcribe.handle_chat", new=AsyncMock(return_value="Some reply")
+        ) as mock_chat,
+        patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
+    ):
         await transcribe_and_reply(
             event_id=event_id,
             local_path="/tmp/f.ogg",
@@ -103,11 +112,17 @@ async def test_transcribe_and_reply_sends_error_on_transcription_failure() -> No
     """When Whisper fails, user gets an error message and event status is 'failed'."""
     event_id = uuid.uuid4()
 
-    with patch("app.workers.transcribe._transcribe_file", new=AsyncMock(side_effect=RuntimeError("API error"))), \
-         patch("app.workers.transcribe.handle_chat", new=AsyncMock()) as mock_chat, \
-         patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()) as mock_update, \
-         patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as mock_send:
-
+    with (
+        patch(
+            "app.workers.transcribe._transcribe_file",
+            new=AsyncMock(side_effect=RuntimeError("API error")),
+        ),
+        patch("app.workers.transcribe.handle_chat", new=AsyncMock()) as mock_chat,
+        patch(
+            "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
+        ) as mock_update,
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as mock_send,
+    ):
         await transcribe_and_reply(
             event_id=event_id,
             local_path="/tmp/bad.ogg",
@@ -129,11 +144,17 @@ async def test_transcribe_and_reply_sends_error_when_handle_chat_fails() -> None
     """When handle_chat fails after transcription, user gets an error and event is 'failed'."""
     event_id = uuid.uuid4()
 
-    with patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="transcript")), \
-         patch("app.workers.transcribe.handle_chat", new=AsyncMock(side_effect=RuntimeError("LLM down"))), \
-         patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()) as mock_update, \
-         patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as mock_send:
-
+    with (
+        patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="transcript")),
+        patch(
+            "app.workers.transcribe.handle_chat",
+            new=AsyncMock(side_effect=RuntimeError("LLM down")),
+        ),
+        patch(
+            "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
+        ) as mock_update,
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as mock_send,
+    ):
         await transcribe_and_reply(
             event_id=event_id,
             local_path="/tmp/ok.ogg",
@@ -150,11 +171,14 @@ async def test_transcribe_and_reply_sends_error_when_handle_chat_fails() -> None
 
 @pytest.mark.asyncio
 async def test_transcribe_and_reply_updates_status_to_done_on_success() -> None:
-    with patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="text")), \
-         patch("app.workers.transcribe.handle_chat", new=AsyncMock(return_value="ok")), \
-         patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()) as mock_update, \
-         patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()):
-
+    with (
+        patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="text")),
+        patch("app.workers.transcribe.handle_chat", new=AsyncMock(return_value="ok")),
+        patch(
+            "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
+        ) as mock_update,
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
+    ):
         await transcribe_and_reply(
             event_id=uuid.uuid4(),
             local_path="/tmp/ok.ogg",

@@ -1,4 +1,5 @@
 """Unit tests for the bounded chat/tool-use loop in app.assistant.chat."""
+
 from __future__ import annotations
 
 import uuid
@@ -65,7 +66,9 @@ def test_extract_text_returns_concatenated_text_blocks() -> None:
 
 
 def test_extract_text_skips_non_text_blocks() -> None:
-    resp = _make_response("tool_use", [_tool_use_block("search_dreams", "t1", {}), _text_block("hi")])
+    resp = _make_response(
+        "tool_use", [_tool_use_block("search_dreams", "t1", {}), _text_block("hi")]
+    )
     assert _extract_text(resp) == "hi"
 
 
@@ -130,7 +133,9 @@ async def test_handle_chat_executes_search_tool_and_returns_final_text() -> None
         "tool_use",
         [_tool_use_block("search_dreams", "t1", {"query": "flying"})],
     )
-    final_response = _make_response("end_turn", [_text_block("Found a flying dream from 2024-03-01.")])
+    final_response = _make_response(
+        "end_turn", [_text_block("Found a flying dream from 2024-03-01.")]
+    )
 
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
         with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
@@ -234,7 +239,9 @@ async def test_handle_chat_uses_build_tools_not_constant() -> None:
 
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
         with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
-            with patch("app.assistant.chat.build_tools", return_value=sentinel_tools) as mock_build_tools:
+            with patch(
+                "app.assistant.chat.build_tools", return_value=sentinel_tools
+            ) as mock_build_tools:
                 with patch("app.assistant.chat.get_settings", return_value=settings):
                     client = AsyncMock()
                     client.messages.create = AsyncMock(return_value=final_response)
@@ -261,7 +268,7 @@ def test_system_prompt_forbids_word_interpretation_for_motifs() -> None:
     prompt_lower = SYSTEM_PROMPT.lower()
     assert "interpretation" in prompt_lower
     idx = prompt_lower.index("interpretation")
-    context = prompt_lower[max(0, idx - 80): idx + 80]
+    context = prompt_lower[max(0, idx - 80) : idx + 80]
     negation_words = {"never", "not", "instead", "avoid"}
     assert any(w in context for w in negation_words), (
         f"Expected a negation near 'interpretation' in system prompt, got: {context!r}"
@@ -334,8 +341,14 @@ def test_build_tools_base_tools_always_present() -> None:
     for flag in (False, True):
         tools = build_tools(motif_induction_enabled=flag)
         tool_names = [t["name"] for t in tools]
-        for name in ("search_dreams", "get_dream", "list_recent_dreams", "get_patterns",
-                     "get_theme_history", "trigger_sync"):
+        for name in (
+            "search_dreams",
+            "get_dream",
+            "list_recent_dreams",
+            "get_patterns",
+            "get_theme_history",
+            "trigger_sync",
+        ):
             assert name in tool_names, f"{name} missing when motif_induction_enabled={flag}"
 
 

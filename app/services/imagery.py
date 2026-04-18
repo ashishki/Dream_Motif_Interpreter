@@ -42,9 +42,7 @@ class ImageryExtractor:
                     last_error = exc
 
         self._extract_counter.add(1, {"status": "failure"})
-        raise ImageryExtractionError(
-            "Imagery extraction failed after retry"
-        ) from last_error
+        raise ImageryExtractionError("Imagery extraction failed after retry") from last_error
 
     def _build_system_prompt(self) -> str:
         return (
@@ -66,15 +64,11 @@ class ImageryExtractor:
             f"Dream text:\n{dream_text}"
         )
 
-    def _parse_fragments(
-        self, raw_response: str, dream_text: str
-    ) -> list[ImageryFragment]:
+    def _parse_fragments(self, raw_response: str, dream_text: str) -> list[ImageryFragment]:
         payload = json.loads(raw_response)
         fragments_raw = payload.get("fragments")
         if not isinstance(fragments_raw, list):
-            raise ImageryExtractionError(
-                "LLM response did not include a fragments list"
-            )
+            raise ImageryExtractionError("LLM response did not include a fragments list")
 
         fragments: list[ImageryFragment] = []
         for item in fragments_raw:
@@ -89,17 +83,11 @@ class ImageryExtractor:
             end_offset = int(item["end_offset"])
 
             if start_offset < 0 or end_offset < 0:
-                raise ImageryExtractionError(
-                    "Fragment offsets must be non-negative"
-                )
+                raise ImageryExtractionError("Fragment offsets must be non-negative")
             if start_offset >= end_offset:
-                raise ImageryExtractionError(
-                    "Fragment start_offset must be less than end_offset"
-                )
+                raise ImageryExtractionError("Fragment start_offset must be less than end_offset")
             if end_offset > len(dream_text):
-                raise ImageryExtractionError(
-                    "Fragment end_offset exceeds source text length"
-                )
+                raise ImageryExtractionError("Fragment end_offset exceeds source text length")
 
             fragments.append(
                 ImageryFragment(

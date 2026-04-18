@@ -105,9 +105,7 @@ async def test_search_dreams_returns_facade_search_result() -> None:
                 date=date(2026, 4, 15),
                 chunk_text="A bridge crossed a dark river.",
                 relevance_score=0.88,
-                matched_fragments=[
-                    {"text": "bridge", "match_type": "semantic", "char_offset": 0}
-                ],
+                matched_fragments=[{"text": "bridge", "match_type": "semantic", "char_offset": 0}],
             )
         ]
     )
@@ -209,7 +207,9 @@ async def test_trigger_sync_enqueues_job_and_returns_ref() -> None:
     sync_job_enqueuer = SimpleNamespace(enqueue_ingest=AsyncMock())
     facade = AssistantFacade(
         session_factory=_FakeSessionFactory(_FakeSession()),
-        rag_query_service=SimpleNamespace(retrieve=AsyncMock(return_value=InsufficientEvidence("x"))),
+        rag_query_service=SimpleNamespace(
+            retrieve=AsyncMock(return_value=InsufficientEvidence("x"))
+        ),
         sync_job_enqueuer=sync_job_enqueuer,
     )
 

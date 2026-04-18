@@ -137,9 +137,7 @@ def test_get_feedback_respects_limit_and_offset_pagination() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    expected = sorted(items, key=lambda item: (item.created_at, str(item.id)), reverse=True)[
-        1:3
-    ]
+    expected = sorted(items, key=lambda item: (item.created_at, str(item.id)), reverse=True)[1:3]
     assert [item["id"] for item in payload] == [str(item.id) for item in expected]
     assert getattr(session.statements[0]._limit_clause, "value", None) == 2
     assert getattr(session.statements[0]._offset_clause, "value", None) == 1

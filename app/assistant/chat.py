@@ -1,4 +1,5 @@
 """Bounded conversational tool-use loop for the dream archive assistant."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -50,9 +50,7 @@ class MotifInductor:
                     last_error = exc
 
         self._induction_counter.add(1, {"status": "failure"})
-        raise MotifInductionError(
-            "Motif induction failed after retry"
-        ) from last_error
+        raise MotifInductionError("Motif induction failed after retry") from last_error
 
     def _build_system_prompt(self) -> str:
         return (
@@ -81,15 +79,11 @@ class MotifInductor:
             f"Imagery fragments:\n{indexed_lines}"
         )
 
-    def _parse_candidates(
-        self, raw_response: str, fragment_count: int
-    ) -> list[MotifCandidate]:
+    def _parse_candidates(self, raw_response: str, fragment_count: int) -> list[MotifCandidate]:
         payload = json.loads(raw_response)
         motifs_raw = payload.get("motifs")
         if not isinstance(motifs_raw, list):
-            raise MotifInductionError(
-                "LLM response did not include a motifs list"
-            )
+            raise MotifInductionError("LLM response did not include a motifs list")
 
         candidates: list[MotifCandidate] = []
         for item in motifs_raw:
@@ -120,8 +114,7 @@ class MotifInductor:
                 idx_int = int(idx)
                 if idx_int < 0 or idx_int >= fragment_count:
                     raise MotifInductionError(
-                        f"imagery_index {idx_int} is out of range "
-                        f"(fragment_count={fragment_count})"
+                        f"imagery_index {idx_int} is out of range (fragment_count={fragment_count})"
                     )
                 imagery_indices.append(idx_int)
 

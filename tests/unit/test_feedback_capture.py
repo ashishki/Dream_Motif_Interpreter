@@ -37,7 +37,9 @@ class StubSessionFactory:
         return None
 
 
-def _make_update(text: str, *, chat_id: int = 77, sent_message_id: int = 9001) -> tuple[MagicMock, AsyncMock]:
+def _make_update(
+    text: str, *, chat_id: int = 77, sent_message_id: int = 9001
+) -> tuple[MagicMock, AsyncMock]:
     message = AsyncMock()
     message.text = text
     message.reply_text = AsyncMock(return_value=SimpleNamespace(message_id=sent_message_id))
@@ -65,10 +67,13 @@ async def test_digit_message_after_substantive_response_records_feedback() -> No
     update1, message1 = _make_update("hello")
     update2, message2 = _make_update("3")
 
-    with patch(
-        "app.telegram.handlers.handle_chat_with_metadata",
-        new=AsyncMock(return_value=ChatResult("Detailed interpretation", ["search_dreams"])),
-    ), patch.object(FeedbackService, "record", new=AsyncMock()) as mock_record:
+    with (
+        patch(
+            "app.telegram.handlers.handle_chat_with_metadata",
+            new=AsyncMock(return_value=ChatResult("Detailed interpretation", ["search_dreams"])),
+        ),
+        patch.object(FeedbackService, "record", new=AsyncMock()) as mock_record,
+    ):
         await text_message_handler(update1, context)
         await text_message_handler(update2, context)
 
@@ -95,15 +100,18 @@ async def test_digit_outside_range_is_not_treated_as_rating() -> None:
     update1, _ = _make_update("hello")
     update2, message2 = _make_update("6", sent_message_id=9002)
 
-    with patch(
-        "app.telegram.handlers.handle_chat_with_metadata",
-        new=AsyncMock(
-            side_effect=[
-                ChatResult("First substantive reply", []),
-                ChatResult("Second substantive reply", []),
-            ]
-        ),
-    ) as mock_chat, patch.object(FeedbackService, "record", new=AsyncMock()) as mock_record:
+    with (
+        patch(
+            "app.telegram.handlers.handle_chat_with_metadata",
+            new=AsyncMock(
+                side_effect=[
+                    ChatResult("First substantive reply", []),
+                    ChatResult("Second substantive reply", []),
+                ]
+            ),
+        ) as mock_chat,
+        patch.object(FeedbackService, "record", new=AsyncMock()) as mock_record,
+    ):
         await text_message_handler(update1, context)
         await text_message_handler(update2, context)
 
@@ -122,15 +130,18 @@ async def test_message_with_digits_and_other_characters_is_not_treated_as_rating
     update1, _ = _make_update("hello")
     update2, message2 = _make_update("ok 3", sent_message_id=9002)
 
-    with patch(
-        "app.telegram.handlers.handle_chat_with_metadata",
-        new=AsyncMock(
-            side_effect=[
-                ChatResult("First substantive reply", []),
-                ChatResult("Mixed text handled normally", []),
-            ]
-        ),
-    ) as mock_chat, patch.object(FeedbackService, "record", new=AsyncMock()) as mock_record:
+    with (
+        patch(
+            "app.telegram.handlers.handle_chat_with_metadata",
+            new=AsyncMock(
+                side_effect=[
+                    ChatResult("First substantive reply", []),
+                    ChatResult("Mixed text handled normally", []),
+                ]
+            ),
+        ) as mock_chat,
+        patch.object(FeedbackService, "record", new=AsyncMock()) as mock_record,
+    ):
         await text_message_handler(update1, context)
         await text_message_handler(update2, context)
 
@@ -148,10 +159,13 @@ async def test_digit_message_before_any_substantive_response_is_not_treated_as_r
     context = _make_context(StubSessionFactory(session))
     update, message = _make_update("3")
 
-    with patch(
-        "app.telegram.handlers.handle_chat_with_metadata",
-        new=AsyncMock(return_value=ChatResult("Digit treated as normal input", [])),
-    ) as mock_chat, patch.object(FeedbackService, "record", new=AsyncMock()) as mock_record:
+    with (
+        patch(
+            "app.telegram.handlers.handle_chat_with_metadata",
+            new=AsyncMock(return_value=ChatResult("Digit treated as normal input", [])),
+        ) as mock_chat,
+        patch.object(FeedbackService, "record", new=AsyncMock()) as mock_record,
+    ):
         await text_message_handler(update, context)
 
     mock_chat.assert_awaited_once()
@@ -177,10 +191,13 @@ async def test_valid_digit_capture_replies_with_acknowledgement() -> None:
     update1, _ = _make_update("hello")
     update2, message2 = _make_update("5")
 
-    with patch(
-        "app.telegram.handlers.handle_chat_with_metadata",
-        new=AsyncMock(return_value=ChatResult("Substantive reply", [])),
-    ), patch.object(FeedbackService, "record", new=AsyncMock()):
+    with (
+        patch(
+            "app.telegram.handlers.handle_chat_with_metadata",
+            new=AsyncMock(return_value=ChatResult("Substantive reply", [])),
+        ),
+        patch.object(FeedbackService, "record", new=AsyncMock()),
+    ):
         await text_message_handler(update1, context)
         await text_message_handler(update2, context)
 

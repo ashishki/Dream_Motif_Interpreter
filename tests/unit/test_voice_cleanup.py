@@ -1,4 +1,5 @@
 """Unit tests for P7-T03: Voice media retention and cleanup."""
+
 from __future__ import annotations
 
 import os
@@ -116,8 +117,10 @@ async def test_cleanup_skips_already_absent_files() -> None:
 @pytest.mark.asyncio
 async def test_cleanup_continues_after_deletion_error() -> None:
     """If one file deletion fails, the loop continues to the next."""
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f1, \
-         tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f2:
+    with (
+        tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f1,
+        tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f2,
+    ):
         path1, path2 = f1.name, f2.name
 
     try:
@@ -179,11 +182,12 @@ async def test_transcribe_and_reply_deletes_local_file_after_success() -> None:
         path = f.name
 
     try:
-        with patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="text")), \
-             patch("app.workers.transcribe.handle_chat", new=AsyncMock(return_value="reply")), \
-             patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()), \
-             patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()):
-
+        with (
+            patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="text")),
+            patch("app.workers.transcribe.handle_chat", new=AsyncMock(return_value="reply")),
+            patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
+            patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
+        ):
             await transcribe_and_reply(
                 event_id=uuid.uuid4(),
                 local_path=path,

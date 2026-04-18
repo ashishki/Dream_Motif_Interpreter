@@ -57,9 +57,7 @@ class MotifService:
 
             with tracer.start_as_current_span("db.query.motif_service.idempotency_check"):
                 existing_result = await session.execute(
-                    select(MotifInduction.id)
-                    .where(MotifInduction.dream_id == dream_id)
-                    .limit(1)
+                    select(MotifInduction.id).where(MotifInduction.dream_id == dream_id).limit(1)
                 )
             if existing_result.scalar_one_or_none() is not None:
                 return
@@ -87,9 +85,7 @@ class MotifService:
             # Stage 2: induce motif candidates
             try:
                 with tracer.start_as_current_span("motif_service.induce_motifs"):
-                    candidates: list[MotifCandidate] = await self._motif_inductor.induce(
-                        fragments
-                    )
+                    candidates: list[MotifCandidate] = await self._motif_inductor.induce(fragments)
             except (MotifInductionError, Exception) as exc:
                 logger.warning(
                     "motif_service.motif_induction_failed",

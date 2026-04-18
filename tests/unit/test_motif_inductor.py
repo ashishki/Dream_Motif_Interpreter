@@ -4,6 +4,7 @@ All tests use a stub LLM client — no real API calls are made.
 AC-3 is verified by inspecting the system prompt for absence of any
 theme_categories list.
 """
+
 from __future__ import annotations
 
 import json
@@ -79,6 +80,7 @@ def _valid_response() -> str:
 # AC-2: returns list of MotifCandidate dicts with required keys
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_induce_returns_motif_candidate_list() -> None:
     client = StubLLMClient([_valid_response()])
@@ -142,6 +144,7 @@ async def test_motif_confidence_valid_values() -> None:
 # AC-3: prompt must not include theme_categories or predefined vocabulary
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_system_prompt_does_not_include_theme_categories() -> None:
     client = StubLLMClient([_valid_response()])
@@ -171,12 +174,15 @@ async def test_system_prompt_explicit_no_predefined_categories_instruction() -> 
 
     assert "Do not use predefined psychological categories." in client.last_system
     assert "Do not interpret the dream." in client.last_system
-    assert "Name only the structural or thematic pattern visible in the imagery." in client.last_system
+    assert (
+        "Name only the structural or thematic pattern visible in the imagery." in client.last_system
+    )
 
 
 # ---------------------------------------------------------------------------
 # AC-5: retry once on JSON parse failure
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_induce_retries_on_json_parse_failure() -> None:
@@ -216,6 +222,7 @@ async def test_induce_retries_on_missing_motifs_key() -> None:
 # ---------------------------------------------------------------------------
 # Validation: invalid confidence, out-of-range indices raise errors
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_induce_raises_on_invalid_confidence() -> None:
@@ -271,6 +278,7 @@ async def test_induce_with_empty_fragment_list() -> None:
 # ---------------------------------------------------------------------------
 # AC-5: stub client is used; no real AnthropicLLMClient is instantiated
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_stub_client_is_used_without_api_key() -> None:

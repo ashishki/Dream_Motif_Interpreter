@@ -36,9 +36,7 @@ class ResearchService:
         session: AsyncSession,
         triggered_by: str,
     ) -> ResearchResult:
-        result = await session.execute(
-            select(MotifInduction).where(MotifInduction.id == motif_id)
-        )
+        result = await session.execute(select(MotifInduction).where(MotifInduction.id == motif_id))
         motif = result.scalar_one_or_none()
 
         if motif is None:

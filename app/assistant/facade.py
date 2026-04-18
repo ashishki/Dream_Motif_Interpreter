@@ -210,7 +210,9 @@ class AssistantFacade:
 
     async def get_theme_history(self, dream_id: uuid.UUID) -> list[ThemeHistoryEntry]:
         async with self._session_factory() as session:
-            _, versions = await self._versioning_service.list_theme_history(session, dream_id=dream_id)
+            _, versions = await self._versioning_service.list_theme_history(
+                session, dream_id=dream_id
+            )
 
         return [
             ThemeHistoryEntry(

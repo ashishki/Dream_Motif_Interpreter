@@ -3,6 +3,7 @@
 Creates and updates VoiceMediaEvent records so media metadata is durable
 before and during transcription. Operational state only — not archive truth.
 """
+
 from __future__ import annotations
 
 import uuid

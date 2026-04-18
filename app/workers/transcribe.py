@@ -7,6 +7,7 @@ so the user receives an archive-grounded response.
 Provider failure is observable and recoverable: the user receives an error
 message and the VoiceMediaEvent status is updated to 'failed'.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -54,16 +55,12 @@ async def transcribe_and_reply(
     try:
         transcript = await _transcribe_file(local_path)
     except Exception:
-        LOGGER.exception(
-            "Transcription failed for event_id=%s path=%s", event_id, local_path
-        )
+        LOGGER.exception("Transcription failed for event_id=%s path=%s", event_id, local_path)
         await update_voice_media_event_status(session_factory, event_id, "failed")
         await _send_telegram_message(telegram_bot_token, chat_id, _TRANSCRIPTION_FAILED_MESSAGE)
         return
 
-    LOGGER.info(
-        "Transcription succeeded event_id=%s chars=%s", event_id, len(transcript)
-    )
+    LOGGER.info("Transcription succeeded event_id=%s chars=%s", event_id, len(transcript))
     await update_voice_media_event_status(session_factory, event_id, "transcribed")
 
     try:
@@ -74,9 +71,7 @@ async def transcribe_and_reply(
             chat_id=chat_id,
         )
     except Exception:
-        LOGGER.exception(
-            "handle_chat failed after transcription for event_id=%s", event_id
-        )
+        LOGGER.exception("handle_chat failed after transcription for event_id=%s", event_id)
         await update_voice_media_event_status(session_factory, event_id, "failed")
         await _send_telegram_message(telegram_bot_token, chat_id, _TRANSCRIPTION_FAILED_MESSAGE)
         return
@@ -117,6 +112,4 @@ async def _send_telegram_message(bot_token: str, chat_id: int, text: str) -> Non
         bot = Bot(token=bot_token)
         await bot.send_message(chat_id=chat_id, text=text)
     except Exception:
-        LOGGER.exception(
-            "Failed to send Telegram reply for chat_id=%s", chat_id
-        )
+        LOGGER.exception("Failed to send Telegram reply for chat_id=%s", chat_id)

@@ -459,8 +459,10 @@ async def test_ingest_job_runs_analysis_and_indexing_automatically(
         assert dream is not None
 
         themes = (
-            await session.execute(select(DreamTheme).where(DreamTheme.dream_id == dream.id))
-        ).scalars().all()
+            (await session.execute(select(DreamTheme).where(DreamTheme.dream_id == dream.id)))
+            .scalars()
+            .all()
+        )
         chunks = await fetch_indexed_chunks(session, dream.id)
 
     assert first_new_entries == 1

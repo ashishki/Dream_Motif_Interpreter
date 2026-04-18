@@ -1,4 +1,5 @@
 """Unit tests for app.assistant.session — persistent chat history store."""
+
 from __future__ import annotations
 
 import json
@@ -120,7 +121,10 @@ async def test_handle_chat_loads_and_saves_session_history() -> None:
 
     facade = AsyncMock(spec=AssistantFacade)
     session_factory = MagicMock()
-    prior_history = [{"role": "user", "content": "old question"}, {"role": "assistant", "content": "old answer"}]
+    prior_history = [
+        {"role": "user", "content": "old question"},
+        {"role": "assistant", "content": "old answer"},
+    ]
 
     def _text_block(text: str) -> MagicMock:
         b = MagicMock()
@@ -136,16 +140,21 @@ async def test_handle_chat_loads_and_saves_session_history() -> None:
 
     final_response = _make_response("end_turn", [_text_block("Response with history.")])
 
-    with patch("app.assistant.chat.load_history", new=AsyncMock(return_value=prior_history)) as mock_load, \
-         patch("app.assistant.chat.save_history", new=AsyncMock()) as mock_save, \
-         patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}), \
-         patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
-
+    with (
+        patch(
+            "app.assistant.chat.load_history", new=AsyncMock(return_value=prior_history)
+        ) as mock_load,
+        patch("app.assistant.chat.save_history", new=AsyncMock()) as mock_save,
+        patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}),
+        patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls,
+    ):
         client = AsyncMock()
         client.messages.create = AsyncMock(return_value=final_response)
         mock_client_cls.return_value = client
 
-        result = await handle_chat("new question", facade, session_factory=session_factory, chat_id=100)
+        result = await handle_chat(
+            "new question", facade, session_factory=session_factory, chat_id=100
+        )
 
     assert result == "Response with history."
     mock_load.assert_awaited_once_with(session_factory, 100)

@@ -27,6 +27,7 @@ MIGRATION_PATH = PROJECT_ROOT / "alembic" / "versions" / "009_add_motif_inductio
 # AC-2: ORM model columns
 # ---------------------------------------------------------------------------
 
+
 def _column_map(model: type) -> dict[str, sa.Column]:
     """Return a name→Column mapping for a mapped ORM class."""
     mapper = sa.inspect(model)
@@ -114,6 +115,7 @@ def test_motif_induction_has_created_at_column() -> None:
 # AC-3: CHECK constraints on status
 # ---------------------------------------------------------------------------
 
+
 def test_motif_induction_status_check_constraint_present() -> None:
     table = MotifInduction.__table__
     constraint_exprs = [
@@ -134,6 +136,7 @@ def test_motif_induction_status_check_constraint_present() -> None:
 # AC-3: CHECK constraint on confidence
 # ---------------------------------------------------------------------------
 
+
 def test_motif_induction_confidence_check_constraint_present() -> None:
     table = MotifInduction.__table__
     constraint_exprs = [
@@ -153,6 +156,7 @@ def test_motif_induction_confidence_check_constraint_present() -> None:
 # ---------------------------------------------------------------------------
 # AC-4: AnnotationVersion can be instantiated with entity_type='motif_induction'
 # ---------------------------------------------------------------------------
+
 
 def test_annotation_version_supports_motif_induction_entity_type() -> None:
     entity_id = uuid.uuid4()
@@ -178,16 +182,13 @@ def test_annotation_version_supports_motif_induction_entity_type() -> None:
 #               motif_inductions (not existing tables)
 # ---------------------------------------------------------------------------
 
+
 def test_migration_file_exists() -> None:
-    assert MIGRATION_PATH.exists(), (
-        f"Migration file not found at {MIGRATION_PATH}"
-    )
+    assert MIGRATION_PATH.exists(), f"Migration file not found at {MIGRATION_PATH}"
 
 
 def test_migration_file_imports_cleanly() -> None:
-    spec = importlib.util.spec_from_file_location(
-        "migration_009", MIGRATION_PATH
-    )
+    spec = importlib.util.spec_from_file_location("migration_009", MIGRATION_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[arg-type]
@@ -219,24 +220,19 @@ def test_migration_does_not_alter_existing_tables() -> None:
         drop_col_call = f'op.drop_column("{table_name}"'
         for forbidden in (alter_call, drop_call, add_col_call, drop_col_call):
             assert forbidden not in content, (
-                f"Migration 009 must not modify existing table '{table_name}': "
-                f"found '{forbidden}'"
+                f"Migration 009 must not modify existing table '{table_name}': found '{forbidden}'"
             )
-    assert "dream_themes" not in content, (
-        "Migration 009 must not reference dream_themes at all"
-    )
+    assert "dream_themes" not in content, "Migration 009 must not reference dream_themes at all"
 
 
 # ---------------------------------------------------------------------------
 # Separation: motif_inductions table name must not appear in dream model
 # ---------------------------------------------------------------------------
 
+
 def test_motif_inductions_table_not_referenced_in_dream_themes_model() -> None:
     from app.models.theme import DreamTheme
+
     table = DreamTheme.__table__
-    fk_targets = {
-        fk.column.table.name
-        for col in table.columns
-        for fk in col.foreign_keys
-    }
+    fk_targets = {fk.column.table.name for col in table.columns for fk in col.foreign_keys}
     assert "motif_inductions" not in fk_targets

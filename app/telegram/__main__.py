@@ -7,6 +7,7 @@ import from app.retrieval or other domain modules directly.
 Run with:
     python3 -m app.telegram
 """
+
 from __future__ import annotations
 
 from app.assistant.facade import AssistantFacade

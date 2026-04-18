@@ -2,6 +2,7 @@
 
 All tests use a stub LLM client — no real API calls are made.
 """
+
 from __future__ import annotations
 
 import json
@@ -72,6 +73,7 @@ def _valid_response(dream_text: str) -> str:
 # AC-1: returns list of ImageryFragment dicts with required keys and offsets
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_extract_returns_fragment_list() -> None:
     client = StubLLMClient([_valid_response(DREAM_TEXT)])
@@ -133,6 +135,7 @@ async def test_extract_multiple_fragments() -> None:
 # AC-5: retry once on JSON parse failure
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_extract_retries_on_json_parse_failure() -> None:
     invalid_response = "not valid json {"
@@ -161,6 +164,7 @@ async def test_extract_raises_after_max_retries_exceeded() -> None:
 # Validation: malformed fragment entries raise errors on retry
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_extract_retries_on_missing_fragments_key() -> None:
     bad_response = json.dumps({"imagery": []})
@@ -177,9 +181,7 @@ async def test_extract_retries_on_missing_fragments_key() -> None:
 @pytest.mark.asyncio
 async def test_extract_raises_on_invalid_offsets() -> None:
     """start_offset >= end_offset triggers ImageryExtractionError."""
-    bad_fragment = json.dumps(
-        {"fragments": [{"text": "foo", "start_offset": 10, "end_offset": 5}]}
-    )
+    bad_fragment = json.dumps({"fragments": [{"text": "foo", "start_offset": 10, "end_offset": 5}]})
     client = StubLLMClient([bad_fragment, bad_fragment])
     extractor = ImageryExtractor(llm_client=client, max_retries=1)
 
@@ -203,6 +205,7 @@ async def test_extract_raises_on_offset_beyond_text_length() -> None:
 # ---------------------------------------------------------------------------
 # AC-5: stub client is used; no real AnthropicLLMClient is instantiated
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_stub_client_is_used_without_api_key() -> None:

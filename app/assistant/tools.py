@@ -188,7 +188,9 @@ async def execute_tool(
         lines = ["Search results:"]
         for item in result.items[:5]:
             date_label = item.date.isoformat() if item.date is not None else "unknown date"
-            lines.append(f"- [{date_label}] (score={item.relevance_score:.2f}) {item.chunk_text[:200]}")
+            lines.append(
+                f"- [{date_label}] (score={item.relevance_score:.2f}) {item.chunk_text[:200]}"
+            )
         return "\n".join(lines)
 
     if tool_name == "get_dream":
@@ -218,7 +220,9 @@ async def execute_tool(
             return "No dream entries in the archive."
         lines = [f"Recent dreams ({len(dreams)}):"]
         for dream in dreams:
-            lines.append(f"- {dream.id} | {dream.date or 'unknown'} | {dream.title} ({dream.word_count} words)")
+            lines.append(
+                f"- {dream.id} | {dream.date or 'unknown'} | {dream.title} ({dream.word_count} words)"
+            )
         return "\n".join(lines)
 
     if tool_name == "get_patterns":
@@ -278,9 +282,7 @@ async def execute_tool(
                 status_note = "(confirmed by user)"
             else:
                 status_note = f"({motif.status})"
-            lines.append(
-                f"- [{confidence_label} confidence] {motif.label} {status_note}"
-            )
+            lines.append(f"- [{confidence_label} confidence] {motif.label} {status_note}")
             if motif.rationale:
                 lines.append(f"  Rationale: {motif.rationale}")
         return "\n".join(lines)

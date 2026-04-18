@@ -213,7 +213,9 @@ async def _run_post_store_pipeline(
                     dream_entry = await session.get(DreamEntry, target.dream_id)
                     if dream_entry is not None:
                         await motif_service.run(dream_entry, session)
-                        with tracer.start_as_current_span("db.query.worker_ingest.commit_motif_inductions"):
+                        with tracer.start_as_current_span(
+                            "db.query.worker_ingest.commit_motif_inductions"
+                        ):
                             await session.commit()
 
 

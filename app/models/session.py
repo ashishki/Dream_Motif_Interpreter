@@ -21,9 +21,7 @@ class BotSession(Base):
     __tablename__ = "bot_sessions"
 
     chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    history_json: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("'[]'")
-    )
+    history_json: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'[]'"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=TIMESTAMP_SERVER_DEFAULT
     )

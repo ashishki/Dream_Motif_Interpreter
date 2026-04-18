@@ -8,6 +8,7 @@ AC-2: MotifService writes MotifInduction rows with status='draft' and correct mo
 AC-3/AC-4: (flag behaviour tested in test_ingest_motif_flag.py via ingest.py)
 AC-5: MotifService does NOT write to dream_themes.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -63,7 +64,9 @@ def _make_candidates() -> list[MotifCandidate]:
 
 
 class _StubImageryExtractor:
-    def __init__(self, fragments: list[ImageryFragment], *, raise_exc: Exception | None = None) -> None:
+    def __init__(
+        self, fragments: list[ImageryFragment], *, raise_exc: Exception | None = None
+    ) -> None:
         self._fragments = fragments
         self._raise = raise_exc
         self.call_count = 0
@@ -76,7 +79,9 @@ class _StubImageryExtractor:
 
 
 class _StubMotifInductor:
-    def __init__(self, candidates: list[MotifCandidate], *, raise_exc: Exception | None = None) -> None:
+    def __init__(
+        self, candidates: list[MotifCandidate], *, raise_exc: Exception | None = None
+    ) -> None:
         self._candidates = candidates
         self._raise = raise_exc
         self.call_count = 0
@@ -113,6 +118,7 @@ def _make_mock_session() -> MagicMock:
 # ---------------------------------------------------------------------------
 # AC-1: Pipeline order — ImageryExtractor → MotifInductor → MotifGrounder
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_pipeline_calls_in_order() -> None:
@@ -152,6 +158,7 @@ async def test_pipeline_calls_in_order() -> None:
 # ---------------------------------------------------------------------------
 # AC-2: Rows written with status='draft' and correct model_version
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_motif_induction_rows_have_draft_status_and_model_version() -> None:
@@ -269,15 +276,14 @@ async def test_fragments_field_contains_grounded_fragments() -> None:
 # AC-5: MotifService does NOT write to dream_themes
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_does_not_import_or_write_dream_themes() -> None:
     """MotifService must not add any DreamTheme objects to the session."""
     import app.services.motif_service as ms_module
 
     # Confirm DreamTheme is not imported in the service module
-    assert not hasattr(ms_module, "DreamTheme"), (
-        "motif_service must not import DreamTheme"
-    )
+    assert not hasattr(ms_module, "DreamTheme"), "motif_service must not import DreamTheme"
 
     from app.models.theme import DreamTheme
 
@@ -295,14 +301,13 @@ async def test_does_not_import_or_write_dream_themes() -> None:
 
     for c in session.add.call_args_list:
         obj = c[0][0]
-        assert not isinstance(obj, DreamTheme), (
-            "MotifService must not write DreamTheme rows"
-        )
+        assert not isinstance(obj, DreamTheme), "MotifService must not write DreamTheme rows"
 
 
 # ---------------------------------------------------------------------------
 # Failure handling: ImageryExtractor fails → no crash, no DB write
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_imagery_extractor_failure_does_not_crash() -> None:
@@ -328,9 +333,7 @@ async def test_motif_inductor_failure_does_not_crash() -> None:
     fragments = _make_fragments()
     service = MotifService(
         imagery_extractor=_StubImageryExtractor(fragments),
-        motif_inductor=_StubMotifInductor(
-            [], raise_exc=MotifInductionError("LLM error")
-        ),
+        motif_inductor=_StubMotifInductor([], raise_exc=MotifInductionError("LLM error")),
         motif_grounder=_StubMotifGrounder(),
     )
     session = _make_mock_session()
@@ -439,6 +442,7 @@ async def test_run_does_not_commit_caller_provided_session_on_success() -> None:
 # AC-3 / AC-4: Feature flag behaviour in ingest pipeline
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_ingest_calls_motif_service_when_flag_is_true() -> None:
     """When MOTIF_INDUCTION_ENABLED=true, MotifService.run is called."""
@@ -462,9 +466,7 @@ async def test_ingest_calls_motif_service_when_flag_is_true() -> None:
         needs_indexing=False,
     )
 
-    with patch.object(
-        ingest_module, "get_settings"
-    ) as mock_settings:
+    with patch.object(ingest_module, "get_settings") as mock_settings:
         settings = MagicMock()
         settings.MOTIF_INDUCTION_ENABLED = True
         mock_settings.return_value = settings
@@ -496,9 +498,7 @@ async def test_ingest_skips_motif_service_when_flag_is_false() -> None:
         needs_indexing=False,
     )
 
-    with patch.object(
-        ingest_module, "get_settings"
-    ) as mock_settings:
+    with patch.object(ingest_module, "get_settings") as mock_settings:
         settings = MagicMock()
         settings.MOTIF_INDUCTION_ENABLED = False
         mock_settings.return_value = settings

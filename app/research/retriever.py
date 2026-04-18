@@ -77,10 +77,7 @@ class ResearchRetriever:
                         continue
 
                     excerpt = str(
-                        item.get("content")
-                        or item.get("raw_content")
-                        or item.get("snippet")
-                        or ""
+                        item.get("content") or item.get("raw_content") or item.get("snippet") or ""
                     ).strip()
                     results.append(
                         {

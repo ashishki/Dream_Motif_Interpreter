@@ -7,7 +7,12 @@ from telegram.ext import Application, ApplicationBuilder, MessageHandler, TypeHa
 
 from app.assistant.facade import AssistantFacade
 from app.shared.config import Settings, get_settings
-from app.telegram.handlers import chat_guard, error_handler, text_message_handler, voice_message_handler
+from app.telegram.handlers import (
+    chat_guard,
+    error_handler,
+    text_message_handler,
+    voice_message_handler,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,7 +31,9 @@ def build_application(
     settings = get_settings()
     _validate_bot_settings(settings)
 
-    application = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+    application = (
+        ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+    )
     application.bot_data["facade"] = facade
     application.bot_data["allowed_chat_id"] = settings.TELEGRAM_ALLOWED_CHAT_ID
     application.bot_data["session_factory"] = session_factory

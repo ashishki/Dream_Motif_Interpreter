@@ -127,9 +127,7 @@ def test_post_research_returns_503_when_disabled() -> None:
 
     with patch("app.api.research.get_session_factory", return_value=factory):
         with patch("app.api.research.get_settings") as mock_get_settings:
-            mock_get_settings.return_value = SimpleNamespace(
-                RESEARCH_AUGMENTATION_ENABLED=False
-            )
+            mock_get_settings.return_value = SimpleNamespace(RESEARCH_AUGMENTATION_ENABLED=False)
             with _build_client() as client:
                 response = client.post(
                     f"/motifs/{motif_id}/research",
@@ -149,9 +147,7 @@ def test_post_research_returns_result_with_interpretation_note_when_enabled() ->
 
     with patch("app.api.research.get_session_factory", return_value=factory):
         with patch("app.api.research.get_settings") as mock_get_settings:
-            mock_get_settings.return_value = SimpleNamespace(
-                RESEARCH_AUGMENTATION_ENABLED=True
-            )
+            mock_get_settings.return_value = SimpleNamespace(RESEARCH_AUGMENTATION_ENABLED=True)
             with patch("app.api.research.ResearchService") as mock_service_cls:
                 service = mock_service_cls.return_value
                 service.run = AsyncMock(return_value=research_result)

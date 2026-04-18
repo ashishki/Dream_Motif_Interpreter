@@ -9,9 +9,13 @@ from sqlalchemy import select
 
 from app.models.feedback import AssistantFeedback
 from app.shared.database import get_session_factory
-from app.shared.tracing import get_tracer
+from app.shared.tracing import get_meter, get_tracer
 
 router = APIRouter()
+_feedback_list_counter = get_meter(__name__).create_counter(
+    "feedback.list_total",
+    description="Feedback list API calls",
+)
 
 
 class AssistantFeedbackResponse(BaseModel):
@@ -29,18 +33,24 @@ async def list_feedback(
     offset: int = Query(default=0, ge=0),
 ) -> list[AssistantFeedbackResponse]:
     tracer = get_tracer(__name__)
-    async with get_session_factory()() as session:
-        with tracer.start_as_current_span("db.query.feedback.list"):
-            result = await session.execute(
-                select(AssistantFeedback)
-                .order_by(
-                    AssistantFeedback.created_at.desc(),
-                    AssistantFeedback.id.desc(),
+    try:
+        async with get_session_factory()() as session:
+            with tracer.start_as_current_span("db.query.feedback.list"):
+                result = await session.execute(
+                    select(AssistantFeedback)
+                    .order_by(
+                        AssistantFeedback.created_at.desc(),
+                        AssistantFeedback.id.desc(),
+                    )
+                    .limit(limit)
+                    .offset(offset)
                 )
-                .limit(limit)
-                .offset(offset)
-            )
-        feedback_rows = list(result.scalars().all())
+            feedback_rows = list(result.scalars().all())
+    except Exception:
+        _feedback_list_counter.add(1, {"status": "error"})
+        raise
+
+    _feedback_list_counter.add(1, {"status": "success"})
 
     return [_to_response(row) for row in feedback_rows]
 

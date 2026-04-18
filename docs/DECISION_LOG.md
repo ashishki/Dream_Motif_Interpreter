@@ -25,9 +25,10 @@ Last updated: 2026-04-16 (Phase 9 complete — D-012 added)
 | D-010 | 2026-04-14 | Active | Bot session state persisted in PostgreSQL `bot_sessions`; Redis for ephemeral only | ADR-006 |
 | D-011 | 2026-04-14 | Active | Compose-first is the canonical deployment; `telegram-bot` service added to docker-compose.yml | ADR-007 |
 | D-012 | 2026-04-16 | Active | WS-9.7 (Pattern Queries Extension) deferred to Phase 9.1 / Phase 10; pattern analysis over inducted motifs is only meaningful after a confirmed motif accumulation period that has not yet occurred | `docs/tasks_phase9.md §WS-9.7`, `docs/ARCHITECTURE.md §17` |
+| D-013 | 2026-04-17 | Active | ResearchRetriever uses a provider-agnostic design (configurable base_url + api_key from settings); Tavily is the reference external search provider but the implementation does not hard-code it | `docs/tasks_phase10.md §WS-10.2 Notes`, ADR-009 |
+| D-014 | 2026-04-18 | Active | WS-11.4 (optional comment capture after digit rating) deferred; rating-only feedback sufficient for current quality signal; comment capture may be added in a future phase | `docs/tasks_phase11.md §WS-11.4`, `docs/FEEDBACK_LOOP.md §2` |
 
 ## Notes
 
 - All decisions through D-012 are Active — confirmed and implemented through Phase 9.
 - The presence of a decision in this log implies the corresponding implementation exists unless explicitly marked otherwise.
-| D-013 | 2026-04-17 | Active | ResearchRetriever uses a provider-agnostic design (configurable base_url + api_key from settings); Tavily is the reference external search provider but the implementation does not hard-code it | `docs/tasks_phase10.md §WS-10.2 Notes`, ADR-009 |

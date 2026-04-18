@@ -12,6 +12,12 @@ from app.models.dream import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 class AssistantFeedback(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "assistant_feedback"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "score >= 1 AND score <= 5",
+            name="ck_assistant_feedback_score_range",
+        ),
+    )
 
     chat_id: Mapped[str] = mapped_column(Text(), nullable=False)
     context: Mapped[Dict[str, Any]] = mapped_column(

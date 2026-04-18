@@ -12,7 +12,7 @@ Phase: 11-fix
 - **Baseline:** 225 tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-18 (Cycle 12 consolidation; FIX-10/FIX-11/FIX-12 assigned for P2 findings; Next: FIX-10)
+- **Last updated:** 2026-04-18 (FIX-10/FIX-11/FIX-12 applied and closed; Phase 11 complete; Fix Queue clear)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -21,7 +21,7 @@ Phase: 11-fix
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 10 complete (WS-10.1–WS-10.5); Phase 11 WS-11.1–11.3 complete; WS-11.4 deferred (D-014)
-- **Current planning state:** Phase 11 partial implementation complete; Fix Queue FIX-10/FIX-11/FIX-12 active; WS-11.4 deferred
+- **Current planning state:** Phase 11 complete; Fix Queue clear; Phase 12 (next phase) or maintenance next
 - **Latest completed implementation task:** WS-11.3 — GET /feedback API Route
 - **Current baseline:** 225 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
@@ -44,14 +44,15 @@ Phase: 11-fix
 
 ## Next Task
 
-**FIX-10 — GET /feedback missing OTel meter counter (P2)**
+**Phase 12 Planning — next phase**
 
-WS-11.1, WS-11.2, WS-11.3 are COMPLETE. WS-11.4 is DEFERRED (D-014). Fix Queue has three P2 items (FIX-10/FIX-11/FIX-12). Resolve Fix Queue before Phase 12 begins.
+FIX-10, FIX-11, FIX-12 are CLOSED (applied 2026-04-18). Fix Queue is clear.
+Phase 11 (Feedback Loop) fully complete. WS-11.4 deferred per D-014.
 
 Context refs:
-- `docs/CODEX_PROMPT.md §Fix Queue` — FIX-10/FIX-11/FIX-12 details
-- `docs/tasks_phase11.md` — Phase 11 task graph (WS-11.1–11.3 complete)
-- `app/api/research.py` — OBS-2 counter pattern to follow for FIX-10
+- `docs/PHASE_PLAN.md` — check next phase scope
+- `docs/CODEX_PROMPT.md §Fix Queue` — confirm all closed
+- `docs/tasks_phase11.md` — Phase 11 complete reference
 
 ---
 
@@ -59,13 +60,13 @@ Context refs:
 
 ─── Fix Queue (resolve before Phase 12 queue) ────────────────────────
 
-🟡 FIX-10 [P2] — GET /feedback missing OTel meter counter (OBS-2 violation)
+✅ FIX-10 [P2] — GET /feedback missing OTel meter counter (OBS-2 violation)
   File: app/api/feedback.py · Change: add get_meter(__name__).create_counter("feedback.list_total") with {"status": "success"|"error"} attribute; emit on success path and on exception path; follow OBS-2 pattern in app/api/research.py · Test: assert counter is incremented with status="success" in test_feedback_api.py unit test after GET /feedback call with stub DB
 
-🟡 FIX-11 [P2] — AssistantFeedback ORM model missing score CheckConstraint
+✅ FIX-11 [P2] — AssistantFeedback ORM model missing score CheckConstraint
   File: app/models/feedback.py · Change: add __table_args__ = (sa.CheckConstraint("score >= 1 AND score <= 5", name="ck_assistant_feedback_score_range"),) to AssistantFeedback — mirrors the DDL constraint already present in alembic/versions/011_add_feedback.py · Test: assert that constructing AssistantFeedback with score=0 or score=6 and flushing to a test DB session raises IntegrityError (or that the constraint is present in model metadata)
 
-🟡 FIX-12 [P2] — retrieval_eval.md missing Cycle 11 advisory row (RET-7 violation)
+✅ FIX-12 [P2] — retrieval_eval.md missing Cycle 11 advisory row (RET-7 violation)
   File: docs/retrieval_eval.md · Change: add Cycle 11 (2026-04-18) advisory row to §Evaluation History confirming RAG layer unchanged in Phase 11 (no modifications to chunking, embedding, ranking, or evidence assembly); T12 baseline metrics carry forward · Test: doc review — no automated test required
 
 ─── P3 findings (Fix Queue pass — resolve before Phase 12 gate) ──────

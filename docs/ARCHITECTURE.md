@@ -377,7 +377,7 @@ All research results carry confidence values of `speculative`, `plausible`, or `
 
 See [RESEARCH_AUGMENTATION.md](RESEARCH_AUGMENTATION.md) and [ADR-009](adr/ADR-009-research-trust-boundary.md).
 
-## 19. Feedback Model (Planned — Phase 11)
+## 19. Feedback Model (Implemented — Phase 11 WS-11.1–11.3)
 
 The `assistant_feedback` table stores user-submitted ratings (1–5) with optional comment. Ratings are linked to the chat context of the preceding assistant response.
 
@@ -389,14 +389,23 @@ See [FEEDBACK_LOOP.md](FEEDBACK_LOOP.md).
 
 Current tables (implemented):
 
-- `dream_entries`, `dream_chunks`, `dream_themes`, `theme_categories`, `annotation_versions`, `bot_sessions`, `voice_media_events`, `motif_inductions`
+- `dream_entries`, `dream_chunks`, `dream_themes`, `theme_categories`, `annotation_versions`, `bot_sessions`, `voice_media_events`, `motif_inductions`, `assistant_feedback`
 
 Planned additions:
 
 | Table | Phase | Purpose |
 |-------|-------|---------|
 | `research_results` | 10 | External research parallels; external trust boundary |
-| `assistant_feedback` | 11 | User rating scores; quality signal only |
+
+### Implemented components
+
+| Component | Responsibility |
+|-----------|----------------|
+| `app/services/feedback_service.py` (`FeedbackService`) | Persist assistant feedback and build response-context snapshots for rating capture |
+| `app/api/feedback.py` | Read-only paginated API for stored feedback rows |
+| `app/models/feedback.py` | SQLAlchemy ORM model for `assistant_feedback` table |
+| `alembic/versions/011_add_feedback.py` | Migration adding the `assistant_feedback` table |
+| `assistant_feedback` table | Stores user rating scores; quality signal only |
 
 ## 21. ADR Coverage
 

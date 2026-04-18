@@ -265,3 +265,12 @@ Status: append-only
 - Evidence collected: 216 unit tests pass; research_results migration (010); ResearchRetriever + ResearchSynthesizer; ResearchService; GET/POST /motifs/{id}/research; research_motif_parallels assistant tool gated by RESEARCH_AUGMENTATION_ENABLED
 - Follow-ups: FIX-7/FIX-8 OTel instrumentation; ARCHITECTURE.md doc drift (FIX-9c)
 - Notes for next agent: Research augmentation is an external trust-boundary path separate from dream-archive RAG and remains gated behind `RESEARCH_AUGMENTATION_ENABLED`
+
+### 2026-04-18 — Phase 11 — Feedback Loop
+
+- Scope: WS-11.1–WS-11.3 (Feedback Loop)
+- Why this work happened: Phase 11 required the feedback capture persistence, deterministic digit-reply handling, and a read-only admin API for stored ratings
+- Decisions applied: D-014 (WS-11.4 deferred), ADR-006 (session state in bot_sessions — in-memory dict used as pragmatic single-user trade-off)
+- Evidence collected: 225 unit tests pass; assistant_feedback migration 011; FeedbackService; digit-reply capture in handlers.py; GET /feedback paginated API
+- Follow-ups: FIX-10/11/12 OTel+ORM fixes; WS-11.4 comment capture deferred to future phase
+- Notes for next agent: Phase 11 adds a rating-only feedback loop; optional comment capture remains intentionally deferred

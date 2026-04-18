@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 SYSTEM_PROMPT = (
     "You are a careful, grounded dream archive assistant. "
     "Answer in the same language the user writes in. "
@@ -32,3 +34,26 @@ SYSTEM_PROMPT = (
     "speculative, plausible, or uncertain. Never describe results as findings, confirmed, or "
     "verified."
 )
+
+
+def build_system_prompt(feedback_rows: list[dict] | None = None) -> str:
+    """Build the system prompt, optionally appending recent user feedback context."""
+    if not feedback_rows:
+        return SYSTEM_PROMPT
+
+    lines = ["", "", "## Recent User Feedback"]
+    lines.append(
+        "The following feedback was collected from the user over time. "
+        "Use it to adapt your response style, depth, and tone:"
+    )
+    for row in feedback_rows:
+        score = row.get("score")
+        comment = row.get("comment") or ""
+        created_at = row.get("created_at")
+        date_str = created_at.strftime("%Y-%m-%d") if isinstance(created_at, datetime) else "?"
+        if comment:
+            lines.append(f'- [{date_str}] score={score}/5: "{comment}"')
+        else:
+            lines.append(f"- [{date_str}] score={score}/5 (no comment)")
+
+    return SYSTEM_PROMPT + "\n".join(lines)

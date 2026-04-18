@@ -11,9 +11,10 @@ from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.assistant.facade import AssistantFacade
-from app.assistant.prompts import SYSTEM_PROMPT
+from app.assistant.prompts import SYSTEM_PROMPT, build_system_prompt
 from app.assistant.session import load_history, save_history
 from app.assistant.tools import build_tools, execute_tool
+from app.services.feedback_service import FeedbackService
 from app.shared.config import get_settings
 
 LOGGER = logging.getLogger(__name__)
@@ -78,6 +79,17 @@ async def handle_chat_with_metadata(
         except Exception:
             LOGGER.warning("Failed to load session history for chat_id=%s", chat_id, exc_info=True)
 
+    feedback_rows: list[dict] = []
+    if session_factory is not None:
+        try:
+            async with session_factory() as fb_session:
+                feedback_rows = await FeedbackService().get_recent_for_context(fb_session)
+        except Exception:
+            LOGGER.warning("Failed to load feedback context", exc_info=True)
+
+    system_prompt = SYSTEM_PROMPT
+    if feedback_rows:
+        system_prompt = build_system_prompt(feedback_rows)
     messages: list[dict[str, Any]] = history + [{"role": "user", "content": message_text}]
     round_counter = 0
     last_text = ""
@@ -87,7 +99,7 @@ async def handle_chat_with_metadata(
         try:
             response = await client.messages.create(
                 model=model,
-                system=SYSTEM_PROMPT,
+                system=system_prompt,
                 max_tokens=1024,
                 messages=messages,
                 tools=build_tools(

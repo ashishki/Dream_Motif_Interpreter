@@ -18,9 +18,10 @@ from app.telegram.voice import download_voice_file
 LOGGER = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
 VOICE_PROCESSING_ACK = "Processing your voice note..."
-FEEDBACK_PROMPT = "Rate this response: reply with 1–5."
+FEEDBACK_PROMPT = "Reply to this message to rate (1–5), or add a comment after the digit."
 FEEDBACK_ACK = "Thanks, noted."
 _FEEDBACK_STATE_KEY = "_feedback_pending_by_chat"
+_BOT_MESSAGE_IDS_KEY = "_bot_message_ids_by_chat"
 
 
 async def chat_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -42,24 +43,61 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     chat_id = chat.id if chat is not None else None
     chat_key = str(chat_id) if chat_id is not None else None
     pending_feedback = _feedback_state(context)
+    bot_msg_ids = _bot_message_ids(context)
     stripped_text = message.text.strip()
+    reply_to_msg_id = getattr(getattr(message, "reply_to_message", None), "message_id", None)
     session_factory = context.bot_data.get("session_factory")
 
     if (
         chat_key is not None
+        and reply_to_msg_id is not None
+        and reply_to_msg_id == bot_msg_ids.get(chat_key)
+    ):
+        parsed_feedback = _parse_feedback_reply(stripped_text)
+        if (
+            parsed_feedback is not None
+            and chat_key in pending_feedback
+            and session_factory is not None
+        ):
+            score, comment = parsed_feedback
+            feedback_context = pending_feedback.pop(chat_key)
+            bot_msg_ids.pop(chat_key, None)
+            async with session_factory() as session:
+                await FeedbackService().record(
+                    chat_key,
+                    score,
+                    feedback_context,
+                    session,
+                    comment=comment,
+                )
+                await session.commit()
+            await message.reply_text(FEEDBACK_ACK)
+            return
+
+    if (
+        chat_key is not None
+        and reply_to_msg_id is None
         and _is_rating_message(stripped_text)
         and chat_key in pending_feedback
         and session_factory is not None
     ):
         feedback_context = pending_feedback.pop(chat_key)
+        bot_msg_ids.pop(chat_key, None)
         async with session_factory() as session:
-            await FeedbackService().record(chat_key, int(stripped_text), feedback_context, session)
+            await FeedbackService().record(
+                chat_key,
+                int(stripped_text),
+                feedback_context,
+                session,
+                comment=None,
+            )
             await session.commit()
         await message.reply_text(FEEDBACK_ACK)
         return
 
     if chat_key is not None:
         pending_feedback.pop(chat_key, None)
+        bot_msg_ids.pop(chat_key, None)
 
     facade = _get_facade(context)
     result = await handle_chat_with_metadata(
@@ -77,6 +115,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             "response_summary": result.text[:200],
             "tool_calls_made": list(result.tool_calls_made),
         }
+        bot_msg_ids[chat_key] = int(getattr(sent_message, "message_id", 0))
 
 
 async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -95,7 +134,9 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         LOGGER.warning("voice_message_handler called without voice attachment")
         return
 
-    _feedback_state(context).pop(str(chat.id), None)
+    chat_key = str(chat.id)
+    _feedback_state(context).pop(chat_key, None)
+    _bot_message_ids(context).pop(chat_key, None)
 
     session_factory = context.bot_data.get("session_factory")
     media_dir: str = context.bot_data.get("voice_media_dir", "/tmp/dream_voice")
@@ -204,8 +245,24 @@ def _feedback_state(context: ContextTypes.DEFAULT_TYPE) -> MutableMapping[str, d
     return context.bot_data.setdefault(_FEEDBACK_STATE_KEY, {})
 
 
+def _bot_message_ids(context: ContextTypes.DEFAULT_TYPE) -> MutableMapping[str, int]:
+    return context.bot_data.setdefault(_BOT_MESSAGE_IDS_KEY, {})
+
+
 def _is_rating_message(text: str) -> bool:
     return len(text) == 1 and text in "12345"
+
+
+def _parse_feedback_reply(text: str) -> tuple[int, str | None] | None:
+    """Parse reply text as (score, comment) or None if not a feedback reply."""
+    parts = text.strip().split(None, 1)
+    if not parts:
+        return None
+    if len(parts[0]) == 1 and parts[0] in "12345":
+        score = int(parts[0])
+        comment = parts[1].strip() if len(parts) > 1 else None
+        return score, comment
+    return None
 
 
 def _is_substantive_response(text: str) -> bool:

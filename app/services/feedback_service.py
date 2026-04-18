@@ -12,10 +12,16 @@ class FeedbackService:
         score: int,
         context: dict,
         session: AsyncSession,
+        comment: str | None = None,
     ) -> AssistantFeedback:
         if score < 1 or score > 5:
             raise ValueError("score must be between 1 and 5")
 
-        feedback = AssistantFeedback(chat_id=chat_id, score=score, context=context)
+        feedback = AssistantFeedback(
+            chat_id=chat_id,
+            score=score,
+            context=context,
+            comment=comment,
+        )
         session.add(feedback)
         return feedback

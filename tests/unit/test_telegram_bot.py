@@ -69,7 +69,7 @@ async def test_text_message_handler_routes_to_handle_chat() -> None:
         chat_id=42,
     )
     message.reply_text.assert_awaited_once_with(
-        "Here are your dreams.\n\nRate this response: reply with 1–5."
+        "Here are your dreams.\n\nReply to this message to rate (1–5), or add a comment after the digit."
     )
 
 
@@ -87,7 +87,9 @@ async def test_text_message_handler_sends_handle_chat_response() -> None:
     ):
         await text_message_handler(update, context)
 
-    message.reply_text.assert_awaited_once_with("pong\n\nRate this response: reply with 1–5.")
+    message.reply_text.assert_awaited_once_with(
+        "pong\n\nReply to this message to rate (1–5), or add a comment after the digit."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +115,7 @@ async def test_text_message_handler_sends_insufficient_evidence_reply() -> None:
         await text_message_handler(update, context)
 
     message.reply_text.assert_awaited_once_with(
-        f"{insufficient_reply}\n\nRate this response: reply with 1–5."
+        f"{insufficient_reply}\n\nReply to this message to rate (1–5), or add a comment after the digit."
     )
 
 

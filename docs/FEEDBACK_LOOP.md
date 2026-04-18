@@ -20,25 +20,29 @@ The feedback is captured passively via Telegram without requiring a separate wor
 
 ### Trigger condition
 
-After the assistant delivers a substantive response (not an error message, not a transcription acknowledgment, not a system notice), it may append a brief prompt: "Rate this response: reply with 1–5."
+After the assistant delivers a substantive response (not an error message, not a transcription acknowledgment, not a system notice), it appends: "Reply to this message to rate (1–5), or add a comment after the digit."
 
-### Digit-only reply detection
+### Primary path — Telegram reply
 
-A message containing exactly one digit (1, 2, 3, 4, or 5) sent as the next message in the conversation after a substantive response is interpreted as a rating for that response.
+The preferred capture path uses Telegram's native reply feature. The user taps "Reply" on the specific bot message and sends:
 
-Detection rules:
-- The message must contain only a single digit character (no spaces, no other characters).
-- The digit must be in the range 1–5.
-- The message must immediately follow a substantive assistant response in the conversation flow.
-- Messages that contain digits alongside other characters are not treated as ratings.
+- A single digit (1–5): recorded as a rating, `comment = NULL`.
+- A digit followed by text (e.g. `"4 Too detailed"`): digit recorded as score, remaining text stored as `comment`.
+- Text with no leading digit: not treated as a rating — processed as a normal chat message.
+
+Detection is deterministic (no LLM calls). Only a reply to the exact bot message ID that triggered the prompt is accepted.
+
+### Fallback path — plain digit message
+
+For backward compatibility, a plain digit message (1–5, no other characters) sent immediately after a substantive response is also accepted as a rating if the pending-feedback state is set. Comment is `NULL` in this path.
 
 ### Acknowledgment
 
-When a rating is captured, the assistant sends: "Thanks, noted." No further action is taken in that conversation turn.
+When a rating is captured via either path, the assistant sends: "Thanks, noted." No further action is taken in that conversation turn.
 
-### Optional comment
+### Comment capture
 
-The user may optionally send a follow-up message with a text comment after submitting a digit rating. If the system is configured to capture it, the comment is stored in the `comment` field of the `assistant_feedback` row. Comment capture is optional and must be implemented explicitly; it is not implied by digit capture alone.
+A comment is stored when the user appends text after the digit in the same reply (e.g. `"3 Responses are too long"`). The comment is stored in `assistant_feedback.comment` and used for system-prompt context injection (§6).
 
 ---
 
@@ -76,12 +80,46 @@ This endpoint is read-only. Feedback rows cannot be deleted or modified via the 
 
 ## 5. What Is Explicitly Deferred
 
-The following are out of scope for Phase 11 and must not be implemented without an explicit decision:
+The following are out of scope and must not be implemented without an explicit decision:
 
 - **Fine-tuning**: no mechanism for using feedback rows to fine-tune any model.
-- **Automated model update**: feedback scores must not trigger any automated change to model parameters, prompts, or tool catalogs.
+- **Automated model update**: feedback scores must not trigger any automated change to model parameters or tool catalogs.
 - **Unsupervised training pipeline**: no pipeline that reads feedback rows and modifies system behavior without human review.
-- **Reinforcement from feedback**: RLHF or similar approaches are not part of this phase and are deferred indefinitely.
-- **Feedback-driven prompt modification**: the system prompt and tool catalog must not be automatically adjusted based on feedback scores.
+- **Reinforcement from feedback**: RLHF or similar approaches are deferred indefinitely.
 
-Any future decision to use feedback data for model improvement must be made explicitly, documented in an ADR, and implemented as a separate phase.
+Any future decision to use feedback data for model improvement beyond §6 must be documented in an ADR and implemented as a separate phase.
+
+---
+
+## 6. Feedback Context Injection
+
+Recent user feedback (comments and low scores) is injected into the assistant's system prompt before each response to allow the assistant to adapt its style and depth over time.
+
+### Query
+
+At the start of each `handle_chat_with_metadata` call, the system loads up to 20 rows from `assistant_feedback` where:
+
+- `comment IS NOT NULL AND comment != ''`, OR
+- `score <= 2`
+
+Rows are ordered oldest-first so the most recent signal appears at the bottom of the injected block.
+
+### Injection format
+
+If matching rows exist, the following section is appended to the base system prompt:
+
+```
+## Recent User Feedback
+The following feedback was collected from the user over time.
+Use it to adapt your response style, depth, and tone:
+- [YYYY-MM-DD] score=N/5: "comment text"
+- [YYYY-MM-DD] score=N/5 (no comment)
+```
+
+### Graceful degradation
+
+If the database query fails (network error, timeout, etc.), the base `SYSTEM_PROMPT` is used unchanged. The error is logged as a warning. No response is suppressed.
+
+### Scope boundary
+
+This injection path is one-way read: the feedback loop reads from `assistant_feedback` to inform the system prompt. It does not write to the archive, does not alter RAG indexing, and does not modify stored motifs or research results. `assistant_feedback` remains excluded from all ingestion pipelines.

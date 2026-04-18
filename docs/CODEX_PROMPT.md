@@ -1,18 +1,18 @@
 # CODEX_PROMPT.md
 
-Version: 1.38
-Date: 2026-04-17
-Phase: 10-fix
+Version: 1.39
+Date: 2026-04-18
+Phase: 11-fix
 
 ---
 
 ## Current State
 
-- **Phase:** 10 fix — Research Augmentation (implementation complete; Fix Queue active)
-- **Baseline:** 216 tests passing
+- **Phase:** 11 fix — Feedback Loop (WS-11.1–11.3 implemented; Fix Queue active; WS-11.4 deferred)
+- **Baseline:** 225 tests passing
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-17 (FIX-7/FIX-8/FIX-9 applied and closed; Phase 10 fix queue clear; Next: Phase 11 Strategy)
+- **Last updated:** 2026-04-18 (Cycle 12 consolidation; FIX-10/FIX-11/FIX-12 assigned for P2 findings; Next: FIX-10)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -20,10 +20,10 @@ Phase: 10-fix
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 10 complete (WS-10.1–WS-10.5); all Cycle 9 carry-forwards closed
-- **Current planning state:** Phase 10 complete; Fix Queue clear; Phase 11 (Feedback Loop) next
-- **Latest completed implementation task:** WS-10.5 — Assistant Tool + Facade Method
-- **Current baseline:** 216 unit tests passing
+- **Phases completed:** Phase 1 through Phase 10 complete (WS-10.1–WS-10.5); Phase 11 WS-11.1–11.3 complete; WS-11.4 deferred (D-014)
+- **Current planning state:** Phase 11 partial implementation complete; Fix Queue FIX-10/FIX-11/FIX-12 active; WS-11.4 deferred
+- **Latest completed implementation task:** WS-11.3 — GET /feedback API Route
+- **Current baseline:** 225 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -33,7 +33,8 @@ Phase: 10-fix
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
-- **Active task graph:** `docs/tasks_phase10.md`
+- **Active task graph:** `docs/tasks_phase11.md`
+- **Previous task graph (Phase 10):** `docs/tasks_phase10.md`
 - **Previous task graph (Phase 9):** `docs/tasks_phase9.md`
 - **Previous task graph (Phases 6–8):** `docs/tasks_phase6.md`
 - **Historical backend task graph:** `docs/tasks.md`
@@ -43,21 +44,46 @@ Phase: 10-fix
 
 ## Next Task
 
-**Phase 11 — Feedback Loop (Strategy Review)**
+**FIX-10 — GET /feedback missing OTel meter counter (P2)**
 
-FIX-7, FIX-8, FIX-9 are CLOSED (applied 2026-04-17). Fix Queue is clear.
-Next: run Phase 11 Strategy Review, then implement `docs/tasks_phase11.md`.
+WS-11.1, WS-11.2, WS-11.3 are COMPLETE. WS-11.4 is DEFERRED (D-014). Fix Queue has three P2 items (FIX-10/FIX-11/FIX-12). Resolve Fix Queue before Phase 12 begins.
 
 Context refs:
-- `docs/PHASE_PLAN.md §11` — Feedback Loop design
-- `docs/FEEDBACK_LOOP.md` — quality signal spec
-- `docs/CODEX_PROMPT.md §Fix Queue` — confirm all closed before starting
+- `docs/CODEX_PROMPT.md §Fix Queue` — FIX-10/FIX-11/FIX-12 details
+- `docs/tasks_phase11.md` — Phase 11 task graph (WS-11.1–11.3 complete)
+- `app/api/research.py` — OBS-2 counter pattern to follow for FIX-10
 
 ---
 
 ## Fix Queue
 
-─── Fix Queue (resolve before Phase 11 queue) ────────────────────────
+─── Fix Queue (resolve before Phase 12 queue) ────────────────────────
+
+🟡 FIX-10 [P2] — GET /feedback missing OTel meter counter (OBS-2 violation)
+  File: app/api/feedback.py · Change: add get_meter(__name__).create_counter("feedback.list_total") with {"status": "success"|"error"} attribute; emit on success path and on exception path; follow OBS-2 pattern in app/api/research.py · Test: assert counter is incremented with status="success" in test_feedback_api.py unit test after GET /feedback call with stub DB
+
+🟡 FIX-11 [P2] — AssistantFeedback ORM model missing score CheckConstraint
+  File: app/models/feedback.py · Change: add __table_args__ = (sa.CheckConstraint("score >= 1 AND score <= 5", name="ck_assistant_feedback_score_range"),) to AssistantFeedback — mirrors the DDL constraint already present in alembic/versions/011_add_feedback.py · Test: assert that constructing AssistantFeedback with score=0 or score=6 and flushing to a test DB session raises IntegrityError (or that the constraint is present in model metadata)
+
+🟡 FIX-12 [P2] — retrieval_eval.md missing Cycle 11 advisory row (RET-7 violation)
+  File: docs/retrieval_eval.md · Change: add Cycle 11 (2026-04-18) advisory row to §Evaluation History confirming RAG layer unchanged in Phase 11 (no modifications to chunking, embedding, ranking, or evidence assembly); T12 baseline metrics carry forward · Test: doc review — no automated test required
+
+─── P3 findings (Fix Queue pass — resolve before Phase 12 gate) ──────
+
+  CODE-4 [P3] — handlers.py feedback commit not guarded; DB failure suppresses FEEDBACK_ACK
+    File: app/telegram/handlers.py:54–58 · Change: wrap session.commit() in try/except; log DB error; still send FEEDBACK_ACK reply
+  CODE-5 [P3] — RESEARCH_API_KEY empty-string not validated at startup (Cycle 10 carry-forward — third cycle)
+    File: app/shared/config.py:31 · Change: add model_validator that raises if RESEARCH_AUGMENTATION_ENABLED=True and RESEARCH_API_KEY="" — OR formally document acceptance in ADR-010 §Consequences and close the finding with a decision reference
+  CODE-6 [P3] — _feedback_pending_by_chat dict unbounded, no TTL or size cap
+    File: app/telegram/handlers.py:44, 74–79, 203–204 · Change: add max-size cap (e.g. maxsize=10_000) or TTL eviction — OR defer with DECISION_LOG entry
+  CODE-7 [P3] — DECISION_LOG.md missing WS-11.4 deferral entry (D-014)
+    File: docs/DECISION_LOG.md · Change: add D-014 entry recording WS-11.4 (optional comment capture) as explicitly deferred following D-012 pattern
+  CODE-9 [P3] — ARCHITECTURE.md §19 header reads "(Planned — Phase 11)" despite WS-11.1–11.3 implemented
+    File: docs/ARCHITECTURE.md:381 · Change: update §19 header to "(Implemented — Phase 11 WS-11.1–11.3)"; move assistant_feedback row from §20 Planned table to Current tables; annotate FeedbackService in §9 component table
+  CODE-10 [P3] — IMPLEMENTATION_JOURNAL.md has no Phase 11 entry
+    File: docs/IMPLEMENTATION_JOURNAL.md · Change: append Phase 11 entry covering WS-11.1–11.3 scope, D-014 deferral of WS-11.4, and test baseline 225
+
+─── Closed Fix Queue items (Cycle 10 → Cycle 11) ──────────────────────
 
 ✅ FIX-7 [P2] — ResearchRetriever external HTTP call missing OTel span and counter
   File: app/research/retriever.py:27–82 · Change: wrap retrieve() body in tracer.start_as_current_span("research_retriever.retrieve"); emit get_meter(__name__).create_counter("research.retrieve_total") with {"status": "success"|"failure"} attribute; record latency as span attribute research_retrieve_ms · Test: assert counter incremented and span created after stub HTTP call
@@ -79,18 +105,19 @@ Context refs:
 
 ## Open Findings
 
-_Cycle 10 — 2026-04-17 · 8 new findings: P0: 0, P1: 0, P2: 2, P3: 6 (8 Open); Cycle 9 findings: all 9 previously open findings Closed (FIX-1 through FIX-6 confirmed in code; CODE-7/CODE-8/CODE-10 closed via WS-10.5 implementation)_
+_Cycle 12 — 2026-04-18 · 10 new findings: P0: 0, P1: 0, P2: 3, P3: 7 (CODE-8 resolved in this cycle; 9 Open); Cycle 11 findings: CODE-1/CODE-2/CODE-3/CODE-4/ARCH-1/ARCH-2/ARCH-4 all Closed (FIX-7/FIX-8/FIX-9 applied 2026-04-17); DOC-1 carry-forward resolved in this CODEX_PROMPT patch_
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
-| CODE-1 | P2 | `ResearchRetriever.retrieve()` external HTTP call has no OTel span, counter, or latency histogram. Violates OBS-1 and OBS-2. | `app/research/retriever.py:27–82` | **Open** — new Cycle 10; see FIX-7 |
-| CODE-2 | P2 | `ResearchSynthesizer.synthesize()` LLM call has no OTel span or counter. Violates OBS-1 and OBS-2. | `app/research/synthesizer.py` | **Open** — new Cycle 10; see FIX-8 |
-| CODE-3 | P2 | `docs/retrieval_eval.md` Evaluation History missing Cycle 10 advisory row. RET-7 requires advisory row each cycle; RAG layer unchanged in Phase 10 but row is mandatory. | `docs/retrieval_eval.md` | **Open** — new Cycle 10; see FIX-9 |
-| CODE-4 | P3 | `docs/IMPLEMENTATION_JOURNAL.md` has no Phase 10 entry. WS-10.1–WS-10.5 scope, decisions D-013/ADR-009/ADR-010, and test baseline 216 not recorded. GOV-5 violation. | `docs/IMPLEMENTATION_JOURNAL.md` | **Open** — new Cycle 10; see FIX-9 |
-| CODE-5 | P3 | When `RESEARCH_AUGMENTATION_ENABLED=True`, `RESEARCH_API_KEY` defaults to `""` with no `model_validator` at startup. ADR-010 acknowledges deferral; fail-fast validator would catch misconfiguration early. | `app/shared/config.py` | **Open** — new Cycle 10 |
-| ARCH-1 | P3 | `app/research/` module (`ResearchRetriever`, `ResearchSynthesizer`) and `ResearchService` absent from `docs/ARCHITECTURE.md §9` component table. Three Phase 10 components implemented but not listed. | `docs/ARCHITECTURE.md:183–190` | **Open** — new Cycle 10; see FIX-9 |
-| ARCH-2 | P3 | Duplicate `## 18` section number in `docs/ARCHITECTURE.md`. Line 352 = Research Augmentation Layer; line 414 = Resolved Architectural Decisions (should be `## 22`). | `docs/ARCHITECTURE.md:352,414` | **Open** — new Cycle 10; see FIX-9 |
-| ARCH-4 | P3 | `docs/ARCHITECTURE.md §18` header reads `(Planned — Phase 10)` despite the layer being fully implemented in Phase 10. | `docs/ARCHITECTURE.md:352` | **Open** — new Cycle 10; see FIX-9 |
+| CODE-1 | P2 | `GET /feedback` emits an OTel span but no meter counter. OBS-2 requires a labeled counter per read route. | `app/api/feedback.py` | **Open** — new Cycle 12; see FIX-10 |
+| CODE-2 | P2 | `AssistantFeedback` ORM model missing `sa.CheckConstraint` on `score` column. DDL constraint exists in migration `011_add_feedback.py`; ORM model omits it in `__table_args__`. | `app/models/feedback.py` | **Open** — new Cycle 12; see FIX-11 |
+| CODE-3 | P2 | `docs/retrieval_eval.md §Evaluation History` missing Cycle 11 advisory row. RET-7 mandatory each cycle. RAG layer unchanged in Phase 11; T12 baseline metrics carry forward. | `docs/retrieval_eval.md` | **Open** — new Cycle 12; see FIX-12 |
+| CODE-4 | P3 | `handlers.py` calls `session.commit()` after `FeedbackService.record()` with no try/except. Transient DB failure suppresses `FEEDBACK_ACK` reply to user. | `app/telegram/handlers.py:54–58` | **Open** — new Cycle 12 |
+| CODE-5 | P3 | When `RESEARCH_AUGMENTATION_ENABLED=True`, `RESEARCH_API_KEY` defaults to `""` with no `model_validator` at startup. ADR-010 acknowledges deferral; no FIX assigned. Third cycle carry-forward. | `app/shared/config.py:31` | **Open** — Cycle 10 carry-forward (third cycle) |
+| CODE-6 | P3 | `_feedback_pending_by_chat` dict in `context.bot_data` is unbounded. No TTL or max-size cap. Also triggers ADR-006 drift. | `app/telegram/handlers.py:44, 74–79, 203–204` | **Open** — new Cycle 12 |
+| CODE-7 | P3 | `docs/DECISION_LOG.md` missing D-014 entry for WS-11.4 deferral. DECISION_LOG ends at D-013. GOV-5 violation. | `docs/DECISION_LOG.md` | **Open** — new Cycle 12 |
+| CODE-9 | P3 | `docs/ARCHITECTURE.md §19` header reads `(Planned — Phase 11)`. WS-11.1–11.3 implemented. GOV-5 violation. | `docs/ARCHITECTURE.md:381` | **Open** — new Cycle 12 |
+| CODE-10 | P3 | `docs/IMPLEMENTATION_JOURNAL.md` has no Phase 11 entry. WS-11.1–11.3 scope and test baseline 225 not recorded. GOV-5 violation. | `docs/IMPLEMENTATION_JOURNAL.md` | **Open** — new Cycle 12 |
 
 _Cycle 9 findings (all Closed):_
 
@@ -277,6 +304,9 @@ none
 
 ## Completed Tasks
 
+- **WS-11.3** — GET /feedback API Route — 2026-04-17 — 225 tests passing — GET /feedback endpoint implemented in app/api/feedback.py; pagination (limit/offset); protected by global X-API-Key middleware; not in PUBLIC_PATHS; OTel span present; WS-11.3 AC-1 through AC-5 met; unit tests in tests/unit/test_feedback_api.py
+- **WS-11.2** — Telegram Digit-Reply Capture — 2026-04-17 — 225 tests passing — digit-reply detection in app/telegram/handlers.py; FeedbackService.record() in app/services/feedback_service.py; "Rate this response: reply with 1–5." appended after substantive responses; "Thanks, noted." on capture; context JSONB stores message_id, response_summary, tool_calls_made (no raw dream text); WS-11.2 AC-1 through AC-6 met
+- **WS-11.1** — DB Migration and ORM Model — 2026-04-17 — 225 tests passing — 011_add_feedback.py migration creates assistant_feedback table; AssistantFeedback ORM model in app/models/feedback.py; exported from app/models/__init__.py; score CHECK constraint in DDL; assistant_feedback excluded from RAG ingestion pipeline; WS-11.1 AC-1 through AC-5 met
 - **WS-10.5** — Assistant Tool + Facade Method — 2026-04-17 — 216 tests passing — AssistantFacade.research_motif_parallels() added; research_motif_parallels tool registered in build_tools() gated by RESEARCH_AUGMENTATION_ENABLED; SYSTEM_PROMPT updated with confirmation-before-execution rule and speculative framing requirements; tool absent when flag is false; WS-10.5 AC-1 through AC-5 met
 - **WS-10.4** — API Routes — 2026-04-17 — 216 tests passing — GET /motifs/{id}/research and POST /motifs/{id}/research implemented in app/api/research.py; POST returns 503 when RESEARCH_AUGMENTATION_ENABLED=false; response carries literal interpretation_note; routes covered by unit tests; registered in app/main.py
 - **WS-10.3** — ResearchService Orchestrator + Persistence — 2026-04-17 — 216 tests passing — ResearchService.run() orchestrates retriever and synthesizer; raises on non-confirmed motif; caller owns session commit; does not write to dream_entries/dream_themes/dream_chunks; triggered_by propagated from caller
@@ -345,7 +375,7 @@ Read these instructions every time you pick up a task. Do not skip steps.
 ### Pre-Task Protocol (mandatory — do not skip)
 
 1. **Read `docs/IMPLEMENTATION_CONTRACT.md`** — before anything else. Know the rules before touching code.
-2. **Read the full active task in `docs/tasks_phase10.md` for Phase 10 work, in `docs/tasks_phase9.md` for Phase 9 reference, or in `docs/tasks.md` for historical/backend follow-up work** — including all acceptance criteria, file lists, and notes.
+2. **Read the full active task in `docs/tasks_phase11.md` for Phase 11 work, in `docs/tasks_phase10.md` for Phase 10 reference, or in `docs/tasks.md` for historical/backend follow-up work** — including all acceptance criteria, file lists, and notes.
 3. **Read all Depends-On tasks** — understand the interface contracts your task must satisfy.
 4. **Read task `Context-Refs` and continuity artifacts as needed** — required when the task resolves a finding, changes a risky boundary, or depends on prior decisions / evidence.
 5. **Run `pytest -q`** — capture the current baseline. Record: `N passing, M failed`. If M > 0, stop and report: you cannot add failures to an already-failing baseline.

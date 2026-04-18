@@ -1,25 +1,20 @@
 ---
-# ARCH_REPORT — Cycle 10
-_Date: 2026-04-17_
+# ARCH_REPORT — Cycle 11
+_Date: 2026-04-18_
 
 ## Component Verdicts
 
 | Component | Verdict | Note |
 |-----------|---------|------|
-| `app/api/` | PASS | Thin handlers only; no business logic embedded; auth enforced via middleware; public paths documented per contract |
-| `app/services/motif_service.py` | PASS | FIX-1 resolved: no `session.commit()` inside service; caller owns commit. FIX-2 resolved: idempotency guard present at lines 58–65. Does not write to `dream_themes` (ADR-008 compliant). |
-| `app/services/imagery.py` | PASS | FIX-5 resolved: OTel counter `motif.imagery_extract_total` with `status` attribute present; span `imagery_extractor.extract` present. |
-| `app/services/motif_inductor.py` | PASS | FIX-5 resolved: OTel counter `motif.induction_total` with `status` attribute present; span `motif_inductor.induce` present. |
-| `app/services/research_service.py` | PASS | Lives in `app/services/`; orchestrates retrieval and synthesis; does not own commit (caller in `app/api/research.py` calls `session.commit()`). Trust boundary enforced: only runs for confirmed motifs. |
-| `app/research/retriever.py` | DRIFT | Correctly isolated as external trust boundary; no cross-import to `app/retrieval/`; no dream archive writes. However: no OTel span or OBS-2 counter/histogram on the external HTTP call. See ARCH-3. |
-| `app/research/synthesizer.py` | PASS | Confidence vocabulary enforcement present at parse time; prohibited terms excluded from system prompt; `speculative/plausible/uncertain` validated on every result. |
-| `app/retrieval/ingestion.py` | PASS | No import of `app/retrieval/query`. Schema version `v1` declared at line 21. |
-| `app/retrieval/query.py` | PASS | No import of `app/retrieval/ingestion`. `InsufficientEvidence` path defined; `retrieval_ms` span attribute set. |
-| `app/assistant/chat.py` | PASS | FIX-4 resolved: imports `SYSTEM_PROMPT` from `app/assistant/prompts`; uses `build_tools()` with live flag values at each call. |
-| `app/assistant/tools.py` | PASS | FIX-6 resolved: no stale module-level `TOOLS` constant; only `_BASE_TOOLS`, `_GET_DREAM_MOTIFS_TOOL`, `_RESEARCH_MOTIF_PARALLELS_TOOL` private constants; `build_tools()` constructs catalog at call time. |
-| `app/assistant/prompts.py` | PASS | FIX-4 resolved: module exists; `SYSTEM_PROMPT` contains motif framing rules and research augmentation framing including prohibited vocabulary (`confirmed`, `verified`). |
-| `app/api/research.py` | DRIFT | Doc gap only: `app/research/` and `app/services/research_service.py` absent from `ARCHITECTURE.md §9` component table (ARCH-1). Also: duplicate `## 18` section header in `ARCHITECTURE.md` (ARCH-2). Code is correctly layered. |
-| `docs/ARCHITECTURE.md` | DRIFT | Duplicate `## 18` section number (ARCH-2); §9 component table incomplete for Phase 10 modules (ARCH-1); §18 header still reads `Planned` (ARCH-4). |
+| `app/telegram/handlers.py` | DRIFT | In-memory `_feedback_pending_by_chat` dict lives in `context.bot_data` (unbounded, no TTL); violates the durable-state principle of ADR-006 for persistent bot state; see ARCH-1 |
+| `app/services/feedback_service.py` | PASS | Thin service layer; score validation logic is here, not in the handler or API; no HTTP imports; correct layer placement |
+| `app/api/feedback.py` | DRIFT | API layer is thin (layer integrity PASS), but emits no meter counter on the read path — OBS-2 compliance gap (WS11-2); see ARCH finding note |
+| `app/models/feedback.py` | DRIFT | ORM model omits `CheckConstraint` on `score` that exists in the DDL migration; ORM layer is inconsistent with the database schema definition; see ARCH-2 |
+| `alembic/versions/011_add_feedback.py` | PASS | Migration includes `ck_assistant_feedback_score_range` CHECK constraint; all required columns present per WS-11.1 AC-1 |
+| `app/models/__init__.py` | PASS | Exports `AssistantFeedback`; satisfies WS-11.1 AC-5 |
+| `app/main.py` | PASS | `feedback_router` registered; `/feedback` not in `PUBLIC_PATHS`; `require_authentication` middleware applies globally; no bypass path exists |
+| `app/retrieval/ingestion.py` | PASS | No import of `app.retrieval.query`; ingestion/query layer boundary intact |
+| `app/retrieval/query.py` | PASS | No import of `app.retrieval.ingestion`; ingestion/query layer boundary intact |
 
 ---
 
@@ -27,25 +22,22 @@ _Date: 2026-04-17_
 
 | Rule | Verdict | Note |
 |------|---------|------|
-| SQL Safety — parameterized queries only | PASS | All reviewed files use ORM or `text()` with bound parameters; no f-string SQL interpolation found. |
-| Async Redis — `redis.asyncio` only | PASS | Not exercised in Phase 10 scope files; prior phases unchanged. |
-| Authorization — every route enforces auth before data access | PASS | Global middleware in `app/main.py:44–52` enforces `X-API-Key` on all non-public paths. Research routes covered. `GET /health` and `GET /auth/callback` documented as intentionally public. |
-| PII Policy — no dream content in logs/spans/errors | PASS | `motif_service.py` logs use `dream_id` (UUID) only; no `raw_text` in log messages in reviewed paths. |
-| Credentials and Secrets — env-only | PASS | `RESEARCH_API_KEY` sourced from `Settings`; no hardcoded keys found. |
-| Shared Tracing Module — `app/shared/tracing.py` only | PASS | `imagery.py`, `motif_inductor.py`, `motif_service.py`, `research.py` all use `get_tracer`/`get_meter` from `app/shared/tracing`. |
-| OBS-1 — external calls wrapped in spans | DRIFT | LLM calls in `ImageryExtractor`, `MotifInductor`, `ResearchSynthesizer` and DB calls in reviewed paths have spans. External HTTP call in `ResearchRetriever.retrieve()` has no span. See ARCH-3. |
-| OBS-2 — success/error counters and latency histograms | DRIFT | `imagery.py` and `motif_inductor.py` counters present (FIX-5 closed). `ResearchRetriever` has no counter or latency histogram. `insufficient_evidence` labeled counter missing from `app/retrieval/query.py` (carry-forward gap, not a Phase 10 regression). See ARCH-3. |
-| OBS-3 — health endpoint `index_last_updated`, 503 on stale | PASS | `app/api/health.py` returns correct schema; HTTP 503 when stale beyond `MAX_INDEX_AGE_HOURS`. |
-| Dream Content Isolation | PASS | Reviewed log calls use `dream_id` only. |
-| LLM Output Framing | PASS | `MotifResponse` has literal `interpretation_note` field. `ResearchResultResponse` has literal `interpretation_note` field. `SYSTEM_PROMPT` enforces framing rules. |
-| Annotation Versioning | PASS | `app/api/motifs.py` writes `AnnotationVersion` snapshot before commit at every motif status mutation (lines 115–133). |
-| Taxonomy Mutation Gate | PASS | Theme category promotion, rename, merge, delete remain behind authenticated API calls; no automated path found in Phase 10 code. |
-| Idempotent Workers | PASS | `MotifService.run()` idempotency guard confirmed at `app/services/motif_service.py:58–65`. |
-| Ingestion/Query Separation | PASS | No cross-import between `app/retrieval/ingestion.py` and `app/retrieval/query.py` confirmed by code inspection. |
-| Insufficient Evidence Path | PASS | `InsufficientEvidence` type defined and returned in `app/retrieval/query.py`; tested in prior cycles. |
-| Index Schema Versioning | PASS | `INDEX_SCHEMA_VERSION = "v1"` at `app/retrieval/ingestion.py:21`. |
-| Max Index Age Policy (24h, health endpoint) | PASS | `MAX_INDEX_AGE_HOURS` default 24 in config; enforced at `GET /health`. |
-| Runtime tier (T1) — no shell mutation, no ad-hoc installs | PASS | No runtime shell invocations found in reviewed files. |
+| SQL Safety — parameterized queries only | PASS | All SQL in Phase 11 components uses SQLAlchemy ORM `select()`; no string interpolation observed |
+| Async Redis — async client only | PASS | No Redis access introduced in Phase 11 components |
+| Authorization — every route enforces auth before data access | PASS | `GET /feedback` is not in `PUBLIC_PATHS`; global `require_authentication` middleware at `main.py:46–53` applies; no bypass path exists |
+| PII Policy — no dream content in logs/spans/errors | PASS | `response_summary` captures `result.text[:200]` (assistant response text, not raw dream text); `tool_calls_made` stores tool call names only; no `raw_text`, `chunk_text`, or `dream_text` present in Phase 11 code |
+| Shared Tracing Module — all spans via `get_tracer()` | PASS | All Phase 11 files that create spans import from `app.shared.tracing` |
+| OBS-1 — every external call wrapped in a span | PASS | `db.query.feedback.list` span present at `app/api/feedback.py:33` |
+| OBS-2 — success/error counter + latency per external call; RAG `insufficient_evidence` counter | DRIFT | `GET /feedback` emits an OTel span but no meter counter (WS11-2 open finding); all other read routes emit labeled counters per OBS-2; RAG counters unchanged and PASS |
+| OBS-3 — Health endpoint returns `index_last_updated`; 503 when stale beyond `MAX_INDEX_AGE_HOURS` | PASS | `app/api/health.py:31–38` enforces this; public and unauthenticated per design |
+| Annotation Versioning — append-only `annotation_versions` before mutations | PASS | Phase 11 components make no writes to `dream_themes`, `theme_categories`, or `annotation_versions` |
+| Taxonomy Mutation Gate — no automated promotion/rename/delete | PASS | Phase 11 introduces no taxonomy mutation paths |
+| Idempotent Workers | PASS | Phase 11 introduces no background workers |
+| Ingestion/Query Separation — no cross-imports between `ingestion.py` and `query.py` | PASS | Confirmed by inspection: no cross-imports exist in either module |
+| Dream Content Isolation — dream text only via parameterized DB queries | PASS | Phase 11 code does not access `raw_text`, `chunk_text`, or `dream_text` |
+| LLM Output Framing | PASS | Phase 11 introduces no new LLM calls |
+| Runtime Tier T1 — no shell mutation, no ad-hoc package installs | PASS | Phase 11 code is standard application code; no runtime escalation |
+| Credentials and Secrets | PASS | No credentials or secrets found in Phase 11 source files |
 
 ---
 
@@ -53,85 +45,88 @@ _Date: 2026-04-17_
 
 | ADR | Verdict | Note |
 |-----|---------|------|
-| ADR-001: append-only annotation versioning | PASS | `AnnotationVersion` written before motif status mutations; no DELETE/UPDATE on that table found in reviewed code. |
-| ADR-002: single-user API key auth | PASS | Middleware enforces `X-API-Key` on all non-public routes. |
-| ADR-003: Telegram adapter inside core repo | PASS | `app/telegram/` exists inside the repository; no separate repository introduced. |
-| ADR-004: bounded assistant tool facade | PASS | `app/assistant/facade.py` is the sole boundary; tools call facade methods only; no raw ORM access from the assistant layer. |
-| ADR-005: managed transcription first | PASS | OpenAI Whisper in use; local Whisper deferred. No change in Phase 10 scope. |
-| ADR-006: persisted bot session state | PASS | `bot_sessions` table used via `load_history`/`save_history`; Redis for ephemeral state only. |
-| ADR-007: Compose-first deployment | PASS | No deployment topology changes in Phase 10 scope. |
-| ADR-008: inducted motifs and taxonomy as separate models | PASS | `MotifService.run()` never writes to `dream_themes` (confirmed by code comment and logic); `motif_inductions` is the exclusive target. |
-| ADR-009: research results carry speculative confidence labels | PASS | `ResearchSynthesizer` enforces `{speculative, plausible, uncertain}` at parse time (`synthesizer.py:86–89`); prohibited terms excluded from LLM prompt; `ResearchResultResponse` carries a literal `interpretation_note`; assistant `SYSTEM_PROMPT` prohibits `confirmed`/`verified` framing. |
-| ADR-010: feature flag gating, default-off | PASS | `MOTIF_INDUCTION_ENABLED` and `RESEARCH_AUGMENTATION_ENABLED` default `false`; `build_tools()` called at request time with live flag values; `POST /motifs/{id}/research` returns HTTP 503 when flag is false (`app/api/research.py:61–62`). ADR-010 §Consequences explicitly documents the `lru_cache` behavior and process-restart requirement — this is a documented trade-off, not a violation. |
+| ADR-001: Append-Only Annotation Versioning | PASS | `assistant_feedback` has no FK to `dream_themes` or `annotation_versions`; no mutation to versioned tables in Phase 11 |
+| ADR-002: Single-User API Key Auth | PASS | `GET /feedback` protected by global API key middleware; `/feedback` is not in `PUBLIC_PATHS` |
+| ADR-003: Telegram Adapter Inside Core Repo | PASS | Phase 11 Telegram feedback capture extends `app/telegram/handlers.py` in-repo; no new external service introduced |
+| ADR-004: Bounded Assistant Tool Facade | PASS | `handlers.py` continues to call `AssistantFacade` for chat; `FeedbackService` is called directly from the handler as a side-channel capture (not an assistant tool action), which is acceptable |
+| ADR-005: Managed Transcription First | PASS | Phase 11 makes no changes to the transcription path |
+| ADR-006: Persist Bot Session State Durably | DRIFT | ADR-006 mandates durable PostgreSQL persistence for bot state; `_feedback_pending_by_chat` is in-memory only in `context.bot_data`; state is lost on bot restart; `bot_sessions` table is not used for this pending state; see ARCH-1 |
+| ADR-007: Compose-First Telegram Deployment | PASS | Phase 11 makes no deployment topology changes |
+| ADR-008: Inducted Motifs and Taxonomy Themes Separate | PASS | Phase 11 does not touch `motif_inductions` or `dream_themes` |
+| ADR-009: Research Results Carry Speculative Confidence Labels | PASS | Phase 11 makes no changes to the research layer |
+| ADR-010: Feature Flag Gating | PASS | No new feature flag needed for the feedback loop (WS-11.1–11.3 are always-on passive capture; consistent with the flag intent); `RESEARCH_API_KEY` startup validation gap (CODE-5) is a carry-forward, not a new Phase 11 regression |
 
 ---
 
 ## Architecture Findings
 
-### ARCH-1 [P3] — `app/research/` Module and `ResearchService` Absent from §9 Component Table
+### ARCH-1 [P3] — Feedback Pending State Not Durable (ADR-006 Drift)
 
-Symptom: Three Phase 10 components are implemented but not listed in `docs/ARCHITECTURE.md §9 Target Components`.
+Symptom: `_feedback_pending_by_chat` dict is stored in `context.bot_data` in memory only. Bot restart discards all pending feedback state.
 
-Evidence:
-- `app/research/retriever.py` (`ResearchRetriever`) — implemented, not in §9 table
-- `app/research/synthesizer.py` (`ResearchSynthesizer`) — implemented, not in §9 table
-- `app/services/research_service.py` (`ResearchService`) — implemented, not in §9 table
-- `docs/ARCHITECTURE.md:183–190` — §9 table lists only 6 rows; no `app/research/` row
+Evidence: `app/telegram/handlers.py:44`, `app/telegram/handlers.py:74–79`, `app/telegram/handlers.py:203–204`
 
-Root cause: §9 was written before Phase 10 implementation and was not updated when `app/research/` was created and `ResearchService` was added to `app/services/`.
+Root cause: ADR-006 establishes the principle that bot state requiring restart safety should be persisted in PostgreSQL (`bot_sessions` table). The feedback pending state was implemented as an unbounded in-memory dict rather than as a JSONB column in `bot_sessions` or a separate ephemeral record. This is also the WS11-3 open finding.
 
-Impact: §9 is the authoritative component map. A reader relying on §9 has an incomplete picture of the module surface. Inconsistency with the documented Phase 10 planned component table in §18.
+Impact: (1) Pending feedback state lost on every bot process restart. (2) Stale entries accumulate indefinitely with no TTL or max-size cap. (3) Multi-instance deployment (if ever introduced) would produce split-brain feedback state.
 
-Fix: Add `app/research/` row to §9 table with `implemented (Phase 10)` status. Expand `app/services/` row description to include `ResearchService`.
+Fix: Either (a) persist pending feedback context in the `bot_sessions` row via a `feedback_pending` JSONB column, or (b) explicitly accept the ephemeral behavior with a deferral decision recorded in `docs/DECISION_LOG.md` and a bounded max-size cap on the dict.
 
 ---
 
-### ARCH-2 [P3] — Duplicate `## 18` Section Number in `ARCHITECTURE.md`
+### ARCH-2 [P2] — ORM Model Missing CheckConstraint (Schema / ORM Divergence)
 
-Symptom: `docs/ARCHITECTURE.md` contains two sections numbered `## 18`.
+Symptom: `AssistantFeedback` ORM model defines `score` as `SmallInteger()` with no `CheckConstraint`. The migration DDL correctly adds `ck_assistant_feedback_score_range`. Direct ORM usage bypassing `FeedbackService.record()` has no model-level protection.
 
-Evidence:
-- `docs/ARCHITECTURE.md:352` — `## 18. Research Augmentation Layer (Planned — Phase 10)`
-- `docs/ARCHITECTURE.md:414` — `## 18. Resolved Architectural Decisions`
+Evidence: `app/models/feedback.py:22`, `alembic/versions/011_add_feedback.py:47–50`
 
-Root cause: A new §18 was inserted for Research Augmentation without renumbering the legacy §18 (`Resolved Architectural Decisions`), which should now be §22.
+Root cause: The DDL constraint was applied in the migration but not mirrored in the ORM model's `__table_args__`. This is the WS11-1 open finding.
 
-Impact: Structural ambiguity; any section-number reference to §18 is ambiguous. Degrades document integrity.
+Impact: Any code path that creates an `AssistantFeedback` instance without going through `FeedbackService.record()` (e.g., future test fixtures, admin scripts, data migrations) will accept out-of-range scores at the application layer and only fail at the database level.
 
-Fix: Renumber `## 18. Resolved Architectural Decisions` to `## 22. Resolved Architectural Decisions` (next available number after §21 ADR Coverage).
+Fix: Add `sa.CheckConstraint("score >= 1 AND score <= 5", name="ck_assistant_feedback_score_range")` to `AssistantFeedback.__table_args__` in `app/models/feedback.py`.
 
 ---
 
-### ARCH-3 [P2] — `ResearchRetriever` External HTTP Call Has No OTel Span, Counter, or Latency Histogram
+### ARCH-3 [P3] — ARCHITECTURE.md §19 Header Still Marks Feedback as Planned
 
-Symptom: `app/research/retriever.py` makes an external HTTP call to the research API with no OTel instrumentation.
+Symptom: `ARCHITECTURE.md §19` header reads `## 19. Feedback Model (Planned — Phase 11)`. WS-11.1, WS-11.2, and WS-11.3 are implemented.
 
-Evidence:
-- `app/research/retriever.py:27–82` — `retrieve()` method executes external HTTP via `asyncio.to_thread`; no `tracer.start_as_current_span(...)` call; no `get_meter(__name__).create_counter(...)` or histogram.
-- `docs/IMPLEMENTATION_CONTRACT.md` OBS-1: "Every external call (database, Redis, HTTP, LLM inference, embedding API) must be wrapped in a span."
-- `docs/IMPLEMENTATION_CONTRACT.md` OBS-2: "For each external call type, emit a success/error counter and a latency histogram."
+Evidence: `docs/ARCHITECTURE.md:381`
 
-Root cause: `ResearchRetriever` was implemented without OTel instrumentation. The existing LLM clients (`ImageryExtractor`, `MotifInductor`) were retrofitted with meters in FIX-5; the same treatment was not applied to `ResearchRetriever`.
+Root cause: Doc patch cycle not applied after Phase 11 partial implementation close.
 
-Impact: External research API calls are invisible to observability tooling. Timeouts, failures, and latency cannot be detected without log scanning. OBS-1 violation: P2 (escalates to P1 at age cap per IMPLEMENTATION_CONTRACT). OBS-2 violation: P2.
+Impact: New readers cannot determine the implementation status of the feedback layer from the architecture document. The §20 Planned Storage Model table still lists `assistant_feedback` as a planned addition.
 
-Fix: Wrap `retrieve()` body in `tracer.start_as_current_span("research_retriever.retrieve")`; emit `get_meter(__name__).create_counter("research.retrieve_total")` with `{"status": "success"|"failure"}` attribute; record latency as a span attribute `research_retrieve_ms`. Add to FIX queue as FIX-7.
+Fix: (1) Update §19 header to `## 19. Feedback Loop (Implemented — Phase 11 WS-11.1–11.3)`. (2) Move `assistant_feedback` from the §20 Planned additions table to the Current tables list. (3) Add or annotate the `app/services/` component row in §9 to reflect the Phase 11 `FeedbackService` addition.
 
 ---
 
-### ARCH-4 [P3] — `ARCHITECTURE.md §18` Header Still Reads `(Planned — Phase 10)` After Implementation
+### ARCH-4 [P3] — WS-11.4 Deferral Not Recorded in DECISION_LOG.md
 
-Symptom: Research Augmentation Layer section header indicates `Planned` while the layer is implemented.
+Symptom: WS-11.4 (optional comment capture) is not yet implemented. There is no decision log entry for this deferral.
 
-Evidence:
-- `docs/ARCHITECTURE.md:352` — `## 18. Research Augmentation Layer (Planned — Phase 10)`
-- `app/research/retriever.py`, `app/research/synthesizer.py`, `app/services/research_service.py`, `app/api/research.py`, `app/models/research.py` — all exist and are wired into the application.
+Evidence: `docs/audit/META_ANALYSIS.md:47–48`, `docs/DECISION_LOG.md` (ends at D-013; no WS-11.4 entry)
 
-Root cause: Section header was not updated when Phase 10 implementation was committed.
+Root cause: The WS-9.7 deferral precedent (D-012) was not followed for WS-11.4.
 
-Impact: Misleads readers into thinking the research layer is not yet active. Minor doc drift, consistent with ARCH-1.
+Impact: Deferred scope is not tracked canonically. Risk of silent omission when Phase 11 gate is declared closed.
 
-Fix: Update `§18` header to `(Implemented — Phase 10)` and update the planned-components sub-table status column to `implemented`, consistent with the §17 Motif Abstraction Layer pattern.
+Fix: Add D-014 to `docs/DECISION_LOG.md`: WS-11.4 (optional comment capture) deferred; rating-only feedback is sufficient for the current quality signal purpose; comment capture may be added in a future phase.
+
+---
+
+### ARCH-5 [P3] — retrieval_eval.md Missing Cycle 11 Advisory Row
+
+Symptom: `docs/retrieval_eval.md §Evaluation History` ends at the Cycle 10 (2026-04-17) advisory row. No Cycle 11 advisory row exists.
+
+Evidence: `docs/retrieval_eval.md:206` (last row is Cycle 10)
+
+Root cause: The mandatory-each-cycle retrieval evaluation advisory row was not added for Phase 11.
+
+Impact: RET-7 rule violation. Retrieval evaluation history is incomplete for Cycle 11.
+
+Fix: Add a Cycle 11 advisory row to `docs/retrieval_eval.md §Evaluation History` confirming the RAG layer is unchanged in Phase 11 (no modifications to chunking, embedding, ranking, or evidence assembly); T12 baseline metrics carry forward.
 
 ---
 
@@ -139,11 +134,11 @@ Fix: Update `§18` header to `(Implemented — Phase 10)` and update the planned
 
 | Check | Verdict | Note |
 |-------|---------|------|
-| Solution shape (Workflow) still appropriate | PASS | Bounded tool-use loop (MAX_TOOL_ROUNDS=5); no autonomous loop; research augmentation is on-demand with explicit confirmation-before-execution per `docs/RESEARCH_AUGMENTATION.md §3`. System remains Workflow, not Agentic. |
-| Deterministic-owned subproblems remain deterministic | PASS | Routing, segmentation, taxonomy CRUD, idempotency checks, confidence vocabulary enforcement, session ownership — all remain deterministic code paths. LLMs bounded to interpretation and synthesis tasks with validated output schemas. |
-| Runtime tier (T1) unchanged / justified | PASS | `app/research/retriever.py` makes external HTTP via `asyncio.to_thread`; no shell mutation; no ad-hoc package installs at runtime. T1 boundary holds. |
-| Human approval boundaries still valid | PASS | Taxonomy promotion remains behind authenticated API. Research augmentation requires confirmed motif status (human must have approved the motif via `PATCH /dreams/{id}/motifs/{id}`) and explicit user confirmation in the assistant flow before any external call executes. |
-| Minimum viable control surface still proportionate | PASS | New surface is one API router, one service, two research submodules — all behind existing auth middleware and a default-off feature flag. No privilege escalation. |
+| Solution shape (Workflow) still appropriate | PASS | Phase 11 adds a passive feedback capture side-channel only; no autonomous agent behavior introduced; workflow-shaped backend unchanged |
+| Deterministic-owned areas remain deterministic | PASS | Score validation, routing, segmentation, taxonomy CRUD all remain deterministic; `FeedbackService.record()` is a simple validation + ORM insert with no LLM involvement |
+| Runtime tier (T1) unchanged / justified | PASS | No shell mutation, no ad-hoc package installs, no privileged runtime management in Phase 11 code; T1 maintained |
+| Human approval boundaries still valid | PASS | Taxonomy promotion, rename, and delete still require an authenticated API call; Phase 11 introduces no automated mutation paths |
+| Minimum viable control surface still proportionate | PASS | The feedback loop is explicitly a quality signal for human review only, not an automated retraining pipeline (`ARCHITECTURE.md §19`); control surface is proportionate to a single-user private deployment |
 
 ---
 
@@ -151,12 +146,12 @@ Fix: Update `§18` header to `(Implemented — Phase 10)` and update the planned
 
 | Check | Verdict | Note |
 |-------|---------|------|
-| Ingestion / query-time separation (no cross-import) | PASS | `app/retrieval/ingestion.py` does not import from `app/retrieval/query.py` and vice versa. Confirmed by code inspection. Enforcement tests documented in IMPLEMENTATION_CONTRACT. |
-| `insufficient_evidence` path defined | PASS | `InsufficientEvidence` dataclass defined in `app/retrieval/query.py:51–53`; returned on empty query and on below-threshold evidence. Documented in `ARCHITECTURE.md §4` and `spec.md §4.3`. |
-| Evidence/citation contract defined | PASS | `EvidenceBlock` in `app/retrieval/query.py:41–47` carries `dream_id`, `date`, `chunk_text`, `relevance_score`, `matched_fragments`. Contract is defined and implemented. |
-| Freshness / max-index-age policy (24h, health endpoint) | PASS | `MAX_INDEX_AGE_HOURS=24` in `app/shared/config.py:25`; `GET /health` returns HTTP 503 and `status=degraded` when stale. |
-| Index schema versioning (v1) | PASS | `INDEX_SCHEMA_VERSION = "v1"` declared at `app/retrieval/ingestion.py:21`. No schema change detected; no new ADR required. |
-| Retrieval observability expectations | DRIFT | `retrieval_ms` span attribute set in `app/retrieval/query.py:101,111`. `insufficient_evidence` events logged via `logger.info`. However: no labeled OTel counter for `insufficient_evidence` rate as required by OBS-2 ("For RAG paths: `insufficient_evidence` rate as a labeled counter"). This is a carry-forward gap predating Phase 10, not a new regression. |
+| Ingestion / query-time separation (no cross-import) | PASS | `ingestion.py` has no import of `query`; `query.py` has no import of `ingestion`; confirmed by code inspection |
+| `insufficient_evidence` path defined | PASS | `InsufficientEvidence` dataclass at `app/retrieval/query.py:51–53`; returned when evidence fails `relevance_threshold`; referenced in `ARCHITECTURE.md §11` and `spec.md §4.3` |
+| Evidence/citation contract defined | PASS | `EvidenceBlock` at `query.py:42–48` carries `dream_id`, `date`, `chunk_text`, `relevance_score`, `matched_fragments`; `FragmentMatch` at `query.py:34–38` carries `text`, `match_type`, `char_offset`; contract fully defined |
+| Freshness / max-index-age policy (24h, health endpoint) | PASS | `app/api/health.py:31–38` enforces `MAX_INDEX_AGE_HOURS`; returns HTTP 503 on stale index; endpoint is unauthenticated and documented public per OBS-3 |
+| Index schema versioning (v1) | PASS | `INDEX_SCHEMA_VERSION = "v1"` declared at `app/retrieval/ingestion.py:21`; documented in `docs/retrieval_eval.md §Schema Version`; ADR required before schema change is enforced by contract |
+| Retrieval observability expectations | PASS | `retrieval_ms` span attribute set at `app/retrieval/query.py:101` and `query.py:111`; `insufficient_evidence` logged via `logger.info` at `query.py:99` and `query.py:115` |
 
 ---
 
@@ -164,22 +159,11 @@ Fix: Update `§18` header to `(Implemented — Phase 10)` and update the planned
 
 | File | Section | Change |
 |------|---------|--------|
-| `docs/ARCHITECTURE.md` | §9 Target Components | Add `app/research/` row: `ResearchRetriever`, `ResearchSynthesizer`; status `implemented (Phase 10)`. Expand `app/services/` row to include `ResearchService`. |
-| `docs/ARCHITECTURE.md` | §18 Research Augmentation Layer header | Change `(Planned — Phase 10)` to `(Implemented — Phase 10)`. Update planned-components sub-table status to `implemented`. |
-| `docs/ARCHITECTURE.md` | §18 (line 414) Resolved Architectural Decisions | Renumber to `## 22. Resolved Architectural Decisions` (next available after §21). |
-
----
-
-## Fix Queue Status Summary (Cycle 10 Baseline)
-
-| Fix ID | Status | Evidence |
-|--------|--------|---------|
-| FIX-1 (session double-commit) | CLOSED | `motif_service.py` never calls `session.commit()`; caller owns commit — confirmed. |
-| FIX-2 (idempotency guard) | CLOSED | Idempotency check at `motif_service.py:58–65` confirmed. |
-| FIX-3 (`lru_cache` flag freeze / CODE-3) | OPEN — documented trade-off | `get_settings()` remains `@lru_cache`; `config.py:37–39`. ADR-010 §Consequences explicitly acknowledges process-restart requirement. Behavior is consistent with ADR. RISK-1 remains operationally relevant but is not an architectural violation. |
-| FIX-4 (prompts module absent / CODE-4) | CLOSED | `app/assistant/prompts.py` exists with `SYSTEM_PROMPT` containing motif and research framing. |
-| FIX-5 (OTel metrics on LLM paths / CODE-5) | CLOSED for `imagery.py` / `motif_inductor.py`; NEW GAP opened for `ResearchRetriever` (ARCH-3, P2) | |
-| FIX-6 (stale TOOLS constant / CODE-6) | CLOSED | No module-level `TOOLS` constant in `tools.py`; `build_tools()` is the only entry point. |
-| FIX-7 (new — ResearchRetriever OTel) | OPEN — P2 | `app/research/retriever.py:27–82`; no span, counter, or histogram on external HTTP call. See ARCH-3. |
+| `docs/ARCHITECTURE.md` | §19 header | Change `(Planned — Phase 11)` to `(Implemented — Phase 11 WS-11.1–11.3)` |
+| `docs/ARCHITECTURE.md` | §20 Planned Storage Model | Move `assistant_feedback` row from Planned additions table to the Current tables list |
+| `docs/ARCHITECTURE.md` | §9 Component Table | Add note or row for `app/services/feedback_service.py` (feedback persistence, Phase 11) |
+| `docs/DECISION_LOG.md` | Decision Index | Add D-014 recording WS-11.4 (optional comment capture) deferral |
+| `docs/retrieval_eval.md` | §Evaluation History | Add Cycle 11 advisory row confirming RAG layer unchanged in Phase 11 |
+| `docs/CODEX_PROMPT.md` | §Current State | Update baseline test count from 216 to 225 (DOC-1 carry-forward) |
 
 ---

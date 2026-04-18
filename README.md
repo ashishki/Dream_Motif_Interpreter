@@ -1,47 +1,52 @@
 # Dream Motif Interpreter
 
-Dream Motif Interpreter is a private, single-user dream-analysis system.
+Приватная система анализа сновидений для одного пользователя.
 
-It ingests dream entries from Google Docs, stores and curates dream themes, supports semantic and thematic retrieval, surfaces archive-level motif patterns, and provides a Telegram assistant interface for text and voice interaction.
+Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом и обратной связью.
 
-**Current status: Phases 1–9 complete**
+**Статус: Phases 1–11 complete · 276 тестов**
 
 ---
 
-## What Exists Today
+## Возможности
 
-### Core Backend (Phases 1–5)
+### Ядро архива (Phases 1–5)
+- FastAPI API: синхронизация, просмотр снов, поиск, курирование тем, паттерны, откат
+- PostgreSQL 16 + pgvector как система истины
+- Redis для очередей и координации воркеров
+- Ingestion из Google Docs
+- LLM-assisted: извлечение тем, grounding, метафорный поиск
+- Append-only annotation versioning (история всех мутаций)
 
-- FastAPI API for sync, dream browsing, search, theme curation, pattern analysis, and rollback
-- PostgreSQL 16 + pgvector as the system of record
-- Redis-backed job state and worker coordination
-- Google Docs ingestion
-- LLM-assisted theme extraction, grounding, and metaphor-aware retrieval
-- append-only annotation versioning for curation and rollback
-- explicit framing that interpretations are computational, not authoritative
+### Telegram-интерфейс (Phases 6–7)
+- Приватный бот с allowlist по `chat_id`
+- Текстовый разговорный интерфейс (Claude, ограниченный tool loop)
+- Голосовые сообщения → async транскрипция (OpenAI Whisper)
+- Персистентные chat-сессии через перезапуски (`bot_sessions`)
+- Отслеживание жизненного цикла медиафайлов + авточистка
 
-### Telegram Interface (Phases 6–7)
+### Операционный harden (Phase 8)
+- Структурированные логи (structlog JSON, PII-redaction, event ID)
+- OTel tracing (готово к Jaeger/OTLP)
+- Runbook'и для бота и голосового пайплайна
 
-- Private Telegram bot with single-user `chat_id` allowlist
-- Text conversation with bounded archive tool loop (Claude via Anthropic API)
-- Voice message ingestion and async transcription (OpenAI Whisper)
-- Persistent chat sessions across restarts (`bot_sessions` table)
-- `VoiceMediaEvent` lifecycle tracking with immediate and scheduled cleanup
+### Мотивный слой (Phase 9)
+- Open-vocabulary induction: `ImageryExtractor` → `MotifInductor` → `MotifGrounder`
+- Мотивы в `motif_inductions` — изолировано от `dream_themes`
+- REST: `GET /dreams/{id}/motifs`, `PATCH /dreams/{id}/motifs/{motif_id}`
+- Инструмент ассистента `get_dream_motifs` (при `MOTIF_INDUCTION_ENABLED=true`)
 
-### Operational Hardening (Phase 8)
+### Исследовательское обогащение (Phase 10)
+- `ResearchRetriever`: внешний поиск (provider-agnostic, reference: Tavily)
+- `ResearchSynthesizer`: LLM-извлечение культурных/мифологических параллелей
+- Уровень доверия: только `speculative | plausible | uncertain`
+- REST: `GET /motifs/{id}/research`, `POST /motifs/{id}/research`
+- Инструмент `research_motif_parallels` с обязательным подтверждением (при `RESEARCH_AUGMENTATION_ENABLED=true`)
 
-- Structured logging with event IDs and status codes throughout (no raw content in logs)
-- Runbooks for bot and voice pipeline operations
-- All open security decisions resolved (transcript retention, media lifecycle, auth model)
-- Chat-driven archive mutations explicitly deferred pending audit-safe UX design
-
-### Motif Abstraction Layer (Phase 9)
-
-- Open-vocabulary motif induction pipeline (`ImageryExtractor` → `MotifInductor` → `MotifGrounder`)
-- Inducted motifs stored in `motif_inductions` table, separate from `dream_themes` at all layers
-- REST API for motif retrieval and status updates (`GET /motifs`, `PATCH /motifs/{id}/status`)
-- Assistant facade method `get_dream_motifs()` and bounded assistant tool
-- Feature-flag gated (`MOTIF_INDUCTION_ENABLED`, default `false`); WS-9.7 pattern queries deferred to Phase 9.1/10
+### Цикл обратной связи (Phase 11)
+- Цифровой ответ `1–5` после ответа бота → рейтинг сохраняется
+- `GET /feedback` — просмотр рейтингов с пагинацией
+- Хранится в `assistant_feedback`, изолировано от RAG-пайплайна
 
 ---
 
@@ -49,49 +54,58 @@ It ingests dream entries from Google Docs, stores and curates dream themes, supp
 
 ```text
 app/
-  api/           FastAPI routes (sync, dreams, search, themes, patterns, versioning)
-  assistant/     bounded assistant facade, chat loop, session persistence, voice media
+  api/           FastAPI routes (sync, dreams, search, themes, patterns, versioning,
+                 motifs, research, feedback)
+  assistant/     bounded facade, chat loop, session persistence, voice media
   llm/           model wrappers and prompts
-  models/        SQLAlchemy models (dreams, themes, sessions, voice events, motif_inductions)
-  retrieval/     chunking, embedding, pgvector ingestion and query pipeline
-  services/      domain services (analysis, patterns, segmentation, taxonomy, versioning,
-                 imagery, motif_inductor, motif_grounder, motif_service)
+  models/        SQLAlchemy models (dreams, themes, sessions, voice events,
+                 motif_inductions, research_results, assistant_feedback)
+  research/      ResearchRetriever + ResearchSynthesizer
+  retrieval/     chunking, embedding, pgvector ingestion and query
+  services/      domain services (analysis, patterns, segmentation, taxonomy,
+                 versioning, imagery, motif_inductor, motif_grounder,
+                 motif_service, research_service, feedback_service)
   shared/        config, tracing, DB session factory
   telegram/      bot runtime, handlers, voice download
   workers/       background jobs (ingest, indexing, transcription, cleanup)
 
-alembic/         schema migrations (001–009)
-docs/            architecture, planning, runbooks, ADRs
-tests/           unit and integration coverage (187 unit / ~238 total passing)
+alembic/         schema migrations (001–011)
+docs/            architecture, planning, runbooks, ADRs, user guide
+tests/           unit + integration (276 passing)
 ```
 
 ---
 
 ## Setup
 
-**Requirements:**
-
+**Требования:**
 - Python 3.11+
-- PostgreSQL 16 with `pgvector`
+- PostgreSQL 16 с `pgvector`
 - Redis
 
-**Credentials required:**
+**Переменные окружения:**
 
-- `ANTHROPIC_API_KEY` — bounded chat loop
-- `OPENAI_API_KEY` — voice transcription (Whisper) and embeddings
-- `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_CHAT_ID` — bot runtime
-- Google Docs credentials — archive ingestion
+| Переменная | Назначение | По умолчанию |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Chat loop (Claude) | — |
+| `OPENAI_API_KEY` | Whisper + embeddings | — |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot | — |
+| `TELEGRAM_ALLOWED_CHAT_ID` | Allowlist chat_id | — |
+| `API_KEY` | Backend REST auth | — |
+| `MOTIF_INDUCTION_ENABLED` | Мотивная индукция | `false` |
+| `RESEARCH_AUGMENTATION_ENABLED` | Внешний поиск параллелей | `false` |
+| `RESEARCH_API_KEY` | Ключ внешнего поиска | `""` |
 
-See [Environment](docs/ENVIRONMENT.md) and [Deployment](docs/DEPLOY.md) for full setup details.
+Полный список: [ENVIRONMENT.md](docs/ENVIRONMENT.md)
 
-**Run migrations before starting the bot:**
+**Запуск:**
 
 ```bash
 alembic upgrade head
 python3 -m app.telegram
 ```
 
-**Via Docker Compose:**
+**Docker Compose:**
 
 ```bash
 docker compose up
@@ -99,21 +113,23 @@ docker compose up
 
 ---
 
-## Documentation
+## Документация
 
-| Document | Purpose |
-|----------|---------|
-| [Architecture](docs/ARCHITECTURE.md) | System shape, execution boundary, capability profiles |
-| [Feature Spec](docs/spec.md) | Backend and interface scope |
-| [Phase Plan](docs/PHASE_PLAN.md) | Phase 1–8 decomposition and completion status |
-| [Phase 6+ Task Graph](docs/tasks_phase6.md) | Execution graph for Telegram, voice, and hardening |
-| [Environment](docs/ENVIRONMENT.md) | Runtime variables and credential notes |
-| [Deployment](docs/DEPLOY.md) | Deployment topology and startup ordering |
-| [Telegram Interaction Model](docs/TELEGRAM_INTERACTION_MODEL.md) | Bot behavior, tool catalog, and curation policy |
-| [Voice Pipeline](docs/VOICE_PIPELINE.md) | Voice ingestion and transcription design |
-| [Auth and Security](docs/AUTH_SECURITY.md) | Access model, media retention, and security constraints |
-| [Testing Strategy](docs/TESTING_STRATEGY.md) | Test coverage expectations |
-| [Decision Log](docs/DECISION_LOG.md) | Compact index of architectural decisions |
-| [ADRs](docs/adr/README.md) | Durable architectural decision records |
-| [Telegram Bot Runbook](docs/RUNBOOK_TELEGRAM_BOT.md) | Bot operations and failure diagnostics |
-| [Voice Pipeline Runbook](docs/RUNBOOK_VOICE_PIPELINE.md) | Voice operations and failure diagnostics |
+| Документ | Назначение |
+|---|---|
+| [**Гайд пользователя (RU)**](docs/USER_GUIDE_RU.md) | Что умеет бот и как им пользоваться |
+| [Architecture](docs/ARCHITECTURE.md) | Форма системы, границы выполнения |
+| [Feature Spec](docs/spec.md) | Scope backend и интерфейса |
+| [Phase Plan](docs/PHASE_PLAN.md) | Декомпозиция фаз 1–11 |
+| [Environment](docs/ENVIRONMENT.md) | Runtime-переменные |
+| [Deployment](docs/DEPLOY.md) | Топология деплоя |
+| [Telegram Interaction Model](docs/TELEGRAM_INTERACTION_MODEL.md) | Поведение бота, tool catalog |
+| [Motif Abstraction](docs/MOTIF_ABSTRACTION.md) | Дизайн мотивной индукции |
+| [Research Augmentation](docs/RESEARCH_AUGMENTATION.md) | Доверительная модель внешнего поиска |
+| [Feedback Loop](docs/FEEDBACK_LOOP.md) | Механизм рейтинга ответов |
+| [Voice Pipeline](docs/VOICE_PIPELINE.md) | Голосовой ingestion |
+| [Auth and Security](docs/AUTH_SECURITY.md) | Модель доступа |
+| [Decision Log](docs/DECISION_LOG.md) | Индекс архитектурных решений |
+| [ADRs](docs/adr/) | Записи решений |
+| [Telegram Bot Runbook](docs/RUNBOOK_TELEGRAM_BOT.md) | Операции бота |
+| [Voice Pipeline Runbook](docs/RUNBOOK_VOICE_PIPELINE.md) | Операции голосового пайплайна |

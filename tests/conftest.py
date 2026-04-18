@@ -4,6 +4,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from app.shared.config import get_settings
+
 
 # ── env vars for all tests ──────────────────────────────────────────────────
 
@@ -31,6 +33,12 @@ REQUIRED_ENV_VARS = {
 def _set_required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     for key, value in REQUIRED_ENV_VARS.items():
         monkeypatch.setenv(key, value)
+
+
+@pytest.fixture(autouse=True)
+def _clear_settings_cache() -> None:
+    yield
+    get_settings.cache_clear()
 
 
 # ── DB engine fixture for integration tests ─────────────────────────────────

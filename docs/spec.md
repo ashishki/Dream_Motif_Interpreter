@@ -181,7 +181,110 @@ Current code expects Google Docs credentials via environment variables.
 An operator may already possess a service-account JSON file with document access granted to that account.
 That setup is relevant to implementation planning, but service-account auth should not be described as already implemented unless the code changes to support it.
 
-## 12. Non-Goals for Phase 6-8
+## 12. Future Source Intake and Normalization Direction
+
+The current implementation assumes a single configured Google Doc as the source of truth.
+That is sufficient for the present single-user archive, but it is not the long-term ingestion model.
+
+Future ingestion work must treat source access, format parsing, and archive enrichment as separate concerns.
+The canonical future pipeline is:
+
+`source connector -> normalized document -> parser profile -> dream entry candidates -> validated dream entries -> embeddings/indexing`
+
+### 12.1 Why this separation is required
+
+Different operators or future customers may keep dream material in different source formats:
+
+- one Google Doc containing many entries
+- a Google Drive folder containing multiple docs
+- freeform journals with weak date structure
+- heading-based records
+- exports from other note systems
+
+If source-specific assumptions leak directly into segmentation, embedding, or indexing code, each new format will force risky ingestion rewrites.
+That coupling is explicitly disallowed in future work.
+
+### 12.2 Canonical internal normalization contract
+
+All source connectors must produce a normalized intermediate document shape before any dream segmentation logic runs.
+
+Required normalized document fields:
+
+- `client_id`
+- `source_type`
+- `external_id`
+- `source_path`
+- `title`
+- `raw_text`
+- `sections`
+- `metadata`
+- `fetched_at`
+
+All dream segmentation logic must consume the normalized contract, not raw Google SDK responses or source-native structures.
+
+### 12.3 Parser profile model
+
+Different input formats must be handled through parser profiles rather than ad hoc conditionals spread across the pipeline.
+
+A parser profile is a deterministic strategy that:
+
+- declares the format shape it expects
+- optionally provides a confidence score or `matches()` heuristic
+- transforms a normalized document into `DreamEntryCandidate` objects
+- emits parse warnings and confidence markers for ambiguous boundaries
+
+Parser profiles must not perform:
+
+- source discovery
+- network I/O
+- embedding generation
+- retrieval indexing
+- database persistence
+
+### 12.4 Profile selection policy
+
+Future ingestion must support a hybrid resolution rule:
+
+1. explicit operator-configured profile for a source or client, if present
+2. heuristic auto-detection only when no explicit profile is configured
+3. fallback to a conservative default profile when confidence is low
+4. mark low-confidence parses as reviewable rather than silently treating them as high-confidence truth
+
+Automatic profile selection may assist onboarding, but explicit profile assignment remains the preferred operational mode.
+
+### 12.5 Connector policy
+
+Source connectors are responsible only for discovery and document fetch.
+They may enumerate files inside a Google Drive folder or other storage boundary, but they must not decide dream-entry boundaries.
+
+All connector outputs must preserve provenance:
+
+- source connector name
+- original external id
+- original title
+- original update timestamp when available
+- source location within a folder or hierarchy when available
+
+### 12.6 Reliability requirements for future ingestion work
+
+Any future universal ingestion implementation must preserve the following guarantees:
+
+- idempotent re-ingestion by stable source identifiers and content hashes
+- parser-profile attribution stored alongside ingestion results
+- parse warnings captured without leaking secrets or raw credential material
+- ambiguous records can be quarantined or flagged without blocking the entire corpus
+- downstream embedding/indexing only starts after normalization and parse validation complete
+
+### 12.7 Non-goals of this roadmap
+
+This roadmap does not imply:
+
+- uncontrolled multi-tenant SaaS behavior
+- automatic support for every arbitrary file format on day one
+- LLM-only boundary detection as the primary ingestion strategy
+- mixing source-discovery logic with retrieval semantics
+
+## 13. Non-Goals for Phase 6-8
 
 - turning the repo into a Telegram-only script
 - replacing PostgreSQL with a lighter bot-local store

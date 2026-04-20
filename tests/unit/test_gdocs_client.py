@@ -14,6 +14,7 @@ def _build_settings(**overrides: str) -> SimpleNamespace:
         "GOOGLE_CLIENT_ID": "client-id-123",
         "GOOGLE_CLIENT_SECRET": "client-secret-456",
         "GOOGLE_REFRESH_TOKEN": "refresh-token-789",
+        "GOOGLE_SERVICE_ACCOUNT_FILE": "",
         "GOOGLE_DOC_ID": "doc-id-abc",
     }
     defaults.update(overrides)
@@ -33,6 +34,42 @@ def test_fetch_document_raises_on_invalid_token() -> None:
     ):
         with pytest.raises(GDocsAuthError):
             client.fetch_document()
+
+
+def test_builds_service_account_credentials_when_configured() -> None:
+    client = GDocsClient(
+        settings=_build_settings(
+            GOOGLE_SERVICE_ACCOUNT_FILE="/tmp/service-account.json",
+            GOOGLE_CLIENT_ID="",
+            GOOGLE_CLIENT_SECRET="",
+            GOOGLE_REFRESH_TOKEN="",
+        )
+    )
+
+    with patch(
+        "app.services.gdocs_client.ServiceAccountCredentials.from_service_account_file",
+        return_value=Mock(),
+    ) as mocked_loader, patch("app.services.gdocs_client.Path.exists", return_value=True):
+        client._build_credentials()
+
+    mocked_loader.assert_called_once_with(
+        "/tmp/service-account.json",
+        scopes=["https://www.googleapis.com/auth/documents.readonly"],
+    )
+
+
+def test_service_account_file_must_exist() -> None:
+    client = GDocsClient(
+        settings=_build_settings(
+            GOOGLE_SERVICE_ACCOUNT_FILE="/tmp/missing-service-account.json",
+            GOOGLE_CLIENT_ID="",
+            GOOGLE_CLIENT_SECRET="",
+            GOOGLE_REFRESH_TOKEN="",
+        )
+    )
+
+    with pytest.raises(GDocsAuthError, match="service account file not found"):
+        client._build_credentials()
 
 
 @pytest.mark.parametrize("status_code", [401, 403])

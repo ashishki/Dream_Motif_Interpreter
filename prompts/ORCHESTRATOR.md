@@ -132,6 +132,8 @@ Read in full:
 3. `docs/DECISION_LOG.md` and `docs/IMPLEMENTATION_JOURNAL.md` if they exist
 4. `docs/EVIDENCE_INDEX.md` if it exists
 
+If the next task touches source ingestion, document discovery, segmentation, parser profiles, or retrieval indexing semantics, also read `docs/spec.md` §12 in full before dispatching implementation.
+
 **Compaction check.**
 
 After reading `docs/CODEX_PROMPT.md`, count:
@@ -207,6 +209,23 @@ Action required: add a scoped continuity reference or document why none is neede
 ```
 
 For ordinary isolated tasks with no risky history dependency, continuity retrieval remains optional.
+
+**Source-ingestion semantic ownership rule.**
+
+If a task touches source intake, parsing, segmentation, connector boundaries, parser profiles, or embedding/index stage ordering, the implementer must preserve the canonical pipeline declared in `docs/spec.md` §12:
+
+`source connector -> normalized document -> parser profile -> dream entry candidates -> validated dream entries -> embeddings/indexing`
+
+If the proposed change bypasses normalization, mixes source discovery with parsing, or routes raw source payloads directly into downstream enrichment/indexing, print:
+
+```
+INGESTION_CANON_VIOLATION
+Task: [T## — Title]
+Conflict: [exact boundary violation]
+Action required: redesign the task or update docs/spec.md §12 before implementation proceeds.
+```
+
+**STOP.**
 
 **C. Phase boundary?**
 All tasks in the current phase are `✅`/`[x]` and the next task belongs to a different phase.

@@ -1054,3 +1054,192 @@ Notes: |
   The real Anthropic API is called only if ANTHROPIC_API_KEY is present; otherwise the LLM
   step uses a fixture response. This avoids cost in CI while still covering the full path.
   This task is the final phase gate task for the project.
+
+---
+
+## Phase 6: Universal Source Intake and Parser Profiles
+
+Goal: Replace the one-source-one-format assumption with a reliable ingestion architecture that can read from multiple source containers, normalize heterogeneous documents, resolve parser profiles deterministically, and only then perform segmentation, enrichment, embeddings, and indexing.
+
+Phase gate: Source discovery, normalization, parser-profile resolution, provenance persistence, and downstream ingestion all operate through the canonical pipeline defined in docs/spec.md §12. No ingestion path is allowed to bypass normalization or parser-profile attribution.
+
+---
+
+## T21: Source Connector Abstraction and Provenance Model
+
+Owner:      codex
+Phase:      6
+Type:       rag:ingestion
+Depends-On: T17, T20
+
+Objective: |
+  Introduce a source connector abstraction that separates source discovery/fetch from dream parsing.
+  The first target shape must support both a single Google Doc and a folder-like container of multiple source documents.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "A connector interface exists that can enumerate source documents and fetch their raw contents without invoking segmentation logic. Verified by tests/unit/test_source_connectors.py::test_connector_interface_separates_discovery_from_parsing."
+    test: "tests/unit/test_source_connectors.py::test_connector_interface_separates_discovery_from_parsing"
+  - id: AC-2
+    description: "Connector output includes stable provenance fields: `source_type`, `external_id`, `title`, `source_path`, and `updated_at` when available. Verified by tests/unit/test_source_connectors.py::test_connector_preserves_provenance_fields."
+    test: "tests/unit/test_source_connectors.py::test_connector_preserves_provenance_fields"
+  - id: AC-3
+    description: "The existing single-document Google Docs path is adapted to the connector interface without changing downstream dream analysis behavior. Verified by tests/integration/test_source_connectors.py::test_single_doc_connector_matches_existing_fetch_behavior."
+    test: "tests/integration/test_source_connectors.py::test_single_doc_connector_matches_existing_fetch_behavior"
+
+Files:
+  - app/services/gdocs_client.py
+  - app/retrieval/types.py
+  - app/retrieval/ingestion.py
+  - tests/unit/test_source_connectors.py
+  - tests/integration/test_source_connectors.py
+
+Notes: |
+  This task defines the boundary between source access and parsing.
+  Do not encode dream-entry boundary logic inside any connector.
+
+---
+
+## T22: Normalized Document Contract
+
+Owner:      codex
+Phase:      6
+Type:       rag:ingestion
+Depends-On: T21
+
+Objective: |
+  Define and enforce a canonical `NormalizedDocument` contract that all connectors must emit before any parser or segmentation logic runs.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "A normalized document model exists with required fields: `client_id`, `source_type`, `external_id`, `source_path`, `title`, `raw_text`, `sections`, `metadata`, and `fetched_at`. Verified by tests/unit/test_normalized_document.py::test_normalized_document_requires_canonical_fields."
+    test: "tests/unit/test_normalized_document.py::test_normalized_document_requires_canonical_fields"
+  - id: AC-2
+    description: "Source-native responses are converted to `NormalizedDocument` before any dream segmentation or enrichment path executes. Verified by tests/unit/test_normalized_document.py::test_segmentation_rejects_non_normalized_input."
+    test: "tests/unit/test_normalized_document.py::test_segmentation_rejects_non_normalized_input"
+  - id: AC-3
+    description: "Normalization preserves raw source text and section boundaries without adding retrieval or embedding side effects. Verified by tests/integration/test_normalized_document.py::test_normalization_is_side_effect_free."
+    test: "tests/integration/test_normalized_document.py::test_normalization_is_side_effect_free"
+
+Files:
+  - app/retrieval/types.py
+  - app/services/segmentation.py
+  - app/retrieval/ingestion.py
+  - tests/unit/test_normalized_document.py
+  - tests/integration/test_normalized_document.py
+
+Notes: |
+  This task establishes the only legal handoff shape from connectors to parsers.
+  No downstream code may depend on raw Google SDK payloads after this task lands.
+
+---
+
+## T23: Parser Profiles and Resolution Policy
+
+Owner:      codex
+Phase:      6
+Type:       rag:ingestion
+Depends-On: T22
+
+Objective: |
+  Implement parser profiles as explicit strategies that transform `NormalizedDocument`
+  into `DreamEntryCandidate` objects. Add a profile resolver that prefers operator-configured
+  profiles and uses heuristic auto-detection only as a fallback.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "At least three parser profiles exist: `default`, `dated_entries`, and `heading_based`, each returning `DreamEntryCandidate` objects from the same normalized input contract. Verified by tests/unit/test_parser_profiles.py::test_profile_registry_contains_required_profiles."
+    test: "tests/unit/test_parser_profiles.py::test_profile_registry_contains_required_profiles"
+  - id: AC-2
+    description: "When an explicit profile is configured for a source or client, the resolver uses it even if heuristics prefer a different profile. Verified by tests/unit/test_parser_profiles.py::test_explicit_profile_overrides_autodetect."
+    test: "tests/unit/test_parser_profiles.py::test_explicit_profile_overrides_autodetect"
+  - id: AC-3
+    description: "When no explicit profile is configured, the resolver selects the highest-confidence profile or falls back to `default` with a warning when confidence is below threshold. Verified by tests/unit/test_parser_profiles.py::test_low_confidence_autodetect_falls_back_to_default."
+    test: "tests/unit/test_parser_profiles.py::test_low_confidence_autodetect_falls_back_to_default"
+  - id: AC-4
+    description: "Profile resolution and parse output record the applied profile name and parse warnings for later review. Verified by tests/integration/test_parser_profiles.py::test_ingestion_persists_applied_profile_and_warnings."
+    test: "tests/integration/test_parser_profiles.py::test_ingestion_persists_applied_profile_and_warnings"
+
+Files:
+  - app/services/segmentation.py
+  - app/retrieval/types.py
+  - app/retrieval/ingestion.py
+  - tests/unit/test_parser_profiles.py
+  - tests/integration/test_parser_profiles.py
+
+Notes: |
+  Parser profiles may use deterministic heuristics first and narrowly scoped LLM assistance only for ambiguous boundaries.
+  A profile must never perform network fetch, embedding generation, or DB writes.
+
+---
+
+## T24: Ingestion Pipeline Refactor to Canonical Stages
+
+Owner:      codex
+Phase:      6
+Type:       rag:ingestion
+Depends-On: T23
+
+Objective: |
+  Refactor ingestion so that downstream analysis, embeddings, and indexing start only after the canonical stages complete:
+  source discovery -> normalization -> profile resolution -> candidate generation -> validation -> persistence.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "The ingestion service processes source documents through the canonical staged pipeline in order, with no stage skipping. Verified by tests/integration/test_ingestion_pipeline.py::test_ingestion_uses_canonical_stage_order."
+    test: "tests/integration/test_ingestion_pipeline.py::test_ingestion_uses_canonical_stage_order"
+  - id: AC-2
+    description: "Embeddings and retrieval indexing are not invoked for documents that fail normalization or candidate validation. Verified by tests/integration/test_ingestion_pipeline.py::test_invalid_documents_do_not_reach_embedding_stage."
+    test: "tests/integration/test_ingestion_pipeline.py::test_invalid_documents_do_not_reach_embedding_stage"
+  - id: AC-3
+    description: "Re-ingesting an unchanged source document is idempotent by `external_id` plus content hash, and does not duplicate dream entries or chunks. Verified by tests/integration/test_ingestion_pipeline.py::test_reingest_is_idempotent_under_normalized_pipeline."
+    test: "tests/integration/test_ingestion_pipeline.py::test_reingest_is_idempotent_under_normalized_pipeline"
+
+Files:
+  - app/retrieval/ingestion.py
+  - app/workers/ingest.py
+  - app/workers/index.py
+  - tests/integration/test_ingestion_pipeline.py
+
+Context-Refs:
+  - docs/spec.md §12
+
+Notes: |
+  This task is the semantic ownership boundary for future ingestion work.
+  Any shortcut from connector output straight into embeddings or indexing is a design regression.
+
+---
+
+## T25: Operator Controls, Reviewability, and Folder Intake Readiness
+
+Owner:      codex
+Phase:      6
+Type:       rag:ingestion
+Depends-On: T24
+
+Objective: |
+  Add operator-facing controls for source selection and parser profile assignment, plus reviewable diagnostics for low-confidence parses and folder-level discovery.
+
+Acceptance-Criteria:
+  - id: AC-1
+    description: "Operator config can assign a parser profile explicitly to a source container or client, and ingestion uses that assignment on the next run. Verified by tests/integration/test_ingestion_controls.py::test_operator_profile_assignment_applied_on_next_ingest."
+    test: "tests/integration/test_ingestion_controls.py::test_operator_profile_assignment_applied_on_next_ingest"
+  - id: AC-2
+    description: "Low-confidence parse results are surfaced as structured warnings with source provenance and applied profile, rather than silently treated as high-confidence truth. Verified by tests/integration/test_ingestion_controls.py::test_low_confidence_parse_is_reviewable."
+    test: "tests/integration/test_ingestion_controls.py::test_low_confidence_parse_is_reviewable"
+  - id: AC-3
+    description: "Folder-style intake can enumerate multiple source documents and process them through the same normalized pipeline one by one without mixing provenance. Verified by tests/integration/test_ingestion_controls.py::test_folder_intake_preserves_per_document_provenance."
+    test: "tests/integration/test_ingestion_controls.py::test_folder_intake_preserves_per_document_provenance"
+
+Files:
+  - app/shared/config.py
+  - app/retrieval/ingestion.py
+  - app/workers/ingest.py
+  - tests/integration/test_ingestion_controls.py
+
+Context-Refs:
+  - docs/spec.md §12
+
+Notes: |
+  This task does not require broad multi-tenant productization.
+  The control surface may remain operator-only, but the profile decision must become explicit, persistent, and auditable.

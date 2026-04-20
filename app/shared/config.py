@@ -8,9 +8,10 @@ class Settings(BaseSettings):
     REDIS_URL: str
     ANTHROPIC_API_KEY: str
     OPENAI_API_KEY: str
-    GOOGLE_CLIENT_ID: str
-    GOOGLE_CLIENT_SECRET: str
-    GOOGLE_REFRESH_TOKEN: str
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REFRESH_TOKEN: str = ""
+    GOOGLE_SERVICE_ACCOUNT_FILE: str = ""
     GOOGLE_DOC_ID: str
     SECRET_KEY: str
     ENV: str

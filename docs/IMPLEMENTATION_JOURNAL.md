@@ -274,3 +274,12 @@ Status: append-only
 - Evidence collected: 225 unit tests pass; assistant_feedback migration 011; FeedbackService; digit-reply capture in handlers.py; GET /feedback paginated API
 - Follow-ups: FIX-10/11/12 OTel+ORM fixes; WS-11.4 comment capture deferred to future phase
 - Notes for next agent: Phase 11 adds a rating-only feedback loop; optional comment capture remains intentionally deferred
+
+### 2026-04-20 — Local Setup Checkpoint — Service Account Auth and Universal Ingestion Plan
+
+- Scope: `app/services/gdocs_client.py`, `app/shared/config.py`, Google Docs auth tests, `docs/spec.md`, `docs/tasks.md`, `prompts/ORCHESTRATOR.md`
+- Why this work happened: local environment had to be brought to a runnable test state, Google Docs access needed to switch from OAuth refresh-token flow to an approved service-account JSON, and future ingestion work needed a fixed canonical plan for multi-format, multi-source intake
+- Decisions applied: Google Docs auth now supports service-account JSON via `GOOGLE_SERVICE_ACCOUNT_FILE`; future ingestion must preserve the canonical pipeline `source connector -> normalized document -> parser profile -> dream entry candidates -> validated dream entries -> embeddings/indexing`
+- Evidence collected: `.venv` created and dependencies installed; local Postgres reachable on `127.0.0.1:5433`; Redis reachable on `127.0.0.1:6379`; application DB `dream_motif` created; Alembic upgraded to head; `GET /health` returned `{"status":"ok","index_last_updated":null}`; `pytest tests/unit/test_config.py -q` → `8 passed`; `pytest tests/unit/test_gdocs_client.py -q` → `7 passed`; service-account credentials loaded successfully for `dream-180@dream-493107.iam.gserviceaccount.com`
+- Follow-ups: set a real `GOOGLE_DOC_ID` in local `.env`; verify live `GDocsClient.fetch_document()` against the approved Google Doc; inspect actual source layout to confirm whether intake is a single doc or folder-style container; only then continue with parsing, segmentation, embeddings, and retrieval indexing
+- Notes for next agent: local `.env` and the copied service-account JSON are runtime setup artifacts and may be gitignored; one smoke test that expects missing `DATABASE_URL` can fail locally when `.env` is loaded, so config tests should be run with `_env_file=None` isolation where appropriate

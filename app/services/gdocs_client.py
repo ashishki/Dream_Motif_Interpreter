@@ -1,9 +1,11 @@
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -61,6 +63,10 @@ class GDocsClient:
         return build("docs", "v1", credentials=credentials, cache_discovery=False)
 
     def _build_credentials(self) -> Credentials:
+        service_account_file = self._settings.GOOGLE_SERVICE_ACCOUNT_FILE.strip()
+        if service_account_file:
+            return self._build_service_account_credentials(service_account_file)
+
         with self._tracer.start_as_current_span("gdocs.refresh_credentials"):
             credentials = Credentials(
                 token=None,
@@ -72,6 +78,17 @@ class GDocsClient:
             )
             credentials.refresh(Request())
             return credentials
+
+    def _build_service_account_credentials(self, credential_path: str) -> ServiceAccountCredentials:
+        with self._tracer.start_as_current_span("gdocs.load_service_account_credentials"):
+            path = Path(credential_path)
+            if not path.exists():
+                raise GDocsAuthError("Google Docs service account file not found")
+
+            return ServiceAccountCredentials.from_service_account_file(
+                str(path),
+                scopes=[GOOGLE_DOCS_READONLY_SCOPE],
+            )
 
 
 def _extract_paragraphs(document: Mapping[str, Any]) -> list[str]:

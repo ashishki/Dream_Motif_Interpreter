@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.llm.client import AnthropicLLMClient
-from app.llm.theme_extractor import ThemeAssignment
+from app.llm.theme_extractor import ThemeAssignment, _extract_json_payload
 from app.models.dream import DreamEntry
 from app.shared.tracing import get_tracer
 
@@ -46,7 +46,11 @@ class Grounder:
         with tracer.start_as_current_span("grounder.ground"):
             for _attempt in range(self._max_retries + 1):
                 try:
-                    raw_response = await self._client.complete(system_prompt, user_prompt)
+                    raw_response = await self._client.complete(
+                        system_prompt,
+                        user_prompt,
+                        max_tokens=4000,
+                    )
                     return self._parse_grounded_themes(
                         raw_response,
                         allowed_ids=allowed_ids,
@@ -94,7 +98,7 @@ class Grounder:
         allowed_ids: set[uuid.UUID],
         raw_text: str,
     ) -> list[GroundedTheme]:
-        payload = json.loads(raw_response)
+        payload = json.loads(_extract_json_payload(raw_response))
         themes = payload.get("themes")
         if not isinstance(themes, list):
             raise GroundingError("LLM response did not include a themes list")

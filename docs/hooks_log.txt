@@ -54,3 +54,34 @@ _Append-only. One row per review cycle._
 [2026-04-10T19:35:39Z] [TASK:?] EXIT=?        grep -n 'T20\|## T20' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/tasks.md | head -5
 [2026-04-10T19:36:06Z] [TASK:?] EXIT=?        grep -n 'A3 tasks' /home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/docs/audit/PHASE1_AUDIT.md
 [2026-04-10T19:37:20Z] [TASK:?] EXIT=?        git status
+[2026-04-21T11:18:11Z] [TASK:?] EXIT=?        git diff HEAD
+[2026-04-21T11:18:18Z] [TASK:?] EXIT=?        python -m pytest tests/unit/test_grounder.py tests/unit/test_theme_extractor.py -v 2>&1 | tail -40
+[2026-04-21T11:18:22Z] [TASK:?] EXIT=?        python3 -m pytest tests/unit/test_grounder.py tests/unit/test_theme_extractor.py -v 2>&1 | tail -50
+[2026-04-21T11:18:24Z] [TASK:?] EXIT=?        which pytest || ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.venv/bin/ 2>/dev/null | head -20
+[2026-04-21T11:18:31Z] [TASK:?] EXIT=?        .venv/bin/pytest tests/unit/test_grounder.py tests/unit/test_theme_extractor.py -v 2>&1 | tail -50
+[2026-04-21T11:19:04Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/
+[2026-04-21T11:19:11Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/
+[2026-04-21T11:19:23Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/scripts/ && cat /srv/openclaw-you/workspace/Dream_Motif_Interpreter/alembic.ini | grep sqlalchemy.url
+[2026-04-21T11:19:29Z] [TASK:?] EXIT=?        pg_isready -h 127.0.0.1 -p 5433 2>&1; pg_isready -h 127.0.0.1 -p 5432 2>&1; redis-cli -p 6379 ping 2>&1
+[2026-04-21T11:19:31Z] [TASK:?] EXIT=?        ss -tlnp | grep -E '543[23]|5432|5433' && ss -tlnp | grep 6379
+[2026-04-21T11:19:42Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/alembic current 2>&1
+[2026-04-21T11:20:56Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/alembic heads 2>&1
+[2026-04-21T11:21:05Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 2>&1 &
+sleep 3 && curl -s http://127.0.0.1:8000/health
+[2026-04-21T11:21:10Z] [TASK:?] EXIT=?        ss -tlnp | grep 8000 && ps aux | grep uvicorn | grep -v grep
+[2026-04-21T11:21:12Z] [TASK:?] EXIT=?        ps aux | grep -E 'uvicorn|app.main|app.telegram' | grep -v grep
+[2026-04-21T11:21:16Z] [TASK:?] EXIT=?        curl -s http://127.0.0.1:8000/health | python3 -m json.tool
+[2026-04-21T11:21:54Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/workers/
+[2026-04-21T11:21:55Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/retrieval/
+[2026-04-21T11:22:04Z] [TASK:?] EXIT=?        grep -n "index_dream\|embed\|chunk\|DreamChunk" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/retrieval/ingestion.py | head -40
+[2026-04-21T13:31:31Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/
+[2026-04-21T13:31:34Z] [TASK:?] EXIT=?        git diff --stat HEAD && git status
+[2026-04-21T13:31:42Z] [TASK:?] EXIT=?        python -m pytest tests/ -q --tb=no 2>&1 | tail -20
+[2026-04-21T13:31:47Z] [TASK:?] EXIT=?        python3 -m pytest tests/ -q --tb=no 2>&1 | tail -10
+[2026-04-21T13:31:52Z] [TASK:?] EXIT=?        git diff app/llm/client.py app/llm/grounder.py app/llm/theme_extractor.py 2>&1 | head -150
+[2026-04-21T13:31:53Z] [TASK:?] EXIT=?        git diff tests/unit/test_grounder.py tests/unit/test_theme_extractor.py 2>&1 | head -150
+[2026-04-21T13:32:01Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.venv 2>/dev/null && echo "exists" || echo "no venv"
+[2026-04-21T13:32:02Z] [TASK:?] EXIT=?        git diff docs/hooks_log.txt | head -30
+[2026-04-21T13:32:14Z] [TASK:?] EXIT=?        .venv/bin/pytest tests/unit/test_grounder.py tests/unit/test_theme_extractor.py -v 2>&1 | tail -30
+[2026-04-21T13:32:23Z] [TASK:?] EXIT=?        .venv/bin/ruff check app/ tests/ 2>&1 && .venv/bin/ruff format --check app/ tests/ 2>&1
+[2026-04-21T13:33:41Z] [TASK:?] EXIT=?        .venv/bin/pytest tests/ -q --tb=no 2>&1 | tail -10

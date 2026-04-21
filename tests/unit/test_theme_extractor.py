@@ -16,8 +16,8 @@ class FixedLLMClient:
         self._responses = responses
         self.calls = 0
 
-    async def complete(self, system: str, user: str) -> str:
-        del system, user
+    async def complete(self, system: str, user: str, *, max_tokens: int = 1000) -> str:
+        del system, user, max_tokens
         response = self._responses[min(self.calls, len(self._responses) - 1)]
         self.calls += 1
         return response
@@ -183,3 +183,36 @@ async def test_extraction_consistency() -> None:
     overlap = len(first_top_three & second_top_three) / 3
 
     assert overlap >= 0.8
+
+
+@pytest.mark.asyncio
+async def test_extract_accepts_json_code_fence() -> None:
+    categories = _categories()
+    client = FixedLLMClient(
+        [
+            """```json
+            {"themes":[{"category_id":"11111111-1111-1111-1111-111111111111","salience":0.9,"match_type":"literal","justification":"Water dominates the imagery."}]}
+            ```"""
+        ]
+    )
+
+    assignments = await ThemeExtractor(client=client).extract(_dream_entry(), categories)
+
+    assert [assignment.category_id for assignment in assignments] == [categories[0].id]
+
+
+@pytest.mark.asyncio
+async def test_extract_accepts_prefixed_text_around_json() -> None:
+    categories = _categories()
+    client = FixedLLMClient(
+        [
+            (
+                "Here is the draft JSON response.\n"
+                '{"themes":[{"category_id":"22222222-2222-2222-2222-222222222222","salience":0.84,"match_type":"semantic","justification":"The mother is central to the dream."}]}'
+            )
+        ]
+    )
+
+    assignments = await ThemeExtractor(client=client).extract(_dream_entry(), categories)
+
+    assert [assignment.category_id for assignment in assignments] == [categories[1].id]

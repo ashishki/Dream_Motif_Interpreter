@@ -16,8 +16,8 @@ class FixedLLMClient:
         self._responses = responses
         self.calls = 0
 
-    async def complete(self, system: str, user: str) -> str:
-        del system, user
+    async def complete(self, system: str, user: str, *, max_tokens: int = 1000) -> str:
+        del system, user, max_tokens
         response = self._responses[min(self.calls, len(self._responses) - 1)]
         self.calls += 1
         return response
@@ -160,3 +160,38 @@ async def test_fragment_text_matches_source_offsets() -> None:
         != dream_entry.raw_text[fragments[1]["start_offset"] : fragments[1]["end_offset"]]
     )
     assert fragments[1]["verified"] is False
+
+
+@pytest.mark.asyncio
+async def test_ground_accepts_json_code_fence() -> None:
+    raw_text = _dream_entry().raw_text
+    fragment_text = "water kept rising"
+    client = FixedLLMClient(
+        [
+            f"""```json
+            {{"themes":[{{"category_id":"{_assignments()[0].category_id}","salience":0.9,"fragments":[{{"text":"{fragment_text}","start_offset":{raw_text.index(fragment_text)},"end_offset":{raw_text.index(fragment_text) + len(fragment_text)},"match_type":"literal"}}]}}]}}
+            ```"""
+        ]
+    )
+
+    grounded = await Grounder(client=client).ground(_dream_entry(), [_assignments()[0]])
+
+    assert [theme.category_id for theme in grounded] == [_assignments()[0].category_id]
+
+
+@pytest.mark.asyncio
+async def test_ground_accepts_prefixed_text_around_json() -> None:
+    raw_text = _dream_entry().raw_text
+    fragment_text = "My mother watched"
+    client = FixedLLMClient(
+        [
+            (
+                "Here is the grounded draft JSON.\n"
+                f'{{"themes":[{{"category_id":"{_assignments()[1].category_id}","salience":0.8,"fragments":[{{"text":"{fragment_text}","start_offset":{raw_text.index(fragment_text)},"end_offset":{raw_text.index(fragment_text) + len(fragment_text)},"match_type":"semantic"}}]}}]}}'
+            )
+        ]
+    )
+
+    grounded = await Grounder(client=client).ground(_dream_entry(), [_assignments()[1]])
+
+    assert [theme.category_id for theme in grounded] == [_assignments()[1].category_id]

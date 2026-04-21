@@ -15,7 +15,7 @@ class AnthropicLLMClient:
         self._model = model
         self._client: Any | None = None
 
-    async def complete(self, system: str, user: str) -> str:
+    async def complete(self, system: str, user: str, *, max_tokens: int = 1000) -> str:
         tracer = get_tracer(__name__)
 
         with tracer.start_as_current_span("llm.complete"):
@@ -23,7 +23,7 @@ class AnthropicLLMClient:
             with tracer.start_as_current_span("anthropic.messages.create"):
                 response = await client.messages.create(
                     model=self._model,
-                    max_tokens=1000,
+                    max_tokens=max_tokens,
                     system=system,
                     messages=[{"role": "user", "content": user}],
                 )

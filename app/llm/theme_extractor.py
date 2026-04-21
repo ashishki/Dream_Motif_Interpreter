@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -75,7 +76,7 @@ class ThemeExtractor:
         raw_response: str,
         allowed_ids: set[uuid.UUID],
     ) -> list[ThemeAssignment]:
-        payload = json.loads(raw_response)
+        payload = json.loads(_extract_json_payload(raw_response))
         themes = payload.get("themes")
         if not isinstance(themes, list):
             raise ThemeExtractionError("LLM response did not include a themes list")
@@ -113,3 +114,26 @@ class ThemeExtractor:
             )
 
         return assignments
+
+
+_JSON_CODE_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+def _extract_json_payload(raw_response: str) -> str:
+    stripped = raw_response.strip()
+    if not stripped:
+        raise ThemeExtractionError("LLM response was empty")
+
+    if stripped.startswith("{") and stripped.endswith("}"):
+        return stripped
+
+    code_block_match = _JSON_CODE_BLOCK_PATTERN.search(stripped)
+    if code_block_match:
+        return code_block_match.group(1).strip()
+
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start != -1 and end != -1 and start < end:
+        return stripped[start : end + 1].strip()
+
+    raise ThemeExtractionError("LLM response did not contain a JSON object")

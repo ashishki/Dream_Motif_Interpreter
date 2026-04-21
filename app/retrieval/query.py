@@ -193,25 +193,25 @@ class RagQueryService:
                     de.date,
                     dc.chunk_text,
                     ts_rank_cd(
-                        to_tsvector('english', dc.chunk_text),
-                        websearch_to_tsquery('english', :fts_query)
+                        to_tsvector('russian', dc.chunk_text),
+                        websearch_to_tsquery('russian', :fts_query)
                     ) / (
                         1 + ts_rank_cd(
-                            to_tsvector('english', dc.chunk_text),
-                            websearch_to_tsquery('english', :fts_query)
+                            to_tsvector('russian', dc.chunk_text),
+                            websearch_to_tsquery('russian', :fts_query)
                         )
                     ) AS fts_rank,
                     ROW_NUMBER() OVER (
                         ORDER BY ts_rank_cd(
-                            to_tsvector('english', dc.chunk_text),
-                            websearch_to_tsquery('english', :fts_query)
+                            to_tsvector('russian', dc.chunk_text),
+                            websearch_to_tsquery('russian', :fts_query)
                         ) DESC,
                         dc.created_at DESC
                     ) AS rank_fts
                 FROM dream_chunks AS dc
                 JOIN dream_entries AS de ON de.id = dc.dream_id
-                WHERE to_tsvector('english', dc.chunk_text)
-                    @@ websearch_to_tsquery('english', :fts_query)
+                WHERE to_tsvector('russian', dc.chunk_text)
+                    @@ websearch_to_tsquery('russian', :fts_query)
                 ORDER BY ts_rank_cd(
                     to_tsvector('english', dc.chunk_text),
                     websearch_to_tsquery('english', :fts_query)

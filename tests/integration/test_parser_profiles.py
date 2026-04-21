@@ -10,7 +10,12 @@ import pytest_asyncio
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.models.dream import DreamEntry
 from app.retrieval.types import NormalizedDocument
@@ -81,4 +86,6 @@ async def test_ingestion_persists_applied_profile_and_warnings(
     stored_entry = result.scalar_one()
 
     assert stored_entry.parser_profile == "default"
-    assert any("falling back to default profile" in warning for warning in stored_entry.parse_warnings)
+    assert any(
+        "falling back to default profile" in warning for warning in stored_entry.parse_warnings
+    )

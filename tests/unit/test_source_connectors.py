@@ -40,16 +40,8 @@ def test_connector_interface_separates_discovery_from_parsing() -> None:
                 "title": "Сны",
                 "body": {
                     "content": [
-                        {
-                            "paragraph": {
-                                "elements": [{"textRun": {"content": "Первая запись\n"}}]
-                            }
-                        },
-                        {
-                            "paragraph": {
-                                "elements": [{"textRun": {"content": "Вторая запись"}}]
-                            }
-                        },
+                        {"paragraph": {"elements": [{"textRun": {"content": "Первая запись\n"}}]}},
+                        {"paragraph": {"elements": [{"textRun": {"content": "Вторая запись"}}]}},
                     ]
                 },
             }

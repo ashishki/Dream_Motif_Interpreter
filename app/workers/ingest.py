@@ -185,7 +185,9 @@ async def _store_entries(
             raw_contents=paragraphs,
         )
 
-    with tracer.start_as_current_span("worker.ingest_document.normalize_document") as normalize_span:
+    with tracer.start_as_current_span(
+        "worker.ingest_document.normalize_document"
+    ) as normalize_span:
         normalize_span.set_attribute("external_id", fetched_document.external_id)
         pipeline = process_source_document(fetched_document, client_id=client_id)
 
@@ -265,7 +267,9 @@ async def _load_existing_dream_id(
         return existing_dream_id
 
     with tracer.start_as_current_span("db.query.worker_ingest.load_existing_dream_id_by_hash"):
-        return await session.scalar(select(DreamEntry.id).where(DreamEntry.content_hash == content_hash))
+        return await session.scalar(
+            select(DreamEntry.id).where(DreamEntry.content_hash == content_hash)
+        )
 
 
 async def _collect_pipeline_targets(
@@ -334,5 +338,7 @@ async def _run_post_store_pipeline(
                             "db.query.worker_ingest.commit_motif_inductions"
                         ):
                             await session.commit()
+
+
 class WorkerSettings:
     functions = [ingest_document]

@@ -266,7 +266,9 @@ def _parse_dated_entries_profile(document: NormalizedDocument) -> list[DreamEntr
         return _parse_default_profile(document)
 
     drafts = _segment_by_date_headers(paragraphs, boundary_indexes)
-    return [_draft_to_candidate(document, draft, applied_profile="dated_entries") for draft in drafts]
+    return [
+        _draft_to_candidate(document, draft, applied_profile="dated_entries") for draft in drafts
+    ]
 
 
 def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntryCandidate]:
@@ -277,9 +279,15 @@ def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntr
 
     drafts: list[_SegmentDraft] = []
     for position, start_index in enumerate(heading_indexes):
-        end_index = heading_indexes[position + 1] if position + 1 < len(heading_indexes) else len(paragraphs)
+        end_index = (
+            heading_indexes[position + 1]
+            if position + 1 < len(heading_indexes)
+            else len(paragraphs)
+        )
         title = paragraphs[start_index].strip()
-        body = [paragraph for paragraph in paragraphs[start_index + 1 : end_index] if paragraph.strip()]
+        body = [
+            paragraph for paragraph in paragraphs[start_index + 1 : end_index] if paragraph.strip()
+        ]
         if not body:
             drafts.append(
                 _SegmentDraft(
@@ -287,7 +295,9 @@ def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntr
                     title=title,
                     paragraphs=[title],
                     segmentation_confidence="low",
-                    parse_warnings=[f"Heading '{title}' had no body paragraphs; stored as single-paragraph entry."],
+                    parse_warnings=[
+                        f"Heading '{title}' had no body paragraphs; stored as single-paragraph entry."
+                    ],
                 )
             )
             continue
@@ -301,7 +311,9 @@ def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntr
             )
         )
 
-    return [_draft_to_candidate(document, draft, applied_profile="heading_based") for draft in drafts]
+    return [
+        _draft_to_candidate(document, draft, applied_profile="heading_based") for draft in drafts
+    ]
 
 
 def _segment_by_date_headers(
@@ -310,8 +322,14 @@ def _segment_by_date_headers(
 ) -> list[_SegmentDraft]:
     drafts: list[_SegmentDraft] = []
     for position, (start_index, parsed_date) in enumerate(boundary_indexes):
-        end_index = boundary_indexes[position + 1][0] if position + 1 < len(boundary_indexes) else len(paragraphs)
-        body = [paragraph for paragraph in paragraphs[start_index + 1 : end_index] if paragraph.strip()]
+        end_index = (
+            boundary_indexes[position + 1][0]
+            if position + 1 < len(boundary_indexes)
+            else len(paragraphs)
+        )
+        body = [
+            paragraph for paragraph in paragraphs[start_index + 1 : end_index] if paragraph.strip()
+        ]
         if not body:
             continue
         drafts.append(

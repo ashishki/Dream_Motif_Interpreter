@@ -48,9 +48,11 @@ class GDocsClient:
                 with self._tracer.start_as_current_span("gdocs.build_service"):
                     service = self._build_docs_service()
                 with self._tracer.start_as_current_span("gdocs.documents.get"):
-                    document = service.documents().get(
-                        documentId=document_id or self._settings.GOOGLE_DOC_ID
-                    ).execute()
+                    document = (
+                        service.documents()
+                        .get(documentId=document_id or self._settings.GOOGLE_DOC_ID)
+                        .execute()
+                    )
             except RefreshError as exc:
                 logger.warning("Google Docs authentication failed during token refresh")
                 raise GDocsAuthError("Google Docs authentication failed") from exc
@@ -103,7 +105,9 @@ class GDocsClient:
 
 
 class SingleGoogleDocConnector:
-    def __init__(self, client: GDocsClient | None = None, *, document_id: str | None = None) -> None:
+    def __init__(
+        self, client: GDocsClient | None = None, *, document_id: str | None = None
+    ) -> None:
         self._client = client or GDocsClient()
         self._document_id = document_id or self._client.document_id
         self._cached_document: Mapping[str, Any] | None = None

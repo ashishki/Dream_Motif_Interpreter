@@ -43,6 +43,10 @@ include = ["app*", "tests*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "preserve_gdocs_env: keep real Google Docs env vars for live integration checks",
+    "preserve_openai_env: keep real OpenAI env vars for live integration checks",
+]
 
 [tool.ruff]
 target-version = "py311"

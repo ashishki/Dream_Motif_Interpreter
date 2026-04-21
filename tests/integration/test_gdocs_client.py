@@ -5,6 +5,7 @@ import pytest
 from app.services.gdocs_client import GDocsClient
 
 
+@pytest.mark.preserve_gdocs_env
 @pytest.mark.skipif(
     (
         (

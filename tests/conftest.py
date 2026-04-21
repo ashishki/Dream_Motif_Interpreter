@@ -28,10 +28,25 @@ REQUIRED_ENV_VARS = {
     "ENV": "test",
 }
 
+GDOCS_ENV_VARS = {
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REFRESH_TOKEN",
+    "GOOGLE_SERVICE_ACCOUNT_FILE",
+    "GOOGLE_DOC_ID",
+}
+OPENAI_ENV_VARS = {"OPENAI_API_KEY"}
+
 
 @pytest.fixture(autouse=True)
-def _set_required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+def _set_required_env_vars(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    preserve_gdocs_env = request.node.get_closest_marker("preserve_gdocs_env") is not None
+    preserve_openai_env = request.node.get_closest_marker("preserve_openai_env") is not None
     for key, value in REQUIRED_ENV_VARS.items():
+        if preserve_gdocs_env and key in GDOCS_ENV_VARS:
+            continue
+        if preserve_openai_env and key in OPENAI_ENV_VARS:
+            continue
         monkeypatch.setenv(key, value)
 
 

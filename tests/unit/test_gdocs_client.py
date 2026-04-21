@@ -46,10 +46,13 @@ def test_builds_service_account_credentials_when_configured() -> None:
         )
     )
 
-    with patch(
-        "app.services.gdocs_client.ServiceAccountCredentials.from_service_account_file",
-        return_value=Mock(),
-    ) as mocked_loader, patch("app.services.gdocs_client.Path.exists", return_value=True):
+    with (
+        patch(
+            "app.services.gdocs_client.ServiceAccountCredentials.from_service_account_file",
+            return_value=Mock(),
+        ) as mocked_loader,
+        patch("app.services.gdocs_client.Path.exists", return_value=True),
+    ):
         client._build_credentials()
 
     mocked_loader.assert_called_once_with(

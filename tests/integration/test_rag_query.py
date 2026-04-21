@@ -169,6 +169,7 @@ async def _attach_fragment(
     or not os.getenv("TEST_DATABASE_URL"),
     reason=RAG_QUERY_SKIP_REASON,
 )
+@pytest.mark.preserve_openai_env
 @pytest.mark.asyncio
 async def test_retrieve_returns_evidence_blocks(
     migrated_session_factory: async_sessionmaker[AsyncSession],
@@ -212,6 +213,7 @@ async def test_retrieve_returns_evidence_blocks(
     or not os.getenv("TEST_DATABASE_URL"),
     reason=RAG_QUERY_SKIP_REASON,
 )
+@pytest.mark.preserve_openai_env
 @pytest.mark.asyncio
 async def test_retrieve_returns_insufficient_evidence_for_zero_match(
     migrated_session_factory: async_sessionmaker[AsyncSession],
@@ -240,6 +242,7 @@ async def test_retrieve_returns_insufficient_evidence_for_zero_match(
     or not os.getenv("TEST_DATABASE_URL"),
     reason=RAG_QUERY_SKIP_REASON,
 )
+@pytest.mark.preserve_openai_env
 @pytest.mark.asyncio
 async def test_hybrid_search_returns_keyword_only_match(
     migrated_session_factory: async_sessionmaker[AsyncSession],

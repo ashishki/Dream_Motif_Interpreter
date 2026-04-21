@@ -25,8 +25,7 @@ def test_normalized_document_requires_canonical_fields() -> None:
         "fetched_at",
     ]
     assert all(
-        parameter.default is inspect.Signature.empty
-        for parameter in signature.parameters.values()
+        parameter.default is inspect.Signature.empty for parameter in signature.parameters.values()
     )
 
     fetched_at = datetime(2026, 4, 21, tzinfo=timezone.utc)

@@ -66,7 +66,9 @@ def test_low_confidence_autodetect_falls_back_to_default() -> None:
     assert resolved_profile.profile_name == "default"
     assert len(candidates) == 1
     assert candidates[0].applied_profile == "default"
-    assert any("falling back to default profile" in warning for warning in candidates[0].parse_warnings)
+    assert any(
+        "falling back to default profile" in warning for warning in candidates[0].parse_warnings
+    )
 
 
 def test_heading_based_profile_detects_structured_entries() -> None:

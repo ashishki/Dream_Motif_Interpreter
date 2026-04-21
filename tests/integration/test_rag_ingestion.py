@@ -87,6 +87,7 @@ def _vector_length(vector_literal: str | None) -> int:
     or not os.getenv("TEST_DATABASE_URL"),
     reason="Real OpenAI API key required",
 )
+@pytest.mark.preserve_openai_env
 @pytest.mark.asyncio
 async def test_index_dream_creates_chunk_with_embedding(
     migrated_session_factory: async_sessionmaker[AsyncSession],
@@ -120,6 +121,7 @@ async def test_index_dream_creates_chunk_with_embedding(
     or not os.getenv("TEST_DATABASE_URL"),
     reason="Real OpenAI API key required",
 )
+@pytest.mark.preserve_openai_env
 @pytest.mark.asyncio
 async def test_index_dream_idempotent(
     migrated_session_factory: async_sessionmaker[AsyncSession],

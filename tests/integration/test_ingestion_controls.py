@@ -11,7 +11,12 @@ import pytest_asyncio
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
 from app.models.dream import DreamEntry
@@ -180,9 +185,7 @@ async def test_operator_profile_assignment_applied_on_next_ingest(
     async with migrated_session_factory() as session:
         entries = list(
             (
-                await session.execute(
-                    select(DreamEntry).order_by(DreamEntry.source_doc_id.asc())
-                )
+                await session.execute(select(DreamEntry).order_by(DreamEntry.source_doc_id.asc()))
             ).scalars()
         )
 
@@ -249,9 +252,7 @@ async def test_folder_intake_preserves_per_document_provenance(
     async with migrated_session_factory() as session:
         entries = list(
             (
-                await session.execute(
-                    select(DreamEntry).order_by(DreamEntry.source_doc_id.asc())
-                )
+                await session.execute(select(DreamEntry).order_by(DreamEntry.source_doc_id.asc()))
             ).scalars()
         )
 

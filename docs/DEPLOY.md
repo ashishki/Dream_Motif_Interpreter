@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Last updated: 2026-04-15 (P6-T06 update)
+Last updated: 2026-04-21
 
 ## 1. Deployment Philosophy
 
@@ -31,19 +31,24 @@ Phase 6 service set:
 postgres       — primary persistent store (dreams, themes, bot sessions)
 redis          — ephemeral job-state, arq worker coordination
 api            — FastAPI HTTP layer (python3 -m uvicorn app.main:app)
-worker         — arq background jobs (python3 -m arq app.workers.ingest.WorkerSettings)
 telegram-bot   — long-polling Telegram bot (python3 -m app.telegram)
+auto-sync      — lightweight Google Docs metadata polling + conditional sync (python3 -m app.auto_sync)
 ```
 
-The `telegram-bot` service is defined in `docker-compose.yml` and starts with `--restart unless-stopped`.
+Today the minimal always-on runtime is:
+
+- Postgres
+- Redis
+- API
+- Telegram bot
+- auto-sync
 
 Pre-start prerequisite: run `alembic upgrade head` to apply migrations including `007_add_bot_sessions`.
 
-Optional future services (Phase 7+):
+Optional future services:
 
 ```text
 media-cleanup
-scheduled-sync
 ```
 
 ## 4. Recommended Initial Telegram Deployment Mode
@@ -90,13 +95,34 @@ Until then, keep current docs explicit: service-account JSON may exist operation
 - Postgres reachable
 - Redis reachable
 - API starts cleanly
-- workers start cleanly
 - bot starts and rejects unauthorized chats
+- auto-sync loop starts cleanly
+- Google Docs credentials are valid
 - tracing/logging configured
 - media directory exists if voice is enabled
 - cleanup policy is enabled if voice is enabled
 
-## 8. Operational Documentation
+## 8. Local Background Run
+
+For a small private deployment, it is acceptable to run the app as a few background processes:
+
+```text
+postgres
+redis
+api
+telegram-bot
+auto-sync
+```
+
+Recommended local start order:
+
+1. infrastructure (`docker compose up -d postgres redis`)
+2. migrations (`alembic upgrade head`)
+3. API (`python3 -m app.main`)
+4. Telegram bot (`python3 -m app.telegram`)
+5. auto-sync (`python3 -m app.auto_sync`)
+
+## 9. Operational Documentation
 
 Before production rollout of Phase 6+:
 

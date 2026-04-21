@@ -125,7 +125,13 @@ async def handle_chat_with_metadata(
         tool_results: list[str] = []
         for block in tool_blocks:
             tool_calls_made.append(block.name)
-            result = await execute_tool(block.name, block.input, facade)
+            result = await execute_tool(
+                block.name,
+                block.input,
+                facade,
+                chat_id=chat_id,
+                request_text=message_text,
+            )
             tool_results.append(result)
 
         messages.append({"role": "assistant", "content": response.content})

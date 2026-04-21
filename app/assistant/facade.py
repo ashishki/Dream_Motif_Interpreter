@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Protocol
 
 from sqlalchemy import select
@@ -13,9 +15,11 @@ from app.models.motif import MotifInduction
 from app.models.theme import DreamTheme, ThemeCategory
 from app.retrieval.query import EvidenceBlock, InsufficientEvidence, RagQueryService
 from app.services.analysis import AnalysisService
+from app.services.motif_service import MotifService
 from app.services.patterns import CoOccurrencePattern, PatternService, RecurringPattern
 from app.services.research_service import ResearchService
 from app.services.versioning import VersioningService
+from app.shared.config import get_settings
 from app.shared.tracing import get_tracer
 
 
@@ -68,6 +72,17 @@ class DreamSummary:
     word_count: int
     source_doc_id: str
     created_at: str
+
+
+@dataclass(frozen=True)
+class CreatedDreamItem:
+    id: uuid.UUID
+    date: str | None
+    title: str
+    word_count: int
+    source_doc_id: str
+    created_at: str
+    created: bool
 
 
 @dataclass(frozen=True)
@@ -133,14 +148,18 @@ class AssistantFacade:
         sync_job_enqueuer: SyncJobEnqueuer | None = None,
         analysis_service: AnalysisService | None = None,
         research_service: ResearchService | None = None,
+        index_dream_callable: Callable[[uuid.UUID], Awaitable[int]] | None = None,
+        motif_service: MotifService | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._rag_query_service = rag_query_service
         self._pattern_service = pattern_service
         self._versioning_service = versioning_service
         self._sync_job_enqueuer = sync_job_enqueuer
-        self._analysis_service = analysis_service
+        self._analysis_service = analysis_service or AnalysisService()
         self._research_service = research_service or ResearchService()
+        self._index_dream_callable = index_dream_callable or self._build_index_dream_callable()
+        self._motif_service = motif_service or MotifService()
 
     async def search_dreams(self, query: str) -> SearchResult:
         result = await self._rag_query_service.retrieve(query)
@@ -208,6 +227,80 @@ class AssistantFacade:
             co_occurrence=[_co_occurrence_pattern_item(pattern) for pattern in co_occurrence],
         )
 
+    async def create_dream(
+        self,
+        raw_text: str,
+        *,
+        title: str | None = None,
+        dream_date: date | None = None,
+        chat_id: int | None = None,
+    ) -> CreatedDreamItem:
+        normalized_text = raw_text.strip()
+        if not normalized_text:
+            raise ValueError("Dream text must not be empty")
+
+        resolved_title = _resolve_dream_title(normalized_text, title=title)
+        source_doc_id = f"telegram:{chat_id}" if chat_id is not None else "telegram:manual"
+        content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+        tracer = get_tracer(__name__)
+
+        async with self._session_factory() as session:
+            with tracer.start_as_current_span("assistant.create_dream.lookup_existing"):
+                result = await session.execute(
+                    select(DreamEntry).where(DreamEntry.content_hash == content_hash)
+                )
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                return CreatedDreamItem(
+                    id=existing.id,
+                    date=existing.date.isoformat() if existing.date is not None else None,
+                    title=existing.title,
+                    word_count=existing.word_count,
+                    source_doc_id=existing.source_doc_id,
+                    created_at=existing.created_at.isoformat(),
+                    created=False,
+                )
+
+            dream = DreamEntry(
+                id=uuid.uuid4(),
+                source_doc_id=source_doc_id,
+                date=dream_date,
+                title=resolved_title,
+                raw_text=normalized_text,
+                word_count=len(normalized_text.split()),
+                content_hash=content_hash,
+                segmentation_confidence="low",
+                parser_profile="telegram",
+                parse_warnings=[],
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(dream)
+            with tracer.start_as_current_span("assistant.create_dream.commit"):
+                await session.commit()
+
+        await self._analysis_service.analyse_dream_with_session_factory(
+            dream.id,
+            self._session_factory,
+        )
+        await self._index_dream_callable(dream.id)
+
+        if get_settings().MOTIF_INDUCTION_ENABLED:
+            async with self._session_factory() as session:
+                dream_entry = await session.get(DreamEntry, dream.id)
+                if dream_entry is not None:
+                    await self._motif_service.run(dream_entry, session)
+                    await session.commit()
+
+        return CreatedDreamItem(
+            id=dream.id,
+            date=dream.date.isoformat() if dream.date is not None else None,
+            title=dream.title,
+            word_count=dream.word_count,
+            source_doc_id=dream.source_doc_id,
+            created_at=dream.created_at.isoformat(),
+            created=True,
+        )
+
     async def get_theme_history(self, dream_id: uuid.UUID) -> list[ThemeHistoryEntry]:
         async with self._session_factory() as session:
             _, versions = await self._versioning_service.list_theme_history(
@@ -267,6 +360,14 @@ class AssistantFacade:
         job_id = uuid.uuid4()
         await self._sync_job_enqueuer.enqueue_ingest(job_id=job_id, doc_id=doc_id)
         return SyncJobRef(job_id=job_id, status="queued", doc_id=doc_id)
+
+    def _build_index_dream_callable(self) -> Callable[[uuid.UUID], Awaitable[int]]:
+        async def _index(dream_id: uuid.UUID) -> int:
+            from app.workers.index import index_dream
+
+            return await index_dream({"session_factory": self._session_factory}, dream_id=dream_id)
+
+        return _index
 
 
 def _search_result_item(block: EvidenceBlock) -> SearchResultItem:
@@ -332,6 +433,14 @@ def _dream_summary_item(dream: DreamEntry) -> DreamSummary:
         source_doc_id=dream.source_doc_id,
         created_at=dream.created_at.isoformat(),
     )
+
+
+def _resolve_dream_title(raw_text: str, *, title: str | None) -> str:
+    if title is not None and title.strip():
+        return title.strip()
+
+    first_line = next((line.strip() for line in raw_text.splitlines() if line.strip()), raw_text)
+    return first_line[:120]
 
 
 def _recurring_pattern_item(pattern: RecurringPattern) -> RecurringPatternItem:

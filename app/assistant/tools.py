@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import uuid
 from typing import Any
 
@@ -22,6 +23,33 @@ _BASE_TOOLS: list[dict[str, Any]] = [
                 },
             },
             "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "create_dream",
+        "description": (
+            "Create a new dream entry in the archive from user-provided text. "
+            "Use only when the user explicitly asks to save, record, or add a new dream. "
+            "Never use for editing, rewriting, or mutating an existing dream."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "raw_text": {
+                    "type": "string",
+                    "description": "Full dream text to store as a new archive entry.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Optional short title for the dream entry.",
+                },
+                "date": {
+                    "type": "string",
+                    "description": "Optional dream date in ISO format YYYY-MM-DD.",
+                },
+            },
+            "required": ["raw_text"],
             "additionalProperties": False,
         },
     },
@@ -175,6 +203,9 @@ async def execute_tool(
     tool_name: str,
     tool_input: dict[str, Any],
     facade: AssistantFacade,
+    *,
+    chat_id: int | None = None,
+    request_text: str | None = None,
 ) -> str:
     if tool_name == "search_dreams":
         query = str(tool_input.get("query", "")).strip()
@@ -192,6 +223,33 @@ async def execute_tool(
                 f"- [{date_label}] (score={item.relevance_score:.2f}) {item.chunk_text[:200]}"
             )
         return "\n".join(lines)
+
+    if tool_name == "create_dream":
+        if not _is_explicit_create_request(request_text):
+            return "Dream creation requires an explicit user request to save a new dream entry."
+        raw_text = str(tool_input.get("raw_text", "")).strip()
+        if not raw_text:
+            return "raw_text is required to create a dream entry."
+        title = str(tool_input.get("title", "")).strip() or None
+        raw_date = str(tool_input.get("date", "")).strip()
+        dream_date = None
+        if raw_date:
+            try:
+                dream_date = date.fromisoformat(raw_date)
+            except ValueError:
+                return f"Invalid date: {raw_date!r}. Expected YYYY-MM-DD."
+
+        created = await facade.create_dream(
+            raw_text,
+            title=title,
+            dream_date=dream_date,
+            chat_id=chat_id,
+        )
+        status = "saved" if created.created else "already existed"
+        return (
+            f"Dream {status}: {created.id} | {created.title} | "
+            f"date={created.date or 'unknown'} | source={created.source_doc_id}"
+        )
 
     if tool_name == "get_dream":
         raw_id = str(tool_input.get("dream_id", "")).strip()
@@ -301,12 +359,12 @@ async def execute_tool(
             return "No external parallels were returned for this motif."
         lines = ["External motif parallels (speculative, not verified):"]
         for parallel in parallels:
-            confidence = parallel.get("confidence") or "uncertain"
+            overlap_degree = parallel.get("overlap_degree") or "uncertain"
             label = parallel.get("label") or "unlabeled parallel"
             domain = parallel.get("domain") or "unknown domain"
             source_url = parallel.get("source_url") or "no source URL"
             retrieved_at = parallel.get("retrieved_at") or "unknown retrieval time"
-            lines.append(f"- [{confidence}] {label} ({domain})")
+            lines.append(f"- [{overlap_degree}] {label} ({domain})")
             relevance_note = parallel.get("relevance_note")
             if relevance_note:
                 lines.append(f"  Note: {relevance_note}")
@@ -314,3 +372,26 @@ async def execute_tool(
         return "\n".join(lines)
 
     return f"Unknown tool: {tool_name}"
+
+
+def _is_explicit_create_request(request_text: str | None) -> bool:
+    if not request_text:
+        return False
+
+    text = request_text.casefold()
+    phrases = (
+        "save this dream",
+        "record this dream",
+        "add this dream",
+        "create a new dream",
+        "save a new dream",
+        "add a new dream",
+        "запиши сон",
+        "записать сон",
+        "сохрани сон",
+        "сохранить сон",
+        "добавь сон",
+        "добавить сон",
+        "новый сон",
+    )
+    return any(phrase in text for phrase in phrases)

@@ -57,7 +57,10 @@ def test_builds_service_account_credentials_when_configured() -> None:
 
     mocked_loader.assert_called_once_with(
         "/tmp/service-account.json",
-        scopes=["https://www.googleapis.com/auth/documents.readonly"],
+        scopes=[
+            "https://www.googleapis.com/auth/documents.readonly",
+            "https://www.googleapis.com/auth/drive.readonly",
+        ],
     )
 
 
@@ -132,3 +135,24 @@ def test_no_credentials_in_logs(capsys: pytest.CaptureFixture[str]) -> None:
     assert settings.GOOGLE_CLIENT_ID not in output
     assert settings.GOOGLE_CLIENT_SECRET not in output
     assert settings.GOOGLE_REFRESH_TOKEN not in output
+
+
+def test_fetch_document_metadata_returns_lightweight_change_marker() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.files.return_value.get.return_value.execute.return_value = {
+        "id": "doc-id-abc",
+        "name": "Dream Journal",
+        "modifiedTime": "2026-04-21T12:34:56Z",
+        "version": "17",
+        "headRevisionId": "rev-17",
+    }
+
+    with patch.object(client, "_build_drive_service", return_value=mocked_service):
+        metadata = client.fetch_document_metadata()
+
+    assert metadata.document_id == "doc-id-abc"
+    assert metadata.title == "Dream Journal"
+    assert metadata.version == "17"
+    assert metadata.head_revision_id == "rev-17"
+    assert metadata.change_marker == "rev-17"

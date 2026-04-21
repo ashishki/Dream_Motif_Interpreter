@@ -103,6 +103,8 @@ tests/           unit + integration (305 passed, 9 skipped)
 | `TELEGRAM_ALLOWED_CHAT_ID` | Allowlist chat_id | — |
 | `API_KEY` | Backend REST auth | — |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Путь к service-account JSON для Google Docs | `""` |
+| `AUTO_SYNC_ENABLED` | Включить лёгкий metadata-ping и автосинк из Google Docs | `false` |
+| `AUTO_SYNC_INTERVAL_SECONDS` | Интервал metadata-ping перед автосинком | `300` |
 | `MOTIF_INDUCTION_ENABLED` | Мотивная индукция | `false` |
 | `RESEARCH_AUGMENTATION_ENABLED` | Внешний поиск параллелей | `false` |
 | `RESEARCH_API_KEY` | Ключ внешнего поиска | `""` |
@@ -114,6 +116,15 @@ tests/           unit + integration (305 passed, 9 skipped)
 ```bash
 alembic upgrade head
 python3 -m app.telegram
+python3 -m app.auto_sync
+```
+
+**Локальный запуск в фоне:**
+
+```bash
+./scripts/start_local_stack.sh
+./scripts/status_local_stack.sh
+./scripts/stop_local_stack.sh
 ```
 
 **Docker Compose:**

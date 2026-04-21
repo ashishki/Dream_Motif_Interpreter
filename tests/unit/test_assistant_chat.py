@@ -343,6 +343,7 @@ def test_build_tools_base_tools_always_present() -> None:
         tool_names = [t["name"] for t in tools]
         for name in (
             "search_dreams",
+            "create_dream",
             "get_dream",
             "list_recent_dreams",
             "get_patterns",
@@ -366,3 +367,19 @@ def test_build_tools_includes_research_motif_parallels_when_flag_is_true() -> No
     tools = build_tools(motif_induction_enabled=False, research_enabled=True)
     tool_names = [t["name"] for t in tools]
     assert "research_motif_parallels" in tool_names
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_create_dream_requires_explicit_user_request() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+
+    result = await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": "I crossed a black river at night."},
+        facade,
+        chat_id=42,
+        request_text="what does this river mean?",
+    )
+
+    assert "explicit user request" in result.lower()
+    facade.create_dream.assert_not_awaited()

@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from app.shared.config import Settings, get_settings
 from app.shared.tracing import get_logger, get_tracer
 
 GOOGLE_DOCS_READONLY_SCOPE = "https://www.googleapis.com/auth/documents.readonly"
+GOOGLE_DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 GOOGLE_DOCS_SOURCE_TYPE = "google_doc"
 
@@ -23,6 +25,25 @@ logger = get_logger(__name__)
 
 class GDocsAuthError(Exception):
     """Raised when Google Docs authentication fails."""
+
+
+@dataclass(frozen=True)
+class GoogleDocMetadata:
+    document_id: str
+    title: str
+    updated_at: datetime | None
+    version: str | None
+    head_revision_id: str | None
+
+    @property
+    def change_marker(self) -> str:
+        if self.head_revision_id:
+            return self.head_revision_id
+        if self.version:
+            return self.version
+        if self.updated_at is not None:
+            return self.updated_at.isoformat()
+        return self.document_id
 
 
 class GDocsClient:
@@ -71,9 +92,55 @@ class GDocsClient:
 
             return document
 
+    def fetch_document_metadata(self, document_id: str | None = None) -> GoogleDocMetadata:
+        resolved_document_id = document_id or self._settings.GOOGLE_DOC_ID
+        with self._tracer.start_as_current_span("gdocs.fetch_document_metadata"):
+            logger.info("Fetching Google Docs metadata")
+
+            try:
+                with self._tracer.start_as_current_span("gdocs.build_drive_service"):
+                    service = self._build_drive_service()
+                with self._tracer.start_as_current_span("gdocs.files.get"):
+                    payload = (
+                        service.files()
+                        .get(
+                            fileId=resolved_document_id,
+                            fields="id,name,modifiedTime,version,headRevisionId",
+                        )
+                        .execute()
+                    )
+            except RefreshError as exc:
+                logger.warning("Google Docs authentication failed during token refresh")
+                raise GDocsAuthError("Google Docs authentication failed") from exc
+            except HttpError as exc:
+                status_code = _get_status_code(exc)
+                if status_code in {401, 403}:
+                    logger.warning(
+                        "Google Docs authentication failed with HTTP status",
+                        status_code=status_code,
+                    )
+                    raise GDocsAuthError("Google Docs authentication failed") from exc
+                logger.error(
+                    "Google Docs metadata request failed with HTTP status",
+                    status_code=status_code,
+                )
+                raise
+
+        return GoogleDocMetadata(
+            document_id=str(payload.get("id") or resolved_document_id),
+            title=str(payload.get("name") or resolved_document_id),
+            updated_at=_parse_updated_at(payload),
+            version=_clean_optional_str(payload.get("version")),
+            head_revision_id=_clean_optional_str(payload.get("headRevisionId")),
+        )
+
     def _build_docs_service(self) -> Any:
         credentials = self._build_credentials()
         return build("docs", "v1", credentials=credentials, cache_discovery=False)
+
+    def _build_drive_service(self) -> Any:
+        credentials = self._build_credentials()
+        return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
     def _build_credentials(self) -> Credentials:
         service_account_file = self._settings.GOOGLE_SERVICE_ACCOUNT_FILE.strip()
@@ -87,7 +154,7 @@ class GDocsClient:
                 token_uri=GOOGLE_TOKEN_URI,
                 client_id=self._settings.GOOGLE_CLIENT_ID,
                 client_secret=self._settings.GOOGLE_CLIENT_SECRET,
-                scopes=[GOOGLE_DOCS_READONLY_SCOPE],
+                scopes=[GOOGLE_DOCS_READONLY_SCOPE, GOOGLE_DRIVE_READONLY_SCOPE],
             )
             credentials.refresh(Request())
             return credentials
@@ -100,7 +167,7 @@ class GDocsClient:
 
             return ServiceAccountCredentials.from_service_account_file(
                 str(path),
-                scopes=[GOOGLE_DOCS_READONLY_SCOPE],
+                scopes=[GOOGLE_DOCS_READONLY_SCOPE, GOOGLE_DRIVE_READONLY_SCOPE],
             )
 
 
@@ -201,3 +268,10 @@ def _get_status_code(exc: HttpError) -> int | None:
         return int(status) if status is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _clean_optional_str(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None

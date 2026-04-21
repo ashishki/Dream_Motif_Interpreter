@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
 from app.assistant.facade import (
     AssistantFacade,
+    CreatedDreamItem,
     DreamDetail,
     MotifInductionItem,
     SearchResult,
@@ -26,9 +27,10 @@ class _FakeScalars:
 
 
 class _FakeResult:
-    def __init__(self, *, rows=None, scalars=None):
+    def __init__(self, *, rows=None, scalars=None, scalar=None):
         self._rows = list(rows or [])
         self._scalars = list(scalars or [])
+        self._scalar = scalar
 
     def all(self):
         return list(self._rows)
@@ -36,11 +38,15 @@ class _FakeResult:
     def scalars(self):
         return _FakeScalars(self._scalars)
 
+    def scalar_one_or_none(self):
+        return self._scalar
+
 
 class _FakeSession:
     def __init__(self, *, get_result=None, execute_results=None):
         self._get_result = get_result
         self._execute_results = list(execute_results or [])
+        self.add = MagicMock()
         self.commit = AsyncMock()
         self.refresh = AsyncMock()
 
@@ -186,6 +192,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "get_dream",
         "list_recent_dreams",
         "get_patterns",
+        "create_dream",
         "get_theme_history",
         "trigger_sync",
         "get_dream_motifs",
@@ -222,6 +229,82 @@ async def test_trigger_sync_enqueues_job_and_returns_ref() -> None:
         job_id=result.job_id,
         doc_id="doc-789",
     )
+
+
+@pytest.mark.asyncio
+async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+    )
+
+    result = await facade.create_dream(
+        "I was walking through a dark river valley.",
+        title="River valley",
+        dream_date=date(2026, 4, 21),
+        chat_id=42,
+    )
+
+    assert isinstance(result, CreatedDreamItem)
+    assert result.created is True
+    assert result.title == "River valley"
+    assert result.date == "2026-04-21"
+    assert result.source_doc_id == "telegram:42"
+    session.add.assert_called_once()
+    added = session.add.call_args[0][0]
+    assert added.raw_text == "I was walking through a dark river valley."
+    assert added.word_count == 8
+    assert added.parser_profile == "telegram"
+    session.commit.assert_awaited_once()
+    analysis_service.analyse_dream_with_session_factory.assert_awaited_once_with(
+        result.id,
+        facade._session_factory,
+    )
+    index_dream_callable.assert_awaited_once_with(result.id)
+
+
+@pytest.mark.asyncio
+async def test_create_dream_returns_existing_entry_without_rerunning_pipeline() -> None:
+    existing_id = uuid4()
+    created_at = datetime(2026, 4, 21, tzinfo=timezone.utc)
+    existing = SimpleNamespace(
+        id=existing_id,
+        date=date(2026, 4, 20),
+        title="Existing dream",
+        word_count=5,
+        source_doc_id="doc-123",
+        created_at=created_at,
+    )
+    session = _FakeSession(execute_results=[_FakeResult(scalar=existing)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+    )
+
+    result = await facade.create_dream("Existing dream text", chat_id=7)
+
+    assert result == CreatedDreamItem(
+        id=existing_id,
+        date="2026-04-20",
+        title="Existing dream",
+        word_count=5,
+        source_doc_id="doc-123",
+        created_at=created_at.isoformat(),
+        created=False,
+    )
+    session.add.assert_not_called()
+    session.commit.assert_not_awaited()
+    analysis_service.analyse_dream_with_session_factory.assert_not_awaited()
+    index_dream_callable.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -277,7 +360,7 @@ async def test_research_motif_parallels_returns_list_of_dicts() -> None:
                 "label": "river as threshold",
                 "source_url": "https://example.com/river",
                 "relevance_note": "Both frame the river as a liminal crossing.",
-                "confidence": "plausible",
+                "overlap_degree": "partial",
             }
         ],
         sources=[
@@ -309,7 +392,7 @@ async def test_research_motif_parallels_returns_list_of_dicts() -> None:
             "source_url": "https://example.com/river",
             "retrieved_at": "2026-04-17T10:00:00+00:00",
             "relevance_note": "Both frame the river as a liminal crossing.",
-            "confidence": "plausible",
+            "overlap_degree": "partial",
         }
     ]
     assert all(isinstance(item, dict) for item in result)

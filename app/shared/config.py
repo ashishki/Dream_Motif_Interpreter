@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     GOOGLE_DOC_ID: str
     SECRET_KEY: str
     ENV: str
+    AUTO_SYNC_ENABLED: bool = False
+    AUTO_SYNC_INTERVAL_SECONDS: int = 300
 
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ALLOWED_CHAT_ID: int = 0

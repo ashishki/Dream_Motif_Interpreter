@@ -8,8 +8,8 @@ from app.llm.client import AnthropicLLMClient
 from app.shared.tracing import get_meter, get_tracer
 
 
-AllowedConfidence = Literal["speculative", "plausible", "uncertain"]
-_ALLOWED_CONFIDENCE_LEVELS = {"speculative", "plausible", "uncertain"}
+AllowedOverlapDegree = Literal["full", "partial", "structural"]
+_ALLOWED_OVERLAP_DEGREES = {"full", "partial", "structural"}
 
 
 class ResearchParallel(TypedDict):
@@ -17,7 +17,7 @@ class ResearchParallel(TypedDict):
     label: str
     source_url: str
     relevance_note: str
-    confidence: AllowedConfidence
+    overlap_degree: AllowedOverlapDegree
 
 
 class ResearchSynthesisError(Exception):
@@ -68,16 +68,16 @@ class ResearchSynthesizer:
 
     def _build_system_prompt(self) -> str:
         return (
-            "You extract structural parallels and suggestions from external source excerpts.\n"
+            "You extract structural parallels from external source excerpts for a dream motif.\n"
             "Return JSON only using the schema "
             '{"parallels":[{"domain":"...","label":"...","source_url":"...",'
-            '"relevance_note":"...","confidence":"speculative|plausible|uncertain"}]}.\n'
-            "Use only the terms parallels and suggestions for this task.\n"
-            "Confidence must be one of: speculative, plausible, uncertain.\n"
-            "Do not use confirmed, high, high confidence, verified, or established "
-            "anywhere in the output.\n"
-            "Identify only tentative structural parallels suggested by the source material. "
-            "Do not claim certainty or verification.\n"
+            '"relevance_note":"...","overlap_degree":"full|partial|structural"}]}.\n'
+            "overlap_degree measures how many elements of the dream motif are present in the parallel:\n"
+            "  full     — all or nearly all key elements of the motif match the source material\n"
+            "  partial  — some elements match, others are absent or substituted\n"
+            "  structural — only the abstract structural pattern matches; specific elements differ\n"
+            "Identify only tentative parallels suggested by the source material. "
+            "Do not claim certainty or interpretation.\n"
             "Return only the JSON object. No commentary."
         )
 
@@ -108,13 +108,13 @@ class ResearchSynthesizer:
             label = str(item.get("label", "")).strip()
             source_url = str(item.get("source_url", "")).strip()
             relevance_note = str(item.get("relevance_note", "")).strip()
-            confidence = str(item.get("confidence", "")).strip().lower()
+            overlap_degree = str(item.get("overlap_degree", "")).strip().lower()
 
             if not domain or not label or not source_url or not relevance_note:
                 raise ResearchSynthesisError("Parallel fields must be non-empty")
-            if confidence not in _ALLOWED_CONFIDENCE_LEVELS:
+            if overlap_degree not in _ALLOWED_OVERLAP_DEGREES:
                 raise ResearchSynthesisError(
-                    "Parallel confidence must be one of: speculative, plausible, uncertain"
+                    "Parallel overlap_degree must be one of: full, partial, structural"
                 )
 
             parallels.append(
@@ -123,7 +123,7 @@ class ResearchSynthesizer:
                     label=label,
                     source_url=source_url,
                     relevance_note=relevance_note,
-                    confidence=confidence,  # type: ignore[arg-type]
+                    overlap_degree=overlap_degree,  # type: ignore[arg-type]
                 )
             )
 

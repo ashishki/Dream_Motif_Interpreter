@@ -29,7 +29,7 @@ class StubLLMClient:
         return self.response
 
 
-def _valid_response(confidence: str = "plausible") -> str:
+def _valid_response(overlap_degree: str = "partial") -> str:
     return json.dumps(
         {
             "parallels": [
@@ -38,7 +38,7 @@ def _valid_response(confidence: str = "plausible") -> str:
                     "label": "guarded threshold",
                     "source_url": "https://example.com/threshold",
                     "relevance_note": "The source suggests a blocked passage motif.",
-                    "confidence": confidence,
+                    "overlap_degree": overlap_degree,
                 }
             ]
         }
@@ -58,12 +58,10 @@ async def test_synthesize_returns_parallel_objects_with_required_keys() -> None:
         "label",
         "source_url",
         "relevance_note",
-        "confidence",
+        "overlap_degree",
     }
     assert "parallels" in client.last_system.lower()
-    assert "suggestions" in client.last_system.lower()
-    assert "findings" not in client.last_system.lower()
-    assert "results" not in client.last_system.lower()
+    assert "overlap_degree" in client.last_system.lower()
 
 
 @pytest.mark.asyncio
@@ -75,12 +73,12 @@ async def test_synthesize_raises_on_parse_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_confidence_values_are_restricted() -> None:
-    for confidence in ("speculative", "plausible", "uncertain"):
-        synthesizer = ResearchSynthesizer(llm_client=StubLLMClient(_valid_response(confidence)))
+async def test_overlap_degree_values_are_restricted() -> None:
+    for degree in ("full", "partial", "structural"):
+        synthesizer = ResearchSynthesizer(llm_client=StubLLMClient(_valid_response(degree)))
         parallels = await synthesizer.synthesize("blocked ascent", SOURCES)
-        assert parallels[0]["confidence"] == confidence
+        assert parallels[0]["overlap_degree"] == degree
 
-    bad_synthesizer = ResearchSynthesizer(llm_client=StubLLMClient(_valid_response("verified")))
+    bad_synthesizer = ResearchSynthesizer(llm_client=StubLLMClient(_valid_response("speculative")))
     with pytest.raises(ResearchSynthesisError):
         await bad_synthesizer.synthesize("blocked ascent", SOURCES)

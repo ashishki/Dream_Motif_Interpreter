@@ -47,8 +47,6 @@ class ResearchService:
 
         if motif is None:
             raise ValueError(f"Motif {motif_id} not found")
-        if motif.status != "confirmed":
-            raise ValueError("Research can only run for confirmed motifs")
 
         search_query = await self._build_search_query(motif.label)
         sources = await self._retriever.retrieve(search_query)

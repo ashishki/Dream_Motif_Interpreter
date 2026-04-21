@@ -71,11 +71,8 @@ async def create_research_result(motif_id: uuid.UUID) -> ResearchResultResponse:
                 triggered_by="user",
             )
         except ValueError as exc:
-            error_message = str(exc)
-            if "not found" in error_message:
+            if "not found" in str(exc):
                 raise HTTPException(status_code=404, detail="Motif not found") from exc
-            if "confirmed motifs" in error_message:
-                raise HTTPException(status_code=409, detail=error_message) from exc
             raise
 
         with tracer.start_as_current_span("db.query.research.commit"):

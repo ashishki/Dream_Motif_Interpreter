@@ -123,3 +123,21 @@ jobs:
           RETRIEVAL_THRESHOLD: "0.35"
           MAX_INDEX_AGE_HOURS: "24"
         run: pytest -q --tb=short tests/
+
+      - name: Run retrieval eval
+        env:
+          DATABASE_URL: postgresql+asyncpg://dmi_test:dmi_test@localhost:5432/dmi_test
+          TEST_DATABASE_URL: postgresql+asyncpg://dmi_test:dmi_test@localhost:5432/dmi_test
+          REDIS_URL: redis://localhost:6379/0
+          ANTHROPIC_API_KEY: test-anthropic-key
+          OPENAI_API_KEY: test-openai-key
+          GOOGLE_CLIENT_ID: test-client-id
+          GOOGLE_CLIENT_SECRET: test-client-secret
+          GOOGLE_REFRESH_TOKEN: test-google-refresh-token
+          GOOGLE_DOC_ID: test-google-doc-id
+          SECRET_KEY: test-secret-key-32-bytes-minimum-xx
+          ENV: test
+          EMBEDDING_MODEL: text-embedding-3-small
+          RETRIEVAL_THRESHOLD: "0.35"
+          MAX_INDEX_AGE_HOURS: "24"
+        run: python scripts/eval.py --task-id CI --no-write-markdown

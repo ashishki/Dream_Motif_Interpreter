@@ -651,8 +651,18 @@ async def _reset_public_schema(engine: AsyncEngine) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-id", default=DEFAULT_TASK_ID, help="Task ID to tag this eval run")
+    parser.add_argument(
+        "--no-write-markdown",
+        action="store_true",
+        help="Run evaluation without modifying docs/retrieval_eval.md",
+    )
     args = parser.parse_args()
-    asyncio.run(run_evaluation(task_id=args.task_id))
+    asyncio.run(
+        run_evaluation(
+            task_id=args.task_id,
+            write_markdown=not args.no_write_markdown,
+        )
+    )
 
 
 if __name__ == "__main__":

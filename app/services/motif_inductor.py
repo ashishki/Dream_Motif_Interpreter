@@ -70,6 +70,7 @@ class MotifInductor:
             "imagery_indices is a list of zero-based indices into the provided "
             "imagery fragment list that support each motif.\n"
             "confidence must be one of: high, moderate, low.\n"
+            "Write all label and rationale values in Russian.\n"
             "Return only the JSON object. No commentary."
         )
 

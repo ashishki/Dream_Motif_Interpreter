@@ -4,7 +4,7 @@
 
 Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом и обратной связью.
 
-**Статус: Phases 1–11 complete · local setup checkpoint recorded**
+**Статус: Phases 1–11 complete · Phase 6 (universal ingestion) complete · 305 tests passing**
 
 ---
 
@@ -43,6 +43,14 @@
 - REST: `GET /motifs/{id}/research`, `POST /motifs/{id}/research`
 - Инструмент `research_motif_parallels` с обязательным подтверждением (при `RESEARCH_AUGMENTATION_ENABLED=true`)
 
+### Универсальный source intake (tasks.md Phase 6)
+- Source connector abstraction: `SourceDocument`, `SourceDocumentRef`, `GoogleDocsSourceConnector`
+- `NormalizedDocument` contract — сегментация принимает только нормализованный вход, не сырые SDK-ответы
+- Parser profiles: `default`, `dated_entries`, `heading_based` с авто-определением и явным override
+- Канонический staged pipeline: source connector → normalized document → parser profile → dream entry candidates → validated dream entries → embeddings/indexing
+- Идемпотентность по `external_id + content_hash`; embedding не запускается для не прошедших валидацию документов
+- Operator controls: явное назначение профиля на источник/клиента через env config; low-confidence warnings; folder intake
+
 ### Цикл обратной связи (Phase 11)
 - Reply на сообщение бота с `"4"` или `"5 Отлично"` → оценка + комментарий сохраняются
 - Fallback: одиночная цифра `1–5` без Telegram-reply тоже принимается
@@ -71,10 +79,9 @@ app/
   telegram/      bot runtime, handlers, voice download
   workers/       background jobs (ingest, indexing, transcription, cleanup)
 
-alembic/         schema migrations (001–011)
+alembic/         schema migrations (001–012)
 docs/            architecture, planning, runbooks, ADRs, user guide
-  tests/           unit + integration (295 collected locally via `.venv/bin/pytest
-                 --collect-only -q`)
+tests/           unit + integration (305 passed, 9 skipped)
 ```
 
 ---

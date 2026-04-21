@@ -1,18 +1,18 @@
 # CODEX_PROMPT.md
 
-Version: 1.39
-Date: 2026-04-18
-Phase: 11-fix
+Version: 1.40
+Date: 2026-04-21
+Phase: tasks.md Phase 6 complete
 
 ---
 
 ## Current State
 
-- **Phase:** 11 fix — Feedback Loop (WS-11.1–11.3 implemented; Fix Queue active; WS-11.4 deferred)
-- **Baseline:** 225 tests passing
+- **Phase:** tasks.md Phase 6 complete — Universal Source Intake (T21–T25 done)
+- **Baseline:** 305 tests passing, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-18 (FIX-10/FIX-11/FIX-12 applied and closed; Phase 11 complete; Fix Queue clear)
+- **Last updated:** 2026-04-21 (T21–T25 implemented; Phase 6 complete; Fix Queue clear)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -20,10 +20,10 @@ Phase: 11-fix
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 10 complete (WS-10.1–WS-10.5); Phase 11 WS-11.1–11.3 complete; WS-11.4 deferred (D-014)
-- **Current planning state:** Phase 11 complete; Fix Queue clear; Phase 12 (next phase) or maintenance next
-- **Latest completed implementation task:** WS-11.3 — GET /feedback API Route
-- **Current baseline:** 225 unit tests passing
+- **Phases completed:** Phase 1 through Phase 11 complete; tasks.md Phase 6 (T21–T25, Universal Source Intake) complete
+- **Current planning state:** Phase 6 complete; Fix Queue clear; next — live ingestion verification or new phase
+- **Latest completed implementation task:** T25 — Operator Controls, Reviewability, Folder Intake
+- **Current baseline:** 305 tests passing, 9 skipped
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -33,7 +33,7 @@ Phase: 11-fix
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
-- **Active task graph:** `docs/tasks_phase11.md`
+- **Active task graph:** `docs/tasks.md` (Phase 6: T21–T25 complete)
 - **Previous task graph (Phase 10):** `docs/tasks_phase10.md`
 - **Previous task graph (Phase 9):** `docs/tasks_phase9.md`
 - **Previous task graph (Phases 6–8):** `docs/tasks_phase6.md`
@@ -44,15 +44,15 @@ Phase: 11-fix
 
 ## Next Task
 
-**Phase 12 Planning — next phase**
+**tasks.md Phase 6 complete — T21–T25 all done**
 
-FIX-10, FIX-11, FIX-12 are CLOSED (applied 2026-04-18). Fix Queue is clear.
-Phase 11 (Feedback Loop) fully complete. WS-11.4 deferred per D-014.
+Fix Queue is clear. Live GDocsClient verified (doc "Сны", 360 paragraphs, heading-based format).
+Universal ingestion pipeline in place. Next: live end-to-end ingestion run or new phase planning.
 
 Context refs:
-- `docs/PHASE_PLAN.md` — check next phase scope
-- `docs/CODEX_PROMPT.md §Fix Queue` — confirm all closed
-- `docs/tasks_phase11.md` — Phase 11 complete reference
+- `docs/tasks.md` — Phase 6 task graph (T21–T25 complete)
+- `docs/PHASE_PLAN.md` — next phase scope
+- `docs/IMPLEMENTATION_JOURNAL.md` — Phase 6 journal entry
 
 ---
 

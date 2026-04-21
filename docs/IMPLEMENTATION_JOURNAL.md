@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.0
-Last updated: 2026-04-14
+Version: 1.1
+Last updated: 2026-04-21
 Status: append-only
 
 ---
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-04-21 — tasks.md Phase 6 (T21–T25) — Universal Source Intake Pipeline
+
+- Scope: `app/retrieval/types.py`, `app/retrieval/ingestion.py`, `app/services/gdocs_client.py`, `app/services/segmentation.py`, `app/shared/config.py`, `app/workers/ingest.py`, `app/workers/index.py`, `app/models/dream.py`, `alembic/versions/012_add_parser_profile_fields.py`, 9 new test files
+- Why this work happened: live Google Docs verification revealed a single doc "Сны" (heading-based, 360 paragraphs); future intake may involve folders and multiple formats — canonical multi-stage pipeline required before ingestion work continues
+- Decisions applied: spec.md §12 canonical pipeline enforced — source connector → normalized document → parser profile → dream entry candidates → validated dream entries → embeddings/indexing; no shortcut from connector to embedding allowed
+- Evidence collected: T21–T25 all AC PASS; light review PASS each task; 286 → 305 tests passing; ruff clean; live GDocsClient.fetch_document() verified against doc id `1mq5mwCH_VoFsmdBj4V0MeygjqDjjPxEi-IOO1rHIxHs`
+- Follow-ups: run live end-to-end ingestion (sync → segment → embed → index) against the real doc; verify heading_based profile correctly segments "Сны" entries; check Alembic migration 012 applies cleanly
+- Notes for next agent: parser profiles are deterministic (no LLM); heading_based profile is the correct choice for "Сны"; operator profile can be set via `OPERATOR_PARSER_PROFILES` env var; idempotency guard uses `external_id + content_hash`
 
 ### 2026-04-15 — P8-T02 — Controlled Evaluation of Chat Curation
 

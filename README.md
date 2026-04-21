@@ -4,7 +4,7 @@
 
 Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом и обратной связью.
 
-**Статус: Phases 1–11 complete · 286 тестов**
+**Статус: Phases 1–11 complete · local setup checkpoint recorded**
 
 ---
 
@@ -73,7 +73,8 @@ app/
 
 alembic/         schema migrations (001–011)
 docs/            architecture, planning, runbooks, ADRs, user guide
-tests/           unit + integration (276 passing)
+  tests/           unit + integration (295 collected locally via `.venv/bin/pytest
+                 --collect-only -q`)
 ```
 
 ---
@@ -81,7 +82,7 @@ tests/           unit + integration (276 passing)
 ## Setup
 
 **Требования:**
-- Python 3.11+
+- Python 3.10+ (`ruff` target: py311; 3.11 preferred for new local environments)
 - PostgreSQL 16 с `pgvector`
 - Redis
 
@@ -94,6 +95,7 @@ tests/           unit + integration (276 passing)
 | `TELEGRAM_BOT_TOKEN` | Telegram bot | — |
 | `TELEGRAM_ALLOWED_CHAT_ID` | Allowlist chat_id | — |
 | `API_KEY` | Backend REST auth | — |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Путь к service-account JSON для Google Docs | `""` |
 | `MOTIF_INDUCTION_ENABLED` | Мотивная индукция | `false` |
 | `RESEARCH_AUGMENTATION_ENABLED` | Внешний поиск параллелей | `false` |
 | `RESEARCH_API_KEY` | Ключ внешнего поиска | `""` |
@@ -112,6 +114,27 @@ python3 -m app.telegram
 ```bash
 docker compose up
 ```
+
+## Local Checkpoint
+
+По состоянию на 2026-04-20/21 локальная установка доведена до рабочего чекпоинта:
+
+- `.venv` создан, зависимости установлены
+- PostgreSQL доступен на `127.0.0.1:5433`, Redis на `127.0.0.1:6379`
+- БД `dream_motif` создана, `alembic upgrade head` проходит
+- `GET /health` возвращал `{"status":"ok","index_last_updated":null}`
+- Google Docs auth в коде поддерживает и OAuth env flow, и service-account file через `GOOGLE_SERVICE_ACCOUNT_FILE`
+
+Локальный тестовый чекпоинт:
+
+- подтвержденно проходят `tests/unit/test_config.py` (`8 passed`) и `tests/unit/test_gdocs_client.py` (`7 passed`)
+- `.venv/bin/pytest --collect-only -q` теперь успешно собирает `295` тестов
+
+Следующий практический шаг:
+
+- задать реальный `GOOGLE_DOC_ID`
+- проверить живой `GDocsClient.fetch_document()`
+- после живой проверки Google Docs перейти к полному `pytest` прогону внутри `.venv`
 
 ---
 

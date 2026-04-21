@@ -1,6 +1,6 @@
 # Environment and Configuration
 
-Last updated: 2026-04-15
+Last updated: 2026-04-21
 
 ## 1. Current Backend Variables
 
@@ -14,6 +14,7 @@ OPENAI_API_KEY=...
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REFRESH_TOKEN=...
+GOOGLE_SERVICE_ACCOUNT_FILE=
 GOOGLE_DOC_ID=...
 SECRET_KEY=...
 ENV=development
@@ -67,22 +68,28 @@ Deferred for later phases:
 
 ### Current code path
 
-The current codebase expects Google Docs access through environment-driven OAuth-style credentials:
+The current codebase supports two Google Docs credential paths:
+
+1. OAuth-style env credentials:
 
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_REFRESH_TOKEN`
 - `GOOGLE_DOC_ID`
 
-### Operational note for planned work
+2. Service-account JSON file:
 
-If the operator already has a service-account JSON credential file and the target Google Doc has been shared with that service-account email, keep that credential available for implementation.
+- `GOOGLE_SERVICE_ACCOUNT_FILE`
+- `GOOGLE_DOC_ID`
 
-Important:
+Resolution order in code:
 
-- service-account JSON auth is not yet the documented current code path
-- do not describe it as implemented unless the code is changed to support it
-- if implementation switches to service-account auth, document that change explicitly and update deployment instructions accordingly
+- if `GOOGLE_SERVICE_ACCOUNT_FILE` is set, `GDocsClient` loads service-account credentials from that file
+- otherwise it falls back to the OAuth refresh-token flow
+
+### Operational note
+
+For local private setup, service-account auth is the simpler path if the Google Doc has already been shared with the service-account email.
 
 ## 4. Secret Handling Rules
 
@@ -117,10 +124,9 @@ See [ADR-010](adr/ADR-010-feature-flag-gating.md) for the rationale behind defau
 
 ## 7. Config Decision Notes
 
-Must be finalized during implementation:
+Still worth normalizing operationally:
 
 - polling vs webhook mode
 - transcription provider config
 - media retention settings
-- whether Google Docs auth remains OAuth-env based or moves to service-account JSON
 - external search provider selection for Phase 10 (`RESEARCH_API_KEY`)

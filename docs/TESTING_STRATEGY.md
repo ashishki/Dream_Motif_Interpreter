@@ -1,6 +1,6 @@
 # Testing Strategy
 
-Last updated: 2026-04-14
+Last updated: 2026-04-21
 
 ## 1. Current Testing Posture
 
@@ -11,8 +11,21 @@ Dream Motif Interpreter already has a stronger backend testing posture than many
 - migration tests
 - retrieval tests
 - end-to-end seeded backend flow tests
+- Telegram bot tests
+- voice pipeline tests
+- motif/research/feedback tests
 
 This should remain a project strength during Phase 6+.
+
+Current local checkpoint:
+
+- targeted setup-sensitive tests passed: `tests/unit/test_config.py` (`8 passed`), `tests/unit/test_gdocs_client.py` (`7 passed`)
+- `.venv/bin/pytest --collect-only -q` currently reports `295 tests collected`
+
+Interpretation:
+
+- installation is far enough along to validate runtime services and targeted tests
+- clean full collect baseline has been restored; the next testing task is a real full-suite run inside `.venv`
 
 ## 2. Phase 6 Test Expansion
 
@@ -65,7 +78,18 @@ Highest-priority new tests:
 - session state survives restart
 - voice jobs do not leak media files indefinitely
 
-## 6. CI Implication
+## 6. Current Testing Stop Point
+
+The project is currently stopped at this practical boundary:
+
+- local DB/Redis/app health checks have been validated
+- targeted config and Google Docs client tests pass
+- full-suite collection is green at the collect stage
+- live Google Docs fetch with a real `GOOGLE_DOC_ID` still needs to be validated after credentials are finalized
+
+If the next pass reveals only isolated defects, treat them as a maintenance/fix queue rather than inventing a new product phase.
+
+## 7. CI Implication
 
 If the Telegram runtime is added, CI should evolve to cover:
 

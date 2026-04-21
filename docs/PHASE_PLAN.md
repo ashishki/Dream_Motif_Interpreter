@@ -1,9 +1,9 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 2.0
-Last updated: 2026-04-15 (Phase 8 complete — all phases 1–8 done)
+Version: 2.1
+Last updated: 2026-04-21 (Phases 1–11 complete; local setup/testing checkpoint recorded)
 
-## 1. Current Status: Phases 1–8 Complete
+## 1. Current Status: Phases 1–11 Complete
 
 **Phases 1–5** — Backend platform complete:
 
@@ -23,10 +23,21 @@ Last updated: 2026-04-15 (Phase 8 complete — all phases 1–8 done)
 - runbooks and operational hardening
 - all open decisions resolved
 
+**Phases 9–11** — Motif, research, and feedback layers complete:
+
+- open-vocabulary motif induction with confirmation workflow
+- external research augmentation behind explicit confirmation + feature flag
+- Telegram feedback capture and feedback context injection into assistant prompts
+- related migrations `009`–`011` present in the schema chain
+- implementation-level fix queue from Phases 10–11 closed in prior commits
+
 Execution graph:
 
 - [docs/tasks_phase6.md](tasks_phase6.md) — Phase 6–8 active graph
 - [docs/tasks.md](tasks.md) — historical Phase 1–5 graph
+- [docs/tasks_phase9.md](tasks_phase9.md) — historical Phase 9 graph
+- [docs/tasks_phase10.md](tasks_phase10.md) — historical Phase 10 graph
+- [docs/tasks_phase11.md](tasks_phase11.md) — historical Phase 11 graph
 
 ## 2. Planning Principle
 
@@ -175,10 +186,14 @@ Voice messages work through async transcription and the same assistant path.
 
 Deployment docs, env docs, runbooks, and tests cover the Telegram-enabled stack.
 
-## 8. Open Items
+## 8. Current Checkpoint and Next Start Point
 
-- Google Docs auth: current code path uses OAuth env vars. Service-account JSON is not yet wired; treat as a future implementation decision if adopted.
+- Local setup checkpoint is complete: `.venv` exists, local Postgres/Redis are reachable, Alembic is at head, and `/health` was verified.
+- Google Docs auth no longer depends only on OAuth env vars; the code now supports `GOOGLE_SERVICE_ACCOUNT_FILE` as an alternative credential path.
+- The next runtime checkpoint is a live Google Docs fetch with a real `GOOGLE_DOC_ID`.
+- The next testing checkpoint is a full pytest run inside `.venv`; local collection now succeeds with `295` tests.
 - Chat-driven curation mutations remain deferred. See [Telegram Interaction Model §11](TELEGRAM_INTERACTION_MODEL.md) for preconditions required before enabling.
+- Do not open "Phase 12" preemptively. Start a maintenance/fix phase only if the live ingestion verification or full test pass exposes concrete defects worth batching.
 
 ## 9. Phase 9 — Motif Abstraction and Induction
 
@@ -229,7 +244,7 @@ Given a dream entry, inductively derive higher-order abstract motifs from concre
 - assistant can present motifs with correct confidence framing
 - feature flag disables the pipeline completely when set to `false`
 
-### Status: Planned
+### Status: Complete
 
 See [docs/tasks_phase9.md](tasks_phase9.md) for the detailed task graph.
 See [docs/MOTIF_ABSTRACTION.md](MOTIF_ABSTRACTION.md) for conceptual documentation.
@@ -275,7 +290,7 @@ On demand, search for mythology, folklore, cultural, and taboo parallels to conf
 - confidence vocabulary is limited to `speculative`, `plausible`, `uncertain`
 - feature flag disables the tool completely when set to `false`
 
-### Status: Planned
+### Status: Complete
 
 See [docs/RESEARCH_AUGMENTATION.md](RESEARCH_AUGMENTATION.md) for full design documentation.
 See [docs/adr/ADR-009-research-trust-boundary.md](adr/ADR-009-research-trust-boundary.md).
@@ -316,6 +331,6 @@ Allow the user to rate assistant responses on a 1–5 scale with an optional com
 - ratings are retrievable via `GET /feedback`
 - the system does not alter model behavior based on ratings
 
-### Status: Planned
+### Status: Complete
 
 See [docs/FEEDBACK_LOOP.md](FEEDBACK_LOOP.md) for full design documentation.

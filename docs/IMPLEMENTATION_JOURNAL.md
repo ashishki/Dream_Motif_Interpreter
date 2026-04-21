@@ -283,3 +283,12 @@ Status: append-only
 - Evidence collected: `.venv` created and dependencies installed; local Postgres reachable on `127.0.0.1:5433`; Redis reachable on `127.0.0.1:6379`; application DB `dream_motif` created; Alembic upgraded to head; `GET /health` returned `{"status":"ok","index_last_updated":null}`; `pytest tests/unit/test_config.py -q` → `8 passed`; `pytest tests/unit/test_gdocs_client.py -q` → `7 passed`; service-account credentials loaded successfully for `dream-180@dream-493107.iam.gserviceaccount.com`
 - Follow-ups: set a real `GOOGLE_DOC_ID` in local `.env`; verify live `GDocsClient.fetch_document()` against the approved Google Doc; inspect actual source layout to confirm whether intake is a single doc or folder-style container; only then continue with parsing, segmentation, embeddings, and retrieval indexing
 - Notes for next agent: local `.env` and the copied service-account JSON are runtime setup artifacts and may be gitignored; one smoke test that expects missing `DATABASE_URL` can fail locally when `.env` is loaded, so config tests should be run with `_env_file=None` isolation where appropriate
+
+### 2026-04-21 — DOC-CHECKPOINT — Installation and Testing Stop Point Recorded
+
+- Scope: `README.md`, `docs/PHASE_PLAN.md`, `docs/TESTING_STRATEGY.md`, `docs/ENVIRONMENT.md`
+- Why this work happened: the repository needed an explicit written checkpoint showing where local setup and testing currently stop after the Phase 11/doc commits, so the next pass starts from facts instead of memory
+- Decisions applied: none; this is a status-alignment pass over existing implementation
+- Evidence collected: local setup checkpoint from 2026-04-20 reviewed; targeted tests already verified in the prior checkpoint remain `tests/unit/test_config.py` (`8 passed`) and `tests/unit/test_gdocs_client.py` (`7 passed`); `.venv/bin/pytest --collect-only -q` now reports `295 tests collected in 2.91s`
+- Follow-ups: set a real `GOOGLE_DOC_ID` and verify live Google Docs fetch; then run the full pytest suite inside `.venv`; only open a new maintenance phase if that verification exposes a concrete fix batch
+- Notes for next agent: the collection blocker in `tests/integration/test_gdocs_client.py` has been fixed; the next unknown is no longer syntax, but runtime behavior against real credentials and the full suite

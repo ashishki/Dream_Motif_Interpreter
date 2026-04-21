@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -98,7 +99,10 @@ class StaticFolderConnector(SourceConnector):
 async def migrated_session_factory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> async_sessionmaker[AsyncSession]:
-    database_url = "postgresql+asyncpg://postgres@localhost:5433/dream_motif_test"
+    database_url = os.environ.get(
+        "TEST_DATABASE_URL",
+        "postgresql+asyncpg://postgres@localhost:5433/dream_motif_test",
+    )
     monkeypatch.setenv("DATABASE_URL", database_url)
 
     reset_engine = create_async_engine(

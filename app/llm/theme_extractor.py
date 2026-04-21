@@ -45,7 +45,11 @@ class ThemeExtractor:
         with tracer.start_as_current_span("theme_extractor.extract"):
             for _attempt in range(self._max_retries + 1):
                 try:
-                    raw_response = await self._client.complete(system_prompt, user_prompt)
+                    raw_response = await self._client.complete(
+                        system_prompt,
+                        user_prompt,
+                        max_tokens=4000,
+                    )
                     return self._parse_assignments(raw_response, allowed_ids)
                 except (ThemeExtractionError, ValueError, json.JSONDecodeError) as exc:
                     last_error = exc

@@ -42,7 +42,11 @@ class MotifInductor:
         with tracer.start_as_current_span("motif_inductor.induce"):
             for _attempt in range(self._max_retries + 1):
                 try:
-                    raw_response = await self._client.complete(system_prompt, user_prompt)
+                    raw_response = await self._client.complete(
+                        system_prompt,
+                        user_prompt,
+                        max_tokens=4000,
+                    )
                     candidates = self._parse_candidates(raw_response, len(fragments))
                     self._induction_counter.add(1, {"status": "success"})
                     return candidates
@@ -80,7 +84,9 @@ class MotifInductor:
         )
 
     def _parse_candidates(self, raw_response: str, fragment_count: int) -> list[MotifCandidate]:
-        payload = json.loads(raw_response)
+        from app.llm.theme_extractor import _extract_json_payload
+
+        payload = json.loads(_extract_json_payload(raw_response))
         motifs_raw = payload.get("motifs")
         if not isinstance(motifs_raw, list):
             raise MotifInductionError("LLM response did not include a motifs list")

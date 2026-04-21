@@ -44,7 +44,11 @@ class ResearchSynthesizer:
 
             try:
                 try:
-                    raw_response = await self._client.complete(system_prompt, user_prompt)
+                    raw_response = await self._client.complete(
+                        system_prompt,
+                        user_prompt,
+                        max_tokens=4000,
+                    )
                     parallels = self._parse_parallels(raw_response)
                 except (
                     json.JSONDecodeError,
@@ -88,7 +92,9 @@ class ResearchSynthesizer:
         )
 
     def _parse_parallels(self, raw_response: str) -> list[ResearchParallel]:
-        payload = json.loads(raw_response)
+        from app.llm.theme_extractor import _extract_json_payload
+
+        payload = json.loads(_extract_json_payload(raw_response))
         parallels_raw = payload.get("parallels")
         if not isinstance(parallels_raw, list):
             raise ResearchSynthesisError("LLM response did not include a parallels list")

@@ -124,9 +124,13 @@ _JSON_CODE_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTA
 
 
 def _extract_json_payload(raw_response: str) -> str:
+    """Strip markdown fences and leading text, return the first JSON object found.
+
+    Raises ValueError so all LLM callers (regardless of domain) can catch it uniformly.
+    """
     stripped = raw_response.strip()
     if not stripped:
-        raise ThemeExtractionError("LLM response was empty")
+        raise ValueError("LLM response was empty")
 
     if stripped.startswith("{") and stripped.endswith("}"):
         return stripped
@@ -140,4 +144,4 @@ def _extract_json_payload(raw_response: str) -> str:
     if start != -1 and end != -1 and start < end:
         return stripped[start : end + 1].strip()
 
-    raise ThemeExtractionError("LLM response did not contain a JSON object")
+    raise ValueError("LLM response did not contain a JSON object")

@@ -34,7 +34,11 @@ class ImageryExtractor:
         with tracer.start_as_current_span("imagery_extractor.extract"):
             for _attempt in range(self._max_retries + 1):
                 try:
-                    raw_response = await self._client.complete(system_prompt, user_prompt)
+                    raw_response = await self._client.complete(
+                        system_prompt,
+                        user_prompt,
+                        max_tokens=4000,
+                    )
                     fragments = self._parse_fragments(raw_response, dream_text)
                     self._extract_counter.add(1, {"status": "success"})
                     return fragments
@@ -65,7 +69,9 @@ class ImageryExtractor:
         )
 
     def _parse_fragments(self, raw_response: str, dream_text: str) -> list[ImageryFragment]:
-        payload = json.loads(raw_response)
+        from app.llm.theme_extractor import _extract_json_payload
+
+        payload = json.loads(_extract_json_payload(raw_response))
         fragments_raw = payload.get("fragments")
         if not isinstance(fragments_raw, list):
             raise ImageryExtractionError("LLM response did not include a fragments list")

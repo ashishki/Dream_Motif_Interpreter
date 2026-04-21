@@ -26,8 +26,8 @@ class StubLLMClient:
         self._responses = responses
         self.calls = 0
 
-    async def complete(self, system: str, user: str) -> str:
-        del system, user
+    async def complete(self, system: str, user: str, *, max_tokens: int = 1000) -> str:
+        del system, user, max_tokens
         response = self._responses[min(self.calls, len(self._responses) - 1)]
         self.calls += 1
         return response

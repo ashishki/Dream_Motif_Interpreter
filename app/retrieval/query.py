@@ -136,7 +136,7 @@ class RagQueryService:
                 with tracer.start_as_current_span("anthropic.messages.create"):
                     response = await client.messages.create(
                         model=QUERY_EXPANSION_MODEL,
-                        max_tokens=100,
+                        max_tokens=200,
                         system=QUERY_EXPANSION_SYSTEM_PROMPT,
                         messages=[{"role": "user", "content": query}],
                     )

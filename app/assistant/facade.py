@@ -302,7 +302,7 @@ def _research_parallel_items(research_result: Any) -> list[dict[str, Any]]:
             "source_url": parallel.get("source_url"),
             "retrieved_at": source_lookup.get(parallel.get("source_url")),
             "relevance_note": parallel.get("relevance_note"),
-            "confidence": parallel.get("confidence"),
+            "overlap_degree": parallel.get("overlap_degree"),
         }
         for parallel in parallels
         if isinstance(parallel, dict)

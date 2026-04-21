@@ -203,6 +203,8 @@ async def test_dream_entries_schema(migrated_engine: AsyncEngine) -> None:
         "word_count",
         "content_hash",
         "segmentation_confidence",
+        "parser_profile",
+        "parse_warnings",
         "created_at",
     }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models.dream import DreamEntry
+from app.retrieval.types import NormalizedDocument
 from app.services.segmentation import segment_and_store
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +41,20 @@ async def migrated_session(db_engine: AsyncEngine) -> AsyncSession:
         yield session
 
 
+def _build_document(paragraphs: list[str]) -> NormalizedDocument:
+    return NormalizedDocument(
+        client_id="default",
+        source_type="google_doc",
+        external_id="doc-segmentation",
+        source_path="documents/doc-segmentation",
+        title="Dream Journal",
+        raw_text="\n\n".join(paragraphs),
+        sections=paragraphs,
+        metadata={},
+        fetched_at=datetime(2026, 4, 21, tzinfo=timezone.utc),
+    )
+
+
 @pytest.mark.anyio
 async def test_deduplication_by_content_hash(migrated_session: AsyncSession) -> None:
     paragraphs = [
@@ -47,8 +63,10 @@ async def test_deduplication_by_content_hash(migrated_session: AsyncSession) -> 
         "At the top, I found my childhood bedroom.",
     ]
 
-    first_insert = await segment_and_store(paragraphs, migrated_session)
-    second_insert = await segment_and_store(paragraphs, migrated_session)
+    document = _build_document(paragraphs)
+
+    first_insert = await segment_and_store(document, migrated_session)
+    second_insert = await segment_and_store(document, migrated_session)
     result = await migrated_session.execute(select(DreamEntry))
     stored_entries = result.scalars().all()
 

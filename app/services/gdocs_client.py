@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -9,11 +10,13 @@ from google.oauth2.service_account import Credentials as ServiceAccountCredentia
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from app.retrieval.types import FetchedSourceDocument, SourceDocumentRef
 from app.shared.config import Settings, get_settings
 from app.shared.tracing import get_logger, get_tracer
 
 GOOGLE_DOCS_READONLY_SCOPE = "https://www.googleapis.com/auth/documents.readonly"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+GOOGLE_DOCS_SOURCE_TYPE = "google_doc"
 
 logger = get_logger(__name__)
 
@@ -28,6 +31,16 @@ class GDocsClient:
         self._tracer = get_tracer(__name__)
 
     def fetch_document(self) -> list[str]:
+        document = self.fetch_document_resource()
+        paragraphs = _extract_paragraphs(document)
+        logger.info("Fetched Google Docs document")
+        return paragraphs
+
+    @property
+    def document_id(self) -> str:
+        return self._settings.GOOGLE_DOC_ID
+
+    def fetch_document_resource(self, document_id: str | None = None) -> Mapping[str, Any]:
         with self._tracer.start_as_current_span("gdocs.fetch_document"):
             logger.info("Fetching Google Docs document")
 
@@ -35,9 +48,9 @@ class GDocsClient:
                 with self._tracer.start_as_current_span("gdocs.build_service"):
                     service = self._build_docs_service()
                 with self._tracer.start_as_current_span("gdocs.documents.get"):
-                    document = (
-                        service.documents().get(documentId=self._settings.GOOGLE_DOC_ID).execute()
-                    )
+                    document = service.documents().get(
+                        documentId=document_id or self._settings.GOOGLE_DOC_ID
+                    ).execute()
             except RefreshError as exc:
                 logger.warning("Google Docs authentication failed during token refresh")
                 raise GDocsAuthError("Google Docs authentication failed") from exc
@@ -54,9 +67,7 @@ class GDocsClient:
                 )
                 raise
 
-            paragraphs = _extract_paragraphs(document)
-            logger.info("Fetched Google Docs document")
-            return paragraphs
+            return document
 
     def _build_docs_service(self) -> Any:
         credentials = self._build_credentials()
@@ -91,6 +102,26 @@ class GDocsClient:
             )
 
 
+class SingleGoogleDocConnector:
+    def __init__(self, client: GDocsClient | None = None, *, document_id: str | None = None) -> None:
+        self._client = client or GDocsClient()
+        self._document_id = document_id or self._client.document_id
+        self._cached_document: Mapping[str, Any] | None = None
+
+    def list_documents(self) -> list[SourceDocumentRef]:
+        document = self._get_document(self._document_id)
+        return [_build_document_ref(document, document_id=self._document_id)]
+
+    def fetch_document(self, document: SourceDocumentRef) -> FetchedSourceDocument:
+        source_document = self._get_document(document.external_id)
+        return _build_fetched_document(source_document, document_id=document.external_id)
+
+    def _get_document(self, document_id: str) -> Mapping[str, Any]:
+        if self._cached_document is None or document_id != self._document_id:
+            self._cached_document = self._client.fetch_document_resource(document_id)
+        return self._cached_document
+
+
 def _extract_paragraphs(document: Mapping[str, Any]) -> list[str]:
     paragraphs: list[str] = []
     body = document.get("body", {})
@@ -108,6 +139,56 @@ def _extract_paragraphs(document: Mapping[str, Any]) -> list[str]:
             paragraphs.append(text)
 
     return paragraphs
+
+
+def _build_document_ref(document: Mapping[str, Any], *, document_id: str) -> SourceDocumentRef:
+    return SourceDocumentRef(
+        source_type=GOOGLE_DOCS_SOURCE_TYPE,
+        external_id=document_id,
+        title=_get_title(document, document_id=document_id),
+        source_path=_build_source_path(document_id),
+        updated_at=_parse_updated_at(document),
+    )
+
+
+def _build_fetched_document(
+    document: Mapping[str, Any], *, document_id: str
+) -> FetchedSourceDocument:
+    return FetchedSourceDocument(
+        source_type=GOOGLE_DOCS_SOURCE_TYPE,
+        external_id=document_id,
+        title=_get_title(document, document_id=document_id),
+        source_path=_build_source_path(document_id),
+        updated_at=_parse_updated_at(document),
+        raw_contents=_extract_paragraphs(document),
+    )
+
+
+def _get_title(document: Mapping[str, Any], *, document_id: str) -> str:
+    title = document.get("title")
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    return document_id
+
+
+def _build_source_path(document_id: str) -> str:
+    return f"documents/{document_id}"
+
+
+def _parse_updated_at(document: Mapping[str, Any]) -> datetime | None:
+    raw_updated_at = document.get("updatedAt") or document.get("modifiedTime")
+    if not isinstance(raw_updated_at, str) or not raw_updated_at.strip():
+        return None
+
+    normalized_value = raw_updated_at.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized_value)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def _get_status_code(exc: HttpError) -> int | None:

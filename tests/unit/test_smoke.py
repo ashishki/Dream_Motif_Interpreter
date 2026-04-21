@@ -33,7 +33,7 @@ def test_config_fails_fast_on_missing_database_url(monkeypatch: pytest.MonkeyPat
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
     with pytest.raises(ValidationError):
-        Settings()
+        Settings(_env_file=None)
 
 
 def test_tracer_singleton() -> None:

@@ -16,6 +16,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import UserDefinedType
 
@@ -65,6 +66,16 @@ class DreamEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     word_count: Mapped[int] = mapped_column(Integer(), nullable=False)
     content_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     segmentation_confidence: Mapped[str] = mapped_column(String(16), nullable=False)
+    parser_profile: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        server_default=text("'default'"),
+    )
+    parse_warnings: Mapped[list[str]] = mapped_column(
+        JSONB(),
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
 
     chunks: Mapped[List["DreamChunk"]] = relationship(
         back_populates="dream", cascade="all, delete-orphan"

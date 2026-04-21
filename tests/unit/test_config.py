@@ -73,3 +73,24 @@ def test_config_allows_service_account_file_without_oauth_fields(
     assert settings.GOOGLE_CLIENT_ID == ""
     assert settings.GOOGLE_CLIENT_SECRET == ""
     assert settings.GOOGLE_REFRESH_TOKEN == ""
+
+
+def test_operator_parser_profile_assignments_parse_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv(
+        "OPERATOR_PARSER_PROFILE_ASSIGNMENTS",
+        '{"clients":{"client-a":"heading_based"},"source_containers":{"folders/april":"dated_entries"}}',
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert settings.resolve_operator_parser_profile(
+        client_id="client-a",
+        source_path="folders/april/doc-1",
+    ) == "heading_based"
+    assert settings.resolve_operator_parser_profile(
+        client_id="client-b",
+        source_path="folders/april/doc-2",
+    ) == "dated_entries"

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import logging
 import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 
 import tiktoken
 from sqlalchemy import select
@@ -12,11 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.dream import DreamChunk, DreamEntry
 from app.retrieval.types import (
+    DreamEntryCandidate,
     EmbeddingClient,
+    FetchedSourceDocument,
+    NormalizedDocument,
     OpenAIEmbeddingClient as SharedOpenAIEmbeddingClient,
     OpenAIEmbeddingHTTPError,
+    ResolvedParserProfile,
+    SourceConnector,
 )
-from app.shared.tracing import get_tracer
+from app.services.segmentation import parse_dream_entry_candidates
+from app.shared.config import get_settings
+from app.shared.tracing import get_logger, get_tracer
 
 INDEX_SCHEMA_VERSION = "v1"
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
@@ -25,14 +32,58 @@ MAX_CHUNK_TOKENS = 512
 CHUNK_OVERLAP_TOKENS = 50
 EMBEDDING_BATCH_SIZE = 100
 _TOKENIZER = tiktoken.get_encoding("cl100k_base")
+DEFAULT_NORMALIZED_CLIENT_ID = "default"
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
 class ChunkDraft:
     chunk_index: int
     chunk_text: str
+
+
+@dataclass(frozen=True)
+class ParsedDocument:
+    applied_profile: str
+    parse_warnings: list[str]
+    review_warnings: list["ReviewableParseWarning"]
+    candidates: list[DreamEntryCandidate]
+
+
+@dataclass(frozen=True)
+class ValidatedDreamEntry:
+    source_doc_id: str
+    title: str
+    raw_text: str
+    word_count: int
+    content_hash: str
+    date: date | None = None
+    segmentation_confidence: str = "low"
+    applied_profile: str = "default"
+    parse_warnings: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CanonicalDocumentPipeline:
+    normalized_document: NormalizedDocument
+    parsed_document: ParsedDocument
+    validated_entries: list[ValidatedDreamEntry]
+
+
+@dataclass(frozen=True)
+class ReviewableParseWarning:
+    code: str
+    source_type: str
+    external_id: str
+    source_path: str
+    client_id: str
+    applied_profile: str
+    warnings: list[str] = field(default_factory=list)
+
+
+class DreamEntryValidationError(ValueError):
+    pass
 
 
 class EmbeddingServiceError(Exception):
@@ -158,6 +209,148 @@ class RagIngestionService:
         return 1 if result.scalar_one_or_none() is not None else 0
 
 
+def fetch_source_documents(connector: SourceConnector) -> list[FetchedSourceDocument]:
+    return [connector.fetch_document(document) for document in connector.list_documents()]
+
+
+def normalize_source_document(
+    document: FetchedSourceDocument,
+    *,
+    client_id: str = DEFAULT_NORMALIZED_CLIENT_ID,
+    fetched_at: datetime | None = None,
+) -> NormalizedDocument:
+    normalized_fetched_at = fetched_at or datetime.now(timezone.utc)
+    metadata: dict[str, str] = {}
+    if document.updated_at is not None:
+        metadata["updated_at"] = document.updated_at.isoformat()
+
+    return NormalizedDocument(
+        client_id=client_id,
+        source_type=document.source_type,
+        external_id=document.external_id,
+        source_path=document.source_path,
+        title=document.title,
+        raw_text="\n\n".join(document.raw_contents),
+        sections=list(document.raw_contents),
+        metadata=metadata,
+        fetched_at=normalized_fetched_at,
+    )
+
+
+def fetch_normalized_documents(
+    connector: SourceConnector,
+    *,
+    client_id: str = DEFAULT_NORMALIZED_CLIENT_ID,
+    fetched_at: datetime | None = None,
+) -> list[NormalizedDocument]:
+    return [
+        normalize_source_document(document, client_id=client_id, fetched_at=fetched_at)
+        for document in fetch_source_documents(connector)
+    ]
+
+
+def parse_normalized_document(
+    document: NormalizedDocument,
+    *,
+    explicit_profile_name: str | None = None,
+) -> ParsedDocument:
+    resolved_profile, candidates = parse_dream_entry_candidates(
+        document,
+        explicit_profile_name=explicit_profile_name,
+    )
+    return _parsed_document(resolved_profile, document, candidates)
+
+
+def validate_dream_entry_candidates(
+    candidates: list[DreamEntryCandidate],
+) -> list[ValidatedDreamEntry]:
+    validated_entries: list[ValidatedDreamEntry] = []
+    seen_content_hashes: set[str] = set()
+
+    for candidate in candidates:
+        if not candidate.source_doc_id.strip():
+            raise DreamEntryValidationError("Dream entry candidate source_doc_id is required")
+        if not candidate.title.strip():
+            raise DreamEntryValidationError("Dream entry candidate title is required")
+        if not candidate.raw_text.strip():
+            raise DreamEntryValidationError("Dream entry candidate raw_text is required")
+        if candidate.word_count <= 0:
+            raise DreamEntryValidationError("Dream entry candidate word_count must be positive")
+        if not candidate.content_hash.strip():
+            raise DreamEntryValidationError("Dream entry candidate content_hash is required")
+        if candidate.segmentation_confidence not in {"high", "low"}:
+            raise DreamEntryValidationError(
+                "Dream entry candidate segmentation_confidence must be 'high' or 'low'"
+            )
+        if candidate.content_hash in seen_content_hashes:
+            raise DreamEntryValidationError(
+                "Dream entry candidates must not duplicate content_hash values within one document"
+            )
+
+        seen_content_hashes.add(candidate.content_hash)
+        validated_entries.append(
+            ValidatedDreamEntry(
+                source_doc_id=candidate.source_doc_id,
+                title=candidate.title,
+                raw_text=candidate.raw_text,
+                word_count=candidate.word_count,
+                content_hash=candidate.content_hash,
+                date=candidate.date,
+                segmentation_confidence=candidate.segmentation_confidence,
+                applied_profile=candidate.applied_profile,
+                parse_warnings=list(candidate.parse_warnings),
+            )
+        )
+
+    return validated_entries
+
+
+def process_source_document(
+    document: FetchedSourceDocument,
+    *,
+    client_id: str = DEFAULT_NORMALIZED_CLIENT_ID,
+    fetched_at: datetime | None = None,
+    explicit_profile_name: str | None = None,
+) -> CanonicalDocumentPipeline:
+    tracer = get_tracer(__name__)
+
+    with tracer.start_as_current_span("ingestion.normalize_document"):
+        normalized_document = normalize_source_document(
+            document,
+            client_id=client_id,
+            fetched_at=fetched_at,
+        )
+
+    resolved_profile_name = explicit_profile_name or get_settings().resolve_operator_parser_profile(
+        client_id=normalized_document.client_id,
+        source_path=normalized_document.source_path,
+    )
+
+    with tracer.start_as_current_span("ingestion.parse_document"):
+        parsed_document = parse_normalized_document(
+            normalized_document,
+            explicit_profile_name=resolved_profile_name,
+        )
+
+    logger.info(
+        "ingestion.parser_profile_applied",
+        applied_profile=parsed_document.applied_profile,
+        client_id=normalized_document.client_id,
+        external_id=normalized_document.external_id,
+        source_path=normalized_document.source_path,
+        source_type=normalized_document.source_type,
+    )
+
+    with tracer.start_as_current_span("ingestion.validate_candidates"):
+        validated_entries = validate_dream_entry_candidates(parsed_document.candidates)
+
+    return CanonicalDocumentPipeline(
+        normalized_document=normalized_document,
+        parsed_document=parsed_document,
+        validated_entries=validated_entries,
+    )
+
+
 def chunk_dream_text(
     raw_text: str,
     *,
@@ -217,6 +410,47 @@ async def fetch_indexed_chunks(
 
 def _batched(items: list[str], batch_size: int) -> list[list[str]]:
     return [items[index : index + batch_size] for index in range(0, len(items), batch_size)]
+
+
+def _parsed_document(
+    resolved_profile: ResolvedParserProfile,
+    document: NormalizedDocument,
+    candidates: list[DreamEntryCandidate],
+) -> ParsedDocument:
+    warning_set = {warning for candidate in candidates for warning in candidate.parse_warnings}
+    warning_set.update(resolved_profile.parse_warnings)
+    review_warnings = _review_warnings(document, resolved_profile, candidates, sorted(warning_set))
+    return ParsedDocument(
+        applied_profile=resolved_profile.profile_name,
+        parse_warnings=sorted(warning_set),
+        review_warnings=review_warnings,
+        candidates=candidates,
+    )
+
+
+def _review_warnings(
+    document: NormalizedDocument,
+    resolved_profile: ResolvedParserProfile,
+    candidates: list[DreamEntryCandidate],
+    parse_warnings: list[str],
+) -> list[ReviewableParseWarning]:
+    has_low_confidence_candidate = any(
+        candidate.segmentation_confidence == "low" for candidate in candidates
+    )
+    if not has_low_confidence_candidate:
+        return []
+
+    return [
+        ReviewableParseWarning(
+            code="low_confidence_parse",
+            source_type=document.source_type,
+            external_id=document.external_id,
+            source_path=document.source_path,
+            client_id=document.client_id,
+            applied_profile=resolved_profile.profile_name,
+            warnings=parse_warnings,
+        )
+    ]
 
 
 def _embedding_to_vector_literal(embedding: list[float]) -> str:

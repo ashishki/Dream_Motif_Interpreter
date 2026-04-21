@@ -42,8 +42,8 @@ A passing answer-quality check with declining retrieval metrics is a warning sig
 ---
 
 Version: 1
-Last updated: 2026-04-13
-Changed by: T12 — Retrieval Evaluation Baseline
+Last updated: 2026-04-21
+Changed by: T22 — Normalized Document Contract
 
 ---
 
@@ -146,6 +146,8 @@ Judge: manual rubric over `scripts/eval.py` retrieval outputs (evidence-only pro
 
 No retrieval regression is recorded for T12. This baseline uses the synthetic 20-entry corpus and falls back to stub embeddings plus lexical ranking when `OPENAI_API_KEY` is absent or starts with `test-`, so the local evaluation remains executable without live OpenAI access.
 
+T22 changes the source-to-parser normalization contract before dream segmentation. It does not modify chunking, embedding, ranking, retrieval thresholds, or evidence assembly, so the T12 retrieval and answer-quality metrics carry forward unchanged.
+
 ---
 
 ## No-Answer Behavior Quality
@@ -205,3 +207,4 @@ none
 | 2026-04-16 | Cycle 9 (WS-9.1–9.6) | synthetic-20-entries | advisory — no retrieval run; retrieval layer unchanged in Phase 9; T12 baseline metrics carry forward | 1.00 | 1.00 | 1.00 | — | — | Phase 9 adds motif induction pipeline only; no changes to chunking, embedding, ranking, or evidence assembly |
 | 2026-04-17 | Cycle 10 (WS-10.1–10.5) | synthetic-20-entries | advisory — no retrieval run; RAG retrieval layer unchanged in Phase 10; T12 baseline metrics carry forward. Phase 10 adds ResearchRetriever (external HTTP path separate from dream archive RAG) | 1.00 | 0.94 | 0.96 | — | — | ResearchRetriever does not touch dream_chunks, embedding, or ranking |
 | 2026-04-18 | Cycle 11 (WS-11.1–11.3) | synthetic-20-entries | advisory — no retrieval run; RAG retrieval layer unchanged in Phase 11; T12 baseline metrics carry forward. Phase 11 adds Feedback Loop (assistant_feedback table, digit-reply capture, GET /feedback) — no changes to chunking, embedding, or ranking | 1.00 | 0.94 | 0.96 | — | — | Phase 11 does not touch dream_chunks, embedding, or RAG query path |
+| 2026-04-21 | T22 | synthetic-20-entries | advisory — no retrieval run; normalization contract added before segmentation; chunking, embedding, ranking, and evidence assembly unchanged; T12/T14 metrics carry forward | 1.00 | 1.00 | 1.00 | 1.00 | 0.94 | normalization is pre-parser only; no retrieval-layer metric delta expected |

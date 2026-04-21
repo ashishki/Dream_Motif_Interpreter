@@ -122,6 +122,9 @@ Recommended local start order:
 4. Telegram bot (`python3 -m app.telegram`)
 5. auto-sync (`python3 -m app.auto_sync`)
 
+For persistent boot-time startup, prefer `systemd` units instead of manual background processes.
+See [SYSTEMD_SETUP.md](SYSTEMD_SETUP.md).
+
 ## 9. Operational Documentation
 
 Before production rollout of Phase 6+:

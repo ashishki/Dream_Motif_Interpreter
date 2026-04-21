@@ -1,0 +1,15 @@
+[Unit]
+Description=Dream Motif Interpreter Telegram Bot
+After=network-online.target dream-motif-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/openclaw-you/workspace/Dream_Motif_Interpreter
+EnvironmentFile=/srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env
+ExecStart=/srv/openclaw-you/workspace/Dream_Motif_Interpreter/.venv/bin/python -m app.telegram
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

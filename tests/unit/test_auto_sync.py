@@ -93,7 +93,9 @@ async def test_run_auto_sync_once_runs_ingest_when_marker_changes() -> None:
             "app.services.auto_sync.get_settings",
             return_value=SimpleNamespace(AUTO_SYNC_ENABLED=True),
         ),
-        patch("app.services.auto_sync.ingest_document", new=AsyncMock(return_value=1)) as mock_ingest,
+        patch(
+            "app.services.auto_sync.ingest_document", new=AsyncMock(return_value=1)
+        ) as mock_ingest,
     ):
         result = await run_auto_sync_once(
             redis_client=redis,

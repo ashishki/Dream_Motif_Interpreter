@@ -138,6 +138,36 @@ _BASE_TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "manage_archive_source",
+        "description": (
+            "Get or set the active Google Doc ID used as the dream archive source. "
+            "Use action='get' to see the current doc_id; action='set' with doc_id "
+            "to update it for the next sync."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["get", "set"],
+                    "description": (
+                        "Action to perform: 'get' returns current doc_id, "
+                        "'set' updates it."
+                    ),
+                },
+                "doc_id": {
+                    "type": "string",
+                    "description": (
+                        "The Google Doc ID to set as the archive source "
+                        "(required for action='set')."
+                    ),
+                },
+            },
+            "required": ["action"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 _GET_DREAM_MOTIFS_TOOL: dict[str, Any] = {
@@ -328,6 +358,19 @@ async def execute_tool(
             return "doc_id is required to trigger a sync."
         ref = await facade.trigger_sync(doc_id)
         return f"Sync job queued: {ref.job_id} (doc_id={ref.doc_id}, status={ref.status})"
+
+    if tool_name == "manage_archive_source":
+        action = str(tool_input.get("action", "")).strip()
+        if action == "get":
+            current = facade.get_archive_source()
+            return f"Current archive source: {current}"
+        if action == "set":
+            new_doc_id = str(tool_input.get("doc_id", "")).strip()
+            if not new_doc_id:
+                return "doc_id is required for action='set'."
+            facade.set_archive_source(new_doc_id)
+            return f"Archive source updated to: {new_doc_id} (takes effect on next sync)"
+        return f"Unknown action: {action!r}. Use 'get' or 'set'."
 
     if tool_name == "get_dream_motifs":
         raw_id = str(tool_input.get("dream_id", "")).strip()

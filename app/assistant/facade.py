@@ -379,6 +379,17 @@ class AssistantFacade:
         await self._sync_job_enqueuer.enqueue_ingest(job_id=job_id, doc_id=doc_id)
         return SyncJobRef(job_id=job_id, status="queued", doc_id=doc_id)
 
+    def get_archive_source(self) -> str:
+        from app.shared.config import get_effective_google_doc_id
+
+        return get_effective_google_doc_id()
+
+    def set_archive_source(self, doc_id: str) -> str:
+        from app.shared.config import set_google_doc_id_override
+
+        set_google_doc_id_override(doc_id)
+        return doc_id
+
     def _build_index_dream_callable(self) -> Callable[[uuid.UUID], Awaitable[int]]:
         async def _index(dream_id: uuid.UUID) -> int:
             from app.workers.index import index_dream

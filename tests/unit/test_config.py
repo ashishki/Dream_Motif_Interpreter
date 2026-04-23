@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.shared import config as config_module
 from app.shared.config import Settings
 
 REQUIRED_SECRET_VARS = (
@@ -100,3 +101,32 @@ def test_operator_parser_profile_assignments_parse_from_env(
         )
         == "dated_entries"
     )
+
+
+def test_get_effective_google_doc_id_prefers_runtime_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    config_module.get_settings.cache_clear()
+    config_module._google_doc_id_override = None
+    config_module.set_google_doc_id_override("runtime-doc-id")
+
+    try:
+        assert config_module.get_effective_google_doc_id() == "runtime-doc-id"
+    finally:
+        config_module._google_doc_id_override = None
+        config_module.get_settings.cache_clear()
+
+
+def test_get_effective_google_doc_id_falls_back_to_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    config_module.get_settings.cache_clear()
+    config_module._google_doc_id_override = None
+
+    try:
+        assert config_module.get_effective_google_doc_id() == "test-doc-id"
+    finally:
+        config_module._google_doc_id_override = None
+        config_module.get_settings.cache_clear()

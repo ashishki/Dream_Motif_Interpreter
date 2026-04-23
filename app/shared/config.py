@@ -67,6 +67,23 @@ def get_settings() -> Settings:
     return Settings()
 
 
+# Runtime override for GOOGLE_DOC_ID - settable without process restart
+_google_doc_id_override: str | None = None
+
+
+def get_effective_google_doc_id() -> str:
+    """Return the currently active GOOGLE_DOC_ID (runtime override takes precedence)."""
+    if _google_doc_id_override is not None:
+        return _google_doc_id_override
+    return get_settings().GOOGLE_DOC_ID
+
+
+def set_google_doc_id_override(doc_id: str) -> None:
+    """Override GOOGLE_DOC_ID at runtime without restarting the process."""
+    global _google_doc_id_override
+    _google_doc_id_override = doc_id
+
+
 def _source_container_from_path(source_path: str) -> str | None:
     normalized_path = source_path.strip("/")
     if not normalized_path or "/" not in normalized_path:

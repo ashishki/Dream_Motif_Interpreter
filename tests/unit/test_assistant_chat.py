@@ -359,6 +359,7 @@ def test_build_tools_base_tools_always_present() -> None:
             "get_patterns",
             "get_theme_history",
             "trigger_sync",
+            "manage_archive_source",
         ):
             assert name in tool_names, f"{name} missing when motif_induction_enabled={flag}"
 
@@ -486,3 +487,34 @@ async def test_execute_tool_get_dream_motifs_includes_motif_uuid() -> None:
         in result
     )
     assert "  Rationale: The dream repeatedly frames passage through liminal spaces." in result
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_manage_archive_source_get_returns_current_doc_id() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_archive_source.return_value = "doc-current-123"
+
+    result = await tools_module.execute_tool(
+        "manage_archive_source",
+        {"action": "get"},
+        facade,
+    )
+
+    assert result == "Current archive source: doc-current-123"
+    facade.get_archive_source.assert_called_once_with()
+    facade.set_archive_source.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_manage_archive_source_set_updates_doc_id() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.set_archive_source.return_value = "doc-next-456"
+
+    result = await tools_module.execute_tool(
+        "manage_archive_source",
+        {"action": "set", "doc_id": "doc-next-456"},
+        facade,
+    )
+
+    assert result == "Archive source updated to: doc-next-456 (takes effect on next sync)"
+    facade.set_archive_source.assert_called_once_with("doc-next-456")

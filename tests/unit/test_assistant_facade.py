@@ -238,6 +238,8 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "create_dream",
         "get_theme_history",
         "trigger_sync",
+        "get_archive_source",
+        "set_archive_source",
         "get_dream_motifs",
         "research_motif_parallels",
     }

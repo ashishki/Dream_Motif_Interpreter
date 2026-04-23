@@ -1,9 +1,9 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 2.1
-Last updated: 2026-04-21 (Phases 1–11 complete; local setup/testing checkpoint recorded)
+Version: 2.2
+Last updated: 2026-04-23 (Phase 12 opened — UX fix backlog from Тест 1)
 
-## 1. Current Status: Phases 1–11 Complete
+## 1. Current Status: Phases 1–11 Complete; Phase 12 Active
 
 **Phases 1–5** — Backend platform complete:
 
@@ -38,6 +38,7 @@ Execution graph:
 - [docs/tasks_phase9.md](tasks_phase9.md) — historical Phase 9 graph
 - [docs/tasks_phase10.md](tasks_phase10.md) — historical Phase 10 graph
 - [docs/tasks_phase11.md](tasks_phase11.md) — historical Phase 11 graph
+- [docs/tasks_phase12.md](tasks_phase12.md) — **active** Phase 12 graph (UX fixes)
 
 ## 2. Planning Principle
 
@@ -190,10 +191,41 @@ Deployment docs, env docs, runbooks, and tests cover the Telegram-enabled stack.
 
 - Local setup checkpoint is complete: `.venv` exists, local Postgres/Redis are reachable, Alembic is at head, and `/health` was verified.
 - Google Docs auth no longer depends only on OAuth env vars; the code now supports `GOOGLE_SERVICE_ACCOUNT_FILE` as an alternative credential path.
-- The next runtime checkpoint is a live Google Docs fetch with a real `GOOGLE_DOC_ID`.
-- The next testing checkpoint is a full pytest run inside `.venv`; local collection now succeeds with `295` tests.
 - Chat-driven curation mutations remain deferred. See [Telegram Interaction Model §11](TELEGRAM_INTERACTION_MODEL.md) for preconditions required before enabling.
-- Do not open "Phase 12" preemptively. Start a maintenance/fix phase only if the live ingestion verification or full test pass exposes concrete defects worth batching.
+- Phase 12 is now active. See [docs/tasks_phase12.md](tasks_phase12.md) for the full fix backlog.
+
+## 12. Phase 12 — UX Quality Fixes (Тест 1)
+
+### Objective
+
+Fix UX-level defects identified in first real-use test session (Тест 1, 22.04.26).
+No schema changes required for most items.
+
+### Scope In
+
+- Expose motif UUID in `get_dream_motifs` output so `research_motif_parallels` can be called
+- Prohibit markdown (`**`) in assistant responses; enforce plain-text formatting
+- Add dream text preview and themes to `list_recent_dreams` output
+- Add dream title to `search_dreams` results; use verbal connection strength labels
+- Strip `*` and `<` artifacts from `get_dream` raw text output
+- Expand trigger phrases for `create_dream`; fix title resolution format
+- Simplify mythological parallels flow: no verbose preamble, no "архетип", no summary paragraph
+- Unify search results as single numbered list with inline connection strength
+- (P2) Add `manage_archive_source` tool for changing Google Doc ID from chat
+
+### Scope Out
+
+- Schema changes (no new migrations expected)
+- New LLM pipeline stages
+- Multi-user features
+
+### Phase gate
+
+See [docs/tasks_phase12.md §4](tasks_phase12.md).
+
+### Status: Active
+
+See [docs/tasks_phase12.md](tasks_phase12.md) for the detailed task graph.
 
 ## 9. Phase 9 — Motif Abstraction and Induction
 

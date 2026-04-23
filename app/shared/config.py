@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     BULK_CONFIRM_TOKEN_TTL_SECONDS: int = 600
 
     # Feature flags are evaluated once per process because get_settings() is lru-cached.
-    MOTIF_INDUCTION_ENABLED: bool = False
+    MOTIF_INDUCTION_ENABLED: bool = True
     RESEARCH_API_BASE_URL: str = "https://api.tavily.com"
     RESEARCH_API_KEY: str = ""
     RESEARCH_AUGMENTATION_ENABLED: bool = False

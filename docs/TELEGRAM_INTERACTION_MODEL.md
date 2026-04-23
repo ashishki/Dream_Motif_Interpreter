@@ -1,6 +1,6 @@
 # Telegram Interaction Model
 
-Last updated: 2026-04-15 (P8-T02 — curation deferral made explicit)
+Last updated: 2026-04-23 (Phase 12 — research flow simplified, response formatting rules added)
 
 ## 1. Purpose
 
@@ -181,19 +181,27 @@ The distinction between these motifs and the existing theme taxonomy must be pre
 
 This tool is only available when `MOTIF_INDUCTION_ENABLED=true`. If the flag is off, the tool must not appear in the tool catalog.
 
-## 13. Phase 10 Tool — research_motif_parallels (Planned)
+## 13. Phase 10 Tool — research_motif_parallels
 
 `research_motif_parallels` searches for structural parallels in mythology, folklore, cultural, and taboo material for a confirmed inducted motif.
 
-### Confirmation-before-execution pattern
+### Interaction flow (revised in Phase 12)
 
-This tool must not execute automatically. Before any external search is triggered, the assistant must:
+1. User asks for mythological parallels for a dream.
+2. Assistant calls `get_dream_motifs(dream_id)` — receives motifs with UUIDs.
+3. Assistant presents motifs and asks: **"Выберите, по каким мотивам провести поиск"** — no lengthy technical preamble.
+4. User names the motif(s). Assistant calls `research_motif_parallels(motif_id)` for each.
+5. Results shown as a plain numbered list — one entry per parallel.
 
-1. State what it is about to search for and why.
-2. Ask the user for explicit confirmation.
-3. Execute the search only after the user confirms.
+The previous "state what you will search for + explicit confirmation" pattern is replaced by motif selection. The user's choice of motifs IS the confirmation.
 
-If the user does not confirm, no external call is made.
+### Language and framing rules (revised in Phase 12)
+
+- Do not use the word «архетип» or «паттерн» unless the user used it first
+- Do not add evaluative adjectives («глубокий», «интересный», «мощный») to results
+- Do not add a summary paragraph at the end («Общий архетип: ...»)
+- All results remain speculative — never "confirmed" or "verified"
+- If `research_motif_parallels` returns empty — present what is available from `get_dream_motifs`, do not block on a "technical barrier" message
 
 ### Speculative framing requirements
 
@@ -202,7 +210,6 @@ All results returned by this tool must be framed as speculative:
 - every parallel must carry its source URL and retrieval timestamp
 - confidence values are limited to: speculative, plausible, uncertain
 - the assistant must not present any result as a finding or as confirmed
-- opening framing: "The following parallels are retrieved from external sources. They are speculative and have not been verified against the archive."
 
 ### What the tool does not do
 
@@ -214,6 +221,50 @@ All results returned by this tool must be framed as speculative:
 ### Availability
 
 This tool is only available when `RESEARCH_AUGMENTATION_ENABLED=true`. If the flag is off, the tool must not appear in the tool catalog.
+
+### Known bug fixed in Phase 12
+
+`get_dream_motifs` previously did not include the motif UUID in its output, making it impossible to call `research_motif_parallels`. Fixed in WS-12.1.
+
+## 15. Phase 12 — Response Formatting Rules
+
+These rules apply to all assistant responses in Telegram. They override any default Claude formatting behaviour.
+
+### Plain text only
+
+- No markdown: no `**bold**`, no `*italic*`, no `__underline__`, no inline code
+- Lists use numbered format: `1.`, `2.`, `3.`
+- No grouping results by section headers (e.g. "Сильная связь:", "Умеренная связь:") — use inline labels instead
+
+### Date format
+
+- User-facing dates: `дд.мм.гг` (e.g. `22.04.26`)
+- Internal tool output uses ISO format (YYYY-MM-DD); Claude converts for the user
+
+### Dream listing format
+
+```
+1. дд.мм.гг, без названия: о чём сон (краткое описание)
+2. дд.мм.гг, Название: о чём сон
+```
+
+### Search results format
+
+```
+1. дд.мм.гг, без названия: описание (сильная связь)
+2. дд.мм.гг, Название: описание (умеренная связь)
+```
+
+Connection strength verbal labels: ≥0.7 — сильная, 0.4–0.69 — умеренная, <0.4 — слабая.
+
+### Dream title format (when saving)
+
+| User provides | Resulting title |
+|--------------|----------------|
+| date + name | `дд.мм.гг - Название` |
+| date only | `дд.мм.гг, без названия` |
+| name only | use name as-is |
+| neither | `дд.мм.гг, без названия` (use save date) |
 
 ## 14. Phase 11 — Feedback Capture UX (Planned)
 

@@ -261,13 +261,14 @@ async def execute_tool(
         if detail is None:
             return f"Dream not found: {raw_id}"
         theme_names = ", ".join(t.category_name for t in detail.themes) or "none"
+        raw_text_clean = detail.raw_text.replace("*", "").replace("<", "")
         return (
             f"Dream {detail.id}\n"
             f"Date: {detail.date or 'unknown'}\n"
             f"Title: {detail.title}\n"
             f"Words: {detail.word_count}\n"
             f"Themes: {theme_names}\n"
-            f"Text: {detail.raw_text[:500]}"
+            f"Text: {raw_text_clean[:2000]}"
         )
 
     if tool_name == "list_recent_dreams":

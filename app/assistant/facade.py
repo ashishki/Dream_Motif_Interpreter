@@ -69,9 +69,8 @@ class DreamSummary:
     id: uuid.UUID
     date: str | None
     title: str
-    word_count: int
-    source_doc_id: str
-    created_at: str
+    raw_text_preview: str
+    theme_names: list[str]
 
 
 @dataclass(frozen=True)
@@ -214,8 +213,22 @@ class AssistantFacade:
                     )
                     .limit(bounded_limit)
                 )
+                dreams = result.scalars().all()
 
-        return [_dream_summary_item(dream) for dream in result.scalars().all()]
+                dream_ids = [dream.id for dream in dreams]
+                theme_result = await session.execute(
+                    select(DreamTheme.dream_id, ThemeCategory.name)
+                    .join(ThemeCategory, ThemeCategory.id == DreamTheme.category_id)
+                    .where(DreamTheme.dream_id.in_(dream_ids))
+                )
+                themes_by_dream: dict[uuid.UUID, list[str]] = {}
+                for dream_id, theme_name in theme_result.all():
+                    themes_by_dream.setdefault(dream_id, []).append(theme_name)
+
+        return [
+            _dream_summary_item(dream, theme_names=themes_by_dream.get(dream.id, []))
+            for dream in dreams
+        ]
 
     async def get_patterns(self) -> PatternSummary:
         async with self._session_factory() as session:
@@ -424,14 +437,15 @@ def _theme_item(*, theme: DreamTheme, category_name: str) -> DreamThemeItem:
     )
 
 
-def _dream_summary_item(dream: DreamEntry) -> DreamSummary:
+def _dream_summary_item(
+    dream: DreamEntry, *, theme_names: list[str] | None = None
+) -> DreamSummary:
     return DreamSummary(
         id=dream.id,
         date=dream.date.isoformat() if dream.date is not None else None,
         title=dream.title,
-        word_count=dream.word_count,
-        source_doc_id=dream.source_doc_id,
-        created_at=dream.created_at.isoformat(),
+        raw_text_preview=(dream.raw_text or "")[:400],
+        theme_names=theme_names or [],
     )
 
 

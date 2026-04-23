@@ -13,6 +13,7 @@ from app.assistant import tools as tools_module
 from app.assistant.chat import handle_chat, _extract_text
 from app.assistant.facade import (
     AssistantFacade,
+    DreamSummary,
     MotifInductionItem,
     SearchResult,
     SearchResultItem,
@@ -384,6 +385,29 @@ async def test_execute_tool_create_dream_requires_explicit_user_request() -> Non
 
     assert "explicit user request" in result.lower()
     facade.create_dream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_list_recent_dreams_includes_preview_and_themes() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.list_recent_dreams.return_value = [
+        DreamSummary(
+            id=dream_id,
+            date="2026-04-14",
+            title="Bridge dream",
+            raw_text_preview="I crossed a bridge at dusk and saw a dark river.",
+            theme_names=["Transitions", "Water"],
+        )
+    ]
+
+    result = await tools_module.execute_tool("list_recent_dreams", {"limit": 1}, facade)
+
+    assert "2026-04-14 | Bridge dream" in result
+    assert "preview: I crossed a bridge at dusk and saw a dark river." in result
+    assert "themes: Transitions, Water" in result
+    assert str(dream_id) not in result
+    assert "words" not in result
 
 
 @pytest.mark.asyncio

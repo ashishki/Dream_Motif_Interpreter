@@ -11,6 +11,7 @@ from app.assistant.facade import (
     AssistantFacade,
     CreatedDreamItem,
     DreamDetail,
+    DreamSummary,
     MotifInductionItem,
     SearchResult,
     SyncJobRef,
@@ -46,6 +47,7 @@ class _FakeSession:
     def __init__(self, *, get_result=None, execute_results=None):
         self._get_result = get_result
         self._execute_results = list(execute_results or [])
+        self.executed_statements = []
         self.add = MagicMock()
         self.commit = AsyncMock()
         self.refresh = AsyncMock()
@@ -55,7 +57,7 @@ class _FakeSession:
         return self._get_result
 
     async def execute(self, statement):
-        del statement
+        self.executed_statements.append(statement)
         return self._execute_results.pop(0)
 
 
@@ -178,6 +180,44 @@ async def test_get_dream_returns_plain_dataclass_with_themes() -> None:
             )
         ],
     )
+
+
+@pytest.mark.asyncio
+async def test_list_recent_dreams_returns_preview_and_theme_names() -> None:
+    dream_id = uuid4()
+    created_at = datetime(2026, 4, 15, tzinfo=timezone.utc)
+    dream = SimpleNamespace(
+        id=dream_id,
+        date=date(2026, 4, 14),
+        title="Bridge dream",
+        raw_text="I crossed a bridge at dusk. " * 30,
+        created_at=created_at,
+    )
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult(scalars=[dream]),
+            _FakeResult(rows=[(dream_id, "Transitions"), (dream_id, "Water")]),
+        ],
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    result = await facade.list_recent_dreams(limit=5)
+
+    assert result == [
+        DreamSummary(
+            id=dream_id,
+            date="2026-04-14",
+            title="Bridge dream",
+            raw_text_preview=dream.raw_text[:400],
+            theme_names=["Transitions", "Water"],
+        )
+    ]
+    theme_statement = str(session.executed_statements[1])
+    assert "dream_themes" in theme_statement
+    assert "theme_categories" in theme_statement
 
 
 def test_assistant_facade_exposes_only_approved_operations() -> None:

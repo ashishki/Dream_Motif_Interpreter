@@ -55,6 +55,10 @@ SYSTEM_PROMPT = (
     "An unnamed dream is referred to as «без названия».\n"
     "Example of forbidden response: «**Русалка (славянская мифология)**»\n"
     "Example of correct response: «1. Русалка (славянская мифология)»"
+    "\n"
+    "When presenting list_recent_dreams results, format each dream as: "
+    "«дд.мм.гг, [название/без названия]: о <краткое описание на основе preview и тем>». "
+    "Compose the description in Russian from the preview text and themes list."
 )
 
 

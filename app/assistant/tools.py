@@ -278,9 +278,15 @@ async def execute_tool(
             return "No dream entries in the archive."
         lines = [f"Recent dreams ({len(dreams)}):"]
         for dream in dreams:
-            lines.append(
-                f"- {dream.id} | {dream.date or 'unknown'} | {dream.title} ({dream.word_count} words)"
-            )
+            title_str = dream.title if dream.title else "без названия"
+            date_str = dream.date or "unknown"
+            themes_str = ", ".join(dream.theme_names) if dream.theme_names else "нет тем"
+            preview = dream.raw_text_preview.strip()[:200] if dream.raw_text_preview else ""
+            lines.append(f"- {date_str} | {title_str}")
+            if preview:
+                lines.append(f"  preview: {preview}")
+            if dream.theme_names:
+                lines.append(f"  themes: {themes_str}")
         return "\n".join(lines)
 
     if tool_name == "get_patterns":

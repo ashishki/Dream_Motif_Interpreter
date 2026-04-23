@@ -400,5 +400,13 @@ def _is_explicit_create_request(request_text: str | None) -> bool:
         "добавь сон",
         "добавить сон",
         "новый сон",
+        "сохрани этот сон",
+        "запишите",
+        "запиши это",
+        "добавь в архив",
+        "сохрани в архив",
+        "сохранить в архив",
+        "занести в архив",
+        "занеси в архив",
     )
     return any(phrase in text for phrase in phrases)

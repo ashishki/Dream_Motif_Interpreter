@@ -253,7 +253,11 @@ class AssistantFacade:
         if not normalized_text:
             raise ValueError("Dream text must not be empty")
 
-        resolved_title = _resolve_dream_title(normalized_text, title=title)
+        resolved_title = _resolve_dream_title(
+            normalized_text,
+            title=title,
+            dream_date=dream_date,
+        )
         source_doc_id = f"telegram:{chat_id}" if chat_id is not None else "telegram:manual"
         content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
         tracer = get_tracer(__name__)
@@ -451,12 +455,22 @@ def _dream_summary_item(
     )
 
 
-def _resolve_dream_title(raw_text: str, *, title: str | None) -> str:
+def _resolve_dream_title(
+    raw_text: str, *, title: str | None, dream_date: date | None = None
+) -> str:
+    del raw_text
+
+    def fmt_date(d: date | None) -> str:
+        if d is None:
+            d = datetime.now().date()
+        return d.strftime("%d.%m.%y")
+
     if title is not None and title.strip():
+        if dream_date is not None:
+            return f"{fmt_date(dream_date)} - {title.strip()}"
         return title.strip()
 
-    first_line = next((line.strip() for line in raw_text.splitlines() if line.strip()), raw_text)
-    return first_line[:120]
+    return f"{fmt_date(dream_date)}, без названия"
 
 
 def _recurring_pattern_item(pattern: RecurringPattern) -> RecurringPatternItem:

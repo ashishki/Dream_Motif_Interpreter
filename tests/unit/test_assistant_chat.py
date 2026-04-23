@@ -314,6 +314,13 @@ def test_system_prompt_instructs_not_to_present_draft_as_confirmed() -> None:
     assert "not as conclusions" in prompt_lower or "not a curated finding" in prompt_lower
 
 
+def test_system_prompt_requires_create_dream_for_explicit_save_requests() -> None:
+    prompt_lower = SYSTEM_PROMPT.lower()
+    assert "always call create_dream" in prompt_lower
+    assert "добавь в архив" in prompt_lower
+    assert "занеси в архив" in prompt_lower
+
+
 # ---------------------------------------------------------------------------
 # build_tools — conditional get_dream_motifs registration
 # ---------------------------------------------------------------------------
@@ -386,6 +393,45 @@ async def test_execute_tool_create_dream_requires_explicit_user_request() -> Non
 
     assert "explicit user request" in result.lower()
     facade.create_dream.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "сохрани этот сон",
+        "запишите мой сон",
+        "запиши это в архив",
+        "добавь в архив этот текст",
+        "сохрани в архив мой сон",
+        "сохранить в архив эту запись",
+        "занести в архив этот сон",
+        "занеси в архив, пожалуйста",
+    ],
+)
+@pytest.mark.asyncio
+async def test_execute_tool_create_dream_accepts_extended_explicit_russian_phrases(
+    request_text: str,
+) -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=True,
+        date="2026-04-23",
+        title="23.04.26, без названия",
+        word_count=4,
+        source_doc_id="telegram:42",
+    )
+
+    result = await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": "Мне снилась река ночью."},
+        facade,
+        chat_id=42,
+        request_text=request_text,
+    )
+
+    assert "Dream saved:" in result
+    facade.create_dream.assert_awaited_once()
 
 
 @pytest.mark.asyncio

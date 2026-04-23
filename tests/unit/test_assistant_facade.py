@@ -15,6 +15,7 @@ from app.assistant.facade import (
     MotifInductionItem,
     SearchResult,
     SyncJobRef,
+    _resolve_dream_title,
 )
 from app.retrieval.query import EvidenceBlock, FragmentMatch, InsufficientEvidence
 
@@ -294,7 +295,7 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
 
     assert isinstance(result, CreatedDreamItem)
     assert result.created is True
-    assert result.title == "River valley"
+    assert result.title == "21.04.26 - River valley"
     assert result.date == "2026-04-21"
     assert result.source_doc_id == "telegram:42"
     session.add.assert_called_once()
@@ -308,6 +309,40 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
         facade._session_factory,
     )
     index_dream_callable.assert_awaited_once_with(result.id)
+
+
+def test_resolve_dream_title_without_title_uses_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            del tz
+            return cls(2026, 4, 23)
+
+    monkeypatch.setattr("app.assistant.facade.datetime", _FrozenDateTime)
+
+    assert _resolve_dream_title("raw text", title=None) == "23.04.26, без названия"
+
+
+def test_resolve_dream_title_without_title_uses_dream_date() -> None:
+    assert (
+        _resolve_dream_title("raw text", title=None, dream_date=date(2026, 4, 21))
+        == "21.04.26, без названия"
+    )
+
+
+def test_resolve_dream_title_with_title_and_dream_date_prefixes_date() -> None:
+    assert (
+        _resolve_dream_title(
+            "raw text",
+            title="River valley",
+            dream_date=date(2026, 4, 21),
+        )
+        == "21.04.26 - River valley"
+    )
+
+
+def test_resolve_dream_title_with_title_and_no_dream_date_returns_title_as_is() -> None:
+    assert _resolve_dream_title("raw text", title="River valley") == "River valley"
 
 
 @pytest.mark.asyncio

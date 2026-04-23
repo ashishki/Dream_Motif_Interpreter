@@ -1,18 +1,18 @@
 # CODEX_PROMPT.md
 
-Version: 1.40
-Date: 2026-04-21
-Phase: tasks.md Phase 6 complete
+Version: 1.41
+Date: 2026-04-23
+Phase: Phase 12 active — UX fix backlog from Тест 1
 
 ---
 
 ## Current State
 
-- **Phase:** tasks.md Phase 6 complete — Universal Source Intake (T21–T25 done)
+- **Phase:** Phase 12 active — UX fix backlog (WS-12.1–12.10)
 - **Baseline:** 305 tests passing, 9 skipped
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-21 (T21–T25 implemented; Phase 6 complete; Fix Queue clear)
+- **Last updated:** 2026-04-23 (Phase 12 opened; MOTIF_INDUCTION_ENABLED default → true)
 - **Session tokens (approx):** not yet tracked
 - **Cumulative phase tokens (approx):** not yet tracked
 
@@ -20,8 +20,8 @@ Phase: tasks.md Phase 6 complete
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 11 complete; tasks.md Phase 6 (T21–T25, Universal Source Intake) complete
-- **Current planning state:** Phase 6 complete; Fix Queue clear; next — live ingestion verification or new phase
+- **Phases completed:** Phase 1 through Phase 11 complete; tasks.md Phase 6 (T21–T25) complete
+- **Current planning state:** Phase 12 active — UX fix backlog from Тест 1 (22.04.26); see `docs/tasks_phase12.md`
 - **Latest completed implementation task:** T25 — Operator Controls, Reviewability, Folder Intake
 - **Current baseline:** 305 tests passing, 9 skipped
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
@@ -33,21 +33,31 @@ Phase: tasks.md Phase 6 complete
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
-- **Active task graph:** `docs/tasks.md` (Phase 6: T21–T25 complete)
+- **Active task graph:** `docs/tasks_phase12.md` (Phase 12: WS-12.1–12.10)
+- **Previous task graph (Phase 11):** `docs/tasks_phase11.md`
 - **Previous task graph (Phase 10):** `docs/tasks_phase10.md`
 - **Previous task graph (Phase 9):** `docs/tasks_phase9.md`
 - **Previous task graph (Phases 6–8):** `docs/tasks_phase6.md`
 - **Historical backend task graph:** `docs/tasks.md`
 - **Task-scoped context:** read `Context-Refs` in the active task graph before broad searching
 
+## Prompt Economy Rule
+
+> Prefer pre-digested implementation prompts. Do not make Codex reconstruct narrow task context from multiple long docs unless the task genuinely needs broad retrieval.
+
+For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_string`, and pass Codex a surgical prompt with file paths, line numbers, and acceptance criteria. This rule applies to tasks where context is narrow and well-bounded. For tasks that genuinely require understanding of cross-cutting concerns (e.g. schema changes, ADR compliance, architectural drift), full doc retrieval is appropriate.
+
 ---
 
 ## Next Task
 
-**tasks.md Phase 6 complete — T21–T25 all done**
+**Phase 12 active — start with WS-12.1 (P0 blocker)**
 
-Fix Queue is clear. Live GDocsClient verified (doc "Сны", 360 paragraphs, heading-based format).
-Universal ingestion pipeline in place. Next: live end-to-end ingestion run or new phase planning.
+WS-12.1: add motif UUID to `get_dream_motifs` tool output.
+File: `app/assistant/tools.py:343` — add `f" [id={motif.id}]"` to the motif label line.
+This unblocks `research_motif_parallels` which is currently broken for all users.
+
+After WS-12.1: WS-12.2 (no markdown in responses, prompts.py).
 
 Context refs:
 - `docs/tasks.md` — Phase 6 task graph (T21–T25 complete)

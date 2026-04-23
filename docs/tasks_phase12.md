@@ -15,26 +15,6 @@ Phase 12 exists separately from Phase 11 so that Phase 11 (Feedback Loop) histor
 
 ## 2. How To Use This File
 
-### Execution workflow
-
-```
-1. Claude writes implementation prompt → passes via variable to Codex (exec)
-2. Codex writes the code
-3. Claude does light review
-4. If fixes needed → Codex fixes
-5. Deep review via meta-arch / protocol review
-```
-
-Never have Codex read all docs cold and reconstruct context. Claude pre-digests the task into a narrow, self-contained prompt with exact file paths, line numbers, and acceptance criteria before passing to Codex.
-
-### Token economy rule
-
-> Prefer pre-digested implementation prompts. Do not make Codex reconstruct narrow task context from multiple long docs unless the task genuinely needs broad retrieval.
-
-For each WS: Claude extracts the relevant `Context-Refs` lines, quotes the exact `old_string`, and hands Codex a surgical prompt — not a pointer to this file.
-
-### File rules
-
 - use this file as the active implementation authority for Phase 12 work
 - read `Context-Refs` before touching a file
 - do not change database schema without updating `alembic/versions/` and this file

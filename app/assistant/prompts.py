@@ -45,6 +45,16 @@ SYSTEM_PROMPT = (
     "full — nearly all elements overlap; partial — some elements overlap; "
     "structural — only the abstract pattern overlaps. "
     "Never describe results as findings, confirmed, or verified."
+    "\n\n"
+    "## Response Formatting Rules\n"
+    "You are operating inside a Telegram plain-text interface. "
+    "Never use markdown formatting in your responses. "
+    "Forbidden: **, *, __, [], `code spans`, # headers. "
+    "For lists, use numbered format: 1. 2. 3. — never bullet points with * or -.\n"
+    "Dates in responses to the user: format as dd.mm.yy (example: 22.04.26).\n"
+    "An unnamed dream is referred to as «без названия».\n"
+    "Example of forbidden response: «**Русалка (славянская мифология)**»\n"
+    "Example of correct response: «1. Русалка (славянская мифология)»"
 )
 
 

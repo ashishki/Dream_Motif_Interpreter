@@ -340,7 +340,7 @@ async def execute_tool(
                 status_note = "(confirmed by user)"
             else:
                 status_note = f"({motif.status})"
-            lines.append(f"- [{confidence_label} confidence] {motif.label} {status_note}")
+            lines.append(f"- [{confidence_label} confidence] {motif.label} {status_note} [id={motif.id}]")
             if motif.rationale:
                 lines.append(f"  Rationale: {motif.rationale}")
         return "\n".join(lines)

@@ -29,7 +29,7 @@ def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENV", "test")
 
 
-def test_motif_induction_enabled_defaults_to_false(
+def test_motif_induction_enabled_defaults_to_true(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _set_required_env(monkeypatch)
@@ -37,7 +37,7 @@ def test_motif_induction_enabled_defaults_to_false(
 
     settings = Settings(_env_file=None)
 
-    assert settings.MOTIF_INDUCTION_ENABLED is False
+    assert settings.MOTIF_INDUCTION_ENABLED is True
 
 
 @pytest.mark.parametrize("missing_var", REQUIRED_SECRET_VARS)

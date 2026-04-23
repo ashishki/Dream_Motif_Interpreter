@@ -13,6 +13,7 @@ from app.assistant import tools as tools_module
 from app.assistant.chat import handle_chat, _extract_text
 from app.assistant.facade import (
     AssistantFacade,
+    MotifInductionItem,
     SearchResult,
     SearchResultItem,
 )
@@ -383,3 +384,34 @@ async def test_execute_tool_create_dream_requires_explicit_user_request() -> Non
 
     assert "explicit user request" in result.lower()
     facade.create_dream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_get_dream_motifs_includes_motif_uuid() -> None:
+    dream_id = uuid.uuid4()
+    motif_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_dream_motifs.return_value = [
+        MotifInductionItem(
+            id=motif_id,
+            label="Threshold crossing",
+            rationale="The dream repeatedly frames passage through liminal spaces.",
+            confidence="high",
+            status="confirmed",
+            fragments=[],
+            model_version="test",
+            created_at="2026-04-23T00:00:00+00:00",
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "get_dream_motifs",
+        {"dream_id": str(dream_id)},
+        facade,
+    )
+
+    assert (
+        f"- [high confidence] Threshold crossing (confirmed by user) [id={motif_id}]"
+        in result
+    )
+    assert "  Rationale: The dream repeatedly frames passage through liminal spaces." in result

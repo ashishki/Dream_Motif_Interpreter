@@ -219,9 +219,9 @@ async def execute_tool(
         lines = ["Search results:"]
         for item in result.items[:5]:
             date_label = item.date.isoformat() if item.date is not None else "unknown date"
-            lines.append(
-                f"- [{date_label}] (score={item.relevance_score:.2f}) {item.chunk_text[:200]}"
-            )
+            title_str = item.title if item.title else "без названия"
+            lines.append(f"- [{date_label}] {title_str} (score={item.relevance_score:.2f})")
+            lines.append(f"  {item.chunk_text[:200]}")
         return "\n".join(lines)
 
     if tool_name == "create_dream":

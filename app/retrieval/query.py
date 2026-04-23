@@ -42,6 +42,7 @@ class FragmentMatch:
 class EvidenceBlock:
     dream_id: uuid.UUID
     date: date | None
+    title: str | None
     chunk_text: str
     relevance_score: float
     matched_fragments: list[FragmentMatch]
@@ -119,6 +120,7 @@ class RagQueryService:
             EvidenceBlock(
                 dream_id=row["dream_id"],
                 date=row["date"],
+                title=row["title"],
                 chunk_text=row["chunk_text"],
                 relevance_score=float(row["relevance_score"]),
                 matched_fragments=_coerce_fragments(row["matched_fragments"]),
@@ -177,6 +179,7 @@ class RagQueryService:
                     dc.id,
                     dc.dream_id,
                     de.date,
+                    de.title,
                     dc.chunk_text,
                     1 - (dc.embedding <=> CAST(:query_embedding AS vector)) AS cosine_similarity,
                     ROW_NUMBER() OVER (ORDER BY dc.embedding <=> CAST(:query_embedding AS vector)) AS rank_cosine
@@ -191,6 +194,7 @@ class RagQueryService:
                     dc.id,
                     dc.dream_id,
                     de.date,
+                    de.title,
                     dc.chunk_text,
                     ts_rank_cd(
                         to_tsvector('russian', dc.chunk_text),
@@ -224,6 +228,7 @@ class RagQueryService:
                     COALESCE(c.id, f.id) AS chunk_id,
                     COALESCE(c.dream_id, f.dream_id) AS dream_id,
                     COALESCE(c.date, f.date) AS date,
+                    COALESCE(c.title, f.title) AS title,
                     COALESCE(c.chunk_text, f.chunk_text) AS chunk_text,
                     c.cosine_similarity,
                     f.fts_rank,
@@ -237,6 +242,7 @@ class RagQueryService:
             SELECT
                 fused.dream_id,
                 fused.date,
+                fused.title,
                 fused.chunk_text,
                 GREATEST(
                     COALESCE(fused.cosine_similarity, 0.0),

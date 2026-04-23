@@ -59,6 +59,12 @@ SYSTEM_PROMPT = (
     "When presenting list_recent_dreams results, format each dream as: "
     "«дд.мм.гг, [название/без названия]: о <краткое описание на основе preview и тем>». "
     "Compose the description in Russian from the preview text and themes list."
+    "\n"
+    "When presenting search_dreams results, use a single numbered list without grouping by strength. "
+    "Each line: «N. дд.мм.гг, [название/без названия]: описание (сильная/умеренная/слабая связь)». "
+    "Map score to verbal strength: >=0.7 — сильная, 0.4-0.69 — умеренная, <0.4 — слабая. "
+    "Sort by descending score (order from tool is preserved). "
+    "Description: 1 sentence from chunk_text."
 )
 
 

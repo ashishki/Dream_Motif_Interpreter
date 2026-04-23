@@ -123,6 +123,7 @@ async def test_handle_chat_executes_search_tool_and_returns_final_text() -> None
                 SearchResultItem(
                     dream_id=dream_id,
                     date=date(2024, 3, 1),
+                    title="Flying dream",
                     chunk_text="I was flying over a city.",
                     relevance_score=0.85,
                     matched_fragments=[],

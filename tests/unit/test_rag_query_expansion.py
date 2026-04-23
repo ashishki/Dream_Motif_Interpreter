@@ -21,6 +21,7 @@ async def test_query_expansion_fallback() -> None:
             {
                 "dream_id": dream_id,
                 "date": date(2026, 4, 14),
+                "title": "Lantern dream",
                 "chunk_text": "A lantern glowed near the stairwell.",
                 "relevance_score": 0.92,
                 "matched_fragments": [
@@ -42,6 +43,7 @@ async def test_query_expansion_fallback() -> None:
         EvidenceBlock(
             dream_id=dream_id,
             date=date(2026, 4, 14),
+            title="Lantern dream",
             chunk_text="A lantern glowed near the stairwell.",
             relevance_score=0.92,
             matched_fragments=[FragmentMatch(text="lantern", match_type="semantic", char_offset=0)],

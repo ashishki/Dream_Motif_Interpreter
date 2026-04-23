@@ -27,6 +27,7 @@ from app.shared.tracing import get_tracer
 class SearchResultItem:
     dream_id: uuid.UUID
     date: date | None
+    title: str | None
     chunk_text: str
     relevance_score: float
     matched_fragments: list[dict[str, Any]]
@@ -387,6 +388,7 @@ def _search_result_item(block: EvidenceBlock) -> SearchResultItem:
     return SearchResultItem(
         dream_id=block.dream_id,
         date=block.date,
+        title=block.title,
         chunk_text=block.chunk_text,
         relevance_score=block.relevance_score,
         matched_fragments=[

@@ -90,6 +90,7 @@ async def test_search_dreams_returns_facade_search_result() -> None:
                 EvidenceBlock(
                     dream_id=dream_id,
                     date=date(2026, 4, 15),
+                    title="Bridge dream",
                     chunk_text="A bridge crossed a dark river.",
                     relevance_score=0.88,
                     matched_fragments=[
@@ -111,6 +112,7 @@ async def test_search_dreams_returns_facade_search_result() -> None:
             type(result.items[0])(
                 dream_id=dream_id,
                 date=date(2026, 4, 15),
+                title="Bridge dream",
                 chunk_text="A bridge crossed a dark river.",
                 relevance_score=0.88,
                 matched_fragments=[{"text": "bridge", "match_type": "semantic", "char_offset": 0}],

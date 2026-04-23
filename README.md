@@ -4,7 +4,7 @@
 
 Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом и обратной связью.
 
-**Статус: Phases 1–11 complete · Phase 6 (universal ingestion) complete · 305 tests passing**
+**Статус: Phases 1–12 complete · 276 unit tests passing**
 
 ---
 
@@ -58,6 +58,22 @@
 - `GET /feedback` — просмотр рейтингов с пагинацией
 - Хранится в `assistant_feedback`, изолировано от RAG-пайплайна
 
+### UX-исправления по итогам первого теста (Phase 12)
+
+Закрыт бэклог из первой реальной пользовательской сессии (Тест 1, 22.04.26):
+
+- `get_dream_motifs` теперь возвращает UUID мотива — поиск параллелей разблокирован
+- Запрет markdown в ответах: никаких `**`, даты в формате `дд.мм.гг`, списки нумерованные
+- `list_recent_dreams` показывает превью текста и темы вместо UUID и счётчика слов
+- `search_dreams` возвращает название сна и вербальную силу связи (сильная/умеренная/слабая)
+- `get_dream` очищает `*` и `<` из текста Google Docs; лимит текста увеличен до 2000 символов
+- `create_dream` срабатывает на «занеси в архив», «запиши это», «сохрани этот сон» и др.
+- Заголовок при сохранении сна: «дд.мм.гг - Название» или «дд.мм.гг, без названия»
+- Поток параллелей упрощён: без длинного преамбула, без «архетип», без итогового обобщения
+- Новый инструмент `manage_archive_source`: смена `GOOGLE_DOC_ID` из чата без перезапуска
+
+Подробнее: [docs/PHASE12_RELEASE_NOTES.md](docs/PHASE12_RELEASE_NOTES.md)
+
 ---
 
 ## Repository Map
@@ -81,7 +97,7 @@ app/
 
 alembic/         schema migrations (001–012)
 docs/            architecture, planning, runbooks, ADRs, user guide
-tests/           unit + integration (305 passed, 9 skipped)
+tests/           unit + integration (276 unit passed)
 ```
 
 ---
@@ -105,7 +121,7 @@ tests/           unit + integration (305 passed, 9 skipped)
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Путь к service-account JSON для Google Docs | `""` |
 | `AUTO_SYNC_ENABLED` | Включить лёгкий metadata-ping и автосинк из Google Docs | `false` |
 | `AUTO_SYNC_INTERVAL_SECONDS` | Интервал metadata-ping перед автосинком | `300` |
-| `MOTIF_INDUCTION_ENABLED` | Мотивная индукция | `false` |
+| `MOTIF_INDUCTION_ENABLED` | Мотивная индукция | `true` |
 | `RESEARCH_AUGMENTATION_ENABLED` | Внешний поиск параллелей | `false` |
 | `RESEARCH_API_KEY` | Ключ внешнего поиска | `""` |
 
@@ -161,6 +177,7 @@ docker compose up
 | Документ | Назначение |
 |---|---|
 | [**Гайд пользователя (RU)**](docs/USER_GUIDE_RU.md) | Что умеет бот и как им пользоваться |
+| [**Phase 12 Release Notes**](docs/PHASE12_RELEASE_NOTES.md) | UX-исправления по итогам первого теста |
 | [Architecture](docs/ARCHITECTURE.md) | Форма системы, границы выполнения |
 | [Feature Spec](docs/spec.md) | Scope backend и интерфейса |
 | [Phase Plan](docs/PHASE_PLAN.md) | Декомпозиция фаз 1–11 |

@@ -3,7 +3,7 @@
 Version: 2.2
 Last updated: 2026-04-23 (Phase 12 opened — UX fix backlog from Тест 1)
 
-## 1. Current Status: Phases 1–11 Complete; Phase 12 Active
+## 1. Current Status: Phases 1–12 Complete
 
 **Phases 1–5** — Backend platform complete:
 
@@ -223,9 +223,10 @@ No schema changes required for most items.
 
 See [docs/tasks_phase12.md §4](tasks_phase12.md).
 
-### Status: Active
+### Status: Complete — 2026-04-23
 
 See [docs/tasks_phase12.md](tasks_phase12.md) for the detailed task graph.
+See [docs/PHASE12_RELEASE_NOTES.md](PHASE12_RELEASE_NOTES.md) for release notes.
 
 ## 9. Phase 9 — Motif Abstraction and Induction
 

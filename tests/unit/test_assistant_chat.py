@@ -388,6 +388,14 @@ def test_build_tools_includes_research_motif_parallels_when_flag_is_true() -> No
     assert "research_motif_parallels" in tool_names
 
 
+def test_build_tools_includes_search_dreams_exact() -> None:
+    from app.assistant.tools import build_tools
+
+    tools = build_tools()
+    tool_names = [t["name"] for t in tools]
+    assert "search_dreams_exact" in tool_names
+
+
 @pytest.mark.asyncio
 async def test_execute_tool_create_dream_requires_explicit_user_request() -> None:
     facade = AsyncMock(spec=AssistantFacade)
@@ -464,6 +472,32 @@ async def test_execute_tool_list_recent_dreams_includes_preview_and_themes() -> 
     assert "themes: Transitions, Water" in result
     assert str(dream_id) not in result
     assert "words" not in result
+
+
+@pytest.mark.asyncio
+async def test_search_dreams_exact_routing() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams_exact.return_value = [
+        SearchResultItem(
+            dream_id=uuid.uuid4(),
+            date=date(2026, 4, 14),
+            title="Church dream",
+            chunk_text="Мне приснилась церковь на холме.",
+            relevance_score=1.0,
+            matched_fragments=[],
+            quote="Мне приснилась церковь на холме",
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "search_dreams_exact",
+        {"query": "церковь"},
+        facade,
+    )
+
+    assert "Exact search results for 'церковь' (1 fragments):" in result
+    assert 'Quote: "Мне приснилась церковь на холме"' in result
+    facade.search_dreams_exact.assert_awaited_once_with("церковь")
 
 
 @pytest.mark.asyncio

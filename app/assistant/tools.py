@@ -27,6 +27,26 @@ _BASE_TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "search_dreams_exact",
+        "description": (
+            "Exact text/word search across all dream entries using full-text search. "
+            "Use when the user searches for a specific word, phrase, or image name that "
+            "appears verbatim in dream text (e.g. 'find all dreams mentioning church', "
+            "'find dreams with the word X'). Returns up to 20 results without relevance threshold."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The word, phrase, or image name to search for in dream text.",
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "create_dream",
         "description": (
             "Create a new dream entry in the archive from user-provided text. "
@@ -250,7 +270,28 @@ async def execute_tool(
             date_label = item.date.isoformat() if item.date is not None else "unknown date"
             title_str = item.title if item.title else "без названия"
             lines.append(f"- [{date_label}] {title_str} (score={item.relevance_score:.2f})")
-            lines.append(f"  {item.chunk_text[:200]}")
+            if item.quote:
+                lines.append(f"  Quote: \"{item.quote}\"")
+            else:
+                lines.append(f"  {item.chunk_text[:200]}")
+        return "\n".join(lines)
+
+    if tool_name == "search_dreams_exact":
+        query = str(tool_input.get("query", "")).strip()
+        if not query:
+            return "No query provided."
+        items = await facade.search_dreams_exact(query)
+        if not items:
+            return f"No dreams found containing '{query}'."
+        lines = [f"Exact search results for '{query}' ({len(items)} fragments):"]
+        for item in items:
+            date_label = item.date.isoformat() if item.date is not None else "unknown date"
+            title_str = item.title if item.title else "без названия"
+            lines.append(f"- [{date_label}] {title_str} (score={item.relevance_score:.2f})")
+            if item.quote:
+                lines.append(f"  Quote: \"{item.quote}\"")
+            else:
+                lines.append(f"  {item.chunk_text[:200]}")
         return "\n".join(lines)
 
     if tool_name == "create_dream":

@@ -14,7 +14,10 @@ from app.assistant.facade import (
     DreamSummary,
     MotifInductionItem,
     SearchResult,
+    SearchResultItem,
     SyncJobRef,
+    _exact_result_item,
+    _extract_quote,
     _resolve_dream_title,
 )
 from app.retrieval.query import EvidenceBlock, FragmentMatch, InsufficientEvidence
@@ -117,10 +120,44 @@ async def test_search_dreams_returns_facade_search_result() -> None:
                 chunk_text="A bridge crossed a dark river.",
                 relevance_score=0.88,
                 matched_fragments=[{"text": "bridge", "match_type": "semantic", "char_offset": 0}],
+                quote="A bridge crossed a dark river",
             )
         ]
     )
     rag_query_service.retrieve.assert_awaited_once_with("bridge river")
+
+
+def test_extract_quote_finds_matching_russian_sentence() -> None:
+    chunk_text = (
+        "Сначала я шел по лесу. Потом увидел церковь на холме! "
+        "После этого начался дождь."
+    )
+
+    assert _extract_quote(chunk_text, "церковь") == "Потом увидел церковь на холме"
+
+
+def test_exact_result_item_sets_quote_field() -> None:
+    dream_id = uuid4()
+
+    result = _exact_result_item(
+        {
+            "dream_id": dream_id,
+            "date": date(2026, 4, 15),
+            "title": "Холм",
+            "chunk_text": "Сначала я шел по лесу. Потом увидел церковь на холме.",
+        },
+        "церковь",
+    )
+
+    assert result == SearchResultItem(
+        dream_id=dream_id,
+        date=date(2026, 4, 15),
+        title="Холм",
+        chunk_text="Сначала я шел по лесу. Потом увидел церковь на холме.",
+        relevance_score=1.0,
+        matched_fragments=[],
+        quote="Потом увидел церковь на холме",
+    )
 
 
 @pytest.mark.asyncio
@@ -232,6 +269,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
 
     assert public_methods == {
         "search_dreams",
+        "search_dreams_exact",
         "get_dream",
         "list_recent_dreams",
         "get_patterns",

@@ -31,6 +31,7 @@ class SearchResultItem:
     chunk_text: str
     relevance_score: float
     matched_fragments: list[dict[str, Any]]
+    quote: str | None = None
 
 
 @dataclass(frozen=True)
@@ -166,7 +167,13 @@ class AssistantFacade:
         if isinstance(result, InsufficientEvidence):
             return SearchResult(items=[], insufficient_reason=result.reason)
 
-        return SearchResult(items=[_search_result_item(block) for block in result])
+        return SearchResult(items=[_search_result_item(block, query) for block in result])
+
+    async def search_dreams_exact(self, query: str) -> list[SearchResultItem]:
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span("assistant.search_dreams_exact"):
+            rows = await self._rag_query_service.exact_search(query)
+        return [_exact_result_item(row, query) for row in rows]
 
     async def get_dream(self, dream_id: uuid.UUID) -> DreamDetail | None:
         tracer = get_tracer(__name__)
@@ -444,7 +451,7 @@ class AssistantFacade:
         return _index
 
 
-def _search_result_item(block: EvidenceBlock) -> SearchResultItem:
+def _search_result_item(block: EvidenceBlock, query: str) -> SearchResultItem:
     return SearchResultItem(
         dream_id=block.dream_id,
         date=block.date,
@@ -459,7 +466,36 @@ def _search_result_item(block: EvidenceBlock) -> SearchResultItem:
             }
             for fragment in block.matched_fragments
         ],
+        quote=_extract_quote(block.chunk_text, query),
     )
+
+
+def _exact_result_item(row: dict[str, Any], query: str) -> SearchResultItem:
+    return SearchResultItem(
+        dream_id=row["dream_id"],
+        date=row.get("date"),
+        title=row.get("title"),
+        chunk_text=row.get("chunk_text", ""),
+        relevance_score=1.0,
+        matched_fragments=[],
+        quote=_extract_quote(row.get("chunk_text", ""), query),
+    )
+
+
+def _extract_quote(chunk_text: str, query: str) -> str | None:
+    import re
+
+    words = set(re.sub(r"[^\w\s]", "", query.lower()).split())
+    if not words:
+        return None
+    for sentence in re.split(r"[.!?\n]+", chunk_text):
+        stripped_sentence = sentence.strip()
+        if not stripped_sentence:
+            continue
+        sentence_lower = stripped_sentence.lower()
+        if any(word in sentence_lower for word in words):
+            return stripped_sentence
+    return None
 
 
 def _research_parallel_items(research_result: Any) -> list[dict[str, Any]]:

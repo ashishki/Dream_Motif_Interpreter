@@ -128,6 +128,29 @@ class RagQueryService:
             for row in rows
         ]
 
+    async def exact_search(self, query: str) -> list[dict[str, Any]]:
+        """Pure FTS search - no embedding, no threshold, limit 20."""
+        tracer = get_tracer(__name__)
+        statement = text(
+            """
+            SELECT
+                dc.dream_id,
+                de.date,
+                de.title,
+                dc.chunk_text
+            FROM dream_chunks AS dc
+            JOIN dream_entries AS de ON de.id = dc.dream_id
+            WHERE to_tsvector('russian', dc.chunk_text) @@ websearch_to_tsquery('russian', :query)
+            ORDER BY de.date DESC
+            LIMIT 20
+            """
+        )
+        with tracer.start_as_current_span("db.query.rag_query.exact_search") as span:
+            span.set_attribute("query_length", len(query))
+            async with self._session_factory() as session:
+                result = await session.execute(statement, {"query": query})
+        return [dict(row) for row in result.mappings().all()]
+
     async def _expand_query_terms(self, query: str) -> str:
         tracer = get_tracer(__name__)
 

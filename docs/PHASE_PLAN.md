@@ -310,7 +310,7 @@ sync loop so the user's journal stays up to date without manual copy-paste.
 
 See [docs/tasks_phase14.md §5](tasks_phase14.md).
 
-### Status: Planning — 2026-04-24 (blocked on WS-14.1 developer credential setup)
+### Status: Complete — 2026-04-24 (WS-14.1 is a dev-side credential prerequisite; WS-14.2–14.5 implemented)
 
 See [docs/tasks_phase14.md](tasks_phase14.md) for the detailed task graph.
 

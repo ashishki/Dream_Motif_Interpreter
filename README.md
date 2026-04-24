@@ -4,7 +4,7 @@
 
 Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом и обратной связью.
 
-**Статус: Phases 1–13 complete · 294 unit tests passing**
+**Статус: Phases 1–14 complete · 300 unit tests passing**
 
 ---
 
@@ -86,6 +86,19 @@
 - `RESULT_LIMIT` увеличен с 5 до 20; несколько фрагментов одного сна группируются под одним заголовком
 - `SYSTEM_PROMPT`: правило выбора инструмента, формат с цитатой, запрет обрезки «и другие»
 
+
+### Запись снов в Google Docs — двусторонняя синхронизация (Phase 14)
+
+Реализована запись новых снов из бота напрямую в Google Doc:
+
+- `GDocsClient.append_text`: вставляет форматированный текст в конец документа через Google Docs API batchUpdate
+- `write_dream_to_google_doc`: форматирует запись («дд.мм.гг - Название\n\nтекст») и передаёт в GDocsClient
+- `create_dream` автоматически записывает сон в Google Doc после сохранения в БД
+- Сбой записи в Google Doc не откатывает создание записи в БД — пользователь уведомлён явно
+- `GDocsWriteError` — новый класс ошибки для всех write-сценариев (403, 404, quota, auth)
+
+Примечание: требует Google service account с правами записи (scope=documents). Без write-credentials запись в Google Doc завершается GDocsWriteError с понятным сообщением.
+
 ---
 
 ## Repository Map
@@ -109,7 +122,7 @@ app/
 
 alembic/         schema migrations (001–012)
 docs/            architecture, planning, runbooks, ADRs, user guide
-tests/           unit + integration (294 unit passed)
+tests/           unit + integration (300 unit passed)
 ```
 
 ---

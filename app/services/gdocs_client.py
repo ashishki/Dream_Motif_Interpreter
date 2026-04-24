@@ -208,13 +208,14 @@ class GDocsClient:
                     last = body_content[-1]
                     end_index = max(1, last.get("endIndex", 1) - 1)
 
-                # Layout: \n\n{date_str}\n{title}\n\n{body}
-                prefix = f"\n\n{date_str}\n"
-                title_line = f"{title}\n\n"
+                # Layout: \n\n{date_str} - {title}\n\n{body}
+                prefix = "\n\n"
+                heading = f"{date_str} - {title}"
+                title_line = f"{heading}\n\n"
                 full_text = prefix + title_line + body
 
                 title_start = end_index + len(prefix)
-                title_end = title_start + len(title) + 1  # +1 for trailing \n
+                title_end = title_start + len(heading) + 1  # +1 for trailing \n
 
                 requests: list[dict] = [
                     {

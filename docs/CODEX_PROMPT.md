@@ -9,19 +9,19 @@ Phase: Phase 13 active — multi-source, search recall, UX polish (Тест 2)
 ## Current State
 
 - **Phase:** Phase 13 active (WS-13.1–13.8)
-- **Baseline:** 276 unit tests passing, 0 failed
+- **Baseline:** 294 unit tests passing, 0 failed
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-24 (Phase 12 complete; Phase 13 opened from Тест 2 backlog)
+- **Last updated:** 2026-04-24 (Phase 13 complete; Phase 14 planned)
 
 ---
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 12 complete
+- **Phases completed:** Phase 1 through Phase 13 complete
 - **Current planning state:** Phase 13 active — multi-source Google Docs, search recall, UX polish; see `docs/tasks_phase13.md`
 - **Latest completed implementation task:** WS-12.8 — manage_archive_source tool
-- **Current baseline:** 276 unit tests passing
+- **Current baseline:** 294 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -50,7 +50,7 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-**Phase 12 active — start with WS-12.1 (P0 blocker)**
+**Phase 13 complete. Phase 14 planned (blocked on WS-14.1 developer credential setup).**
 
 WS-12.1: add motif UUID to `get_dream_motifs` tool output.
 File: `app/assistant/tools.py:343` — add `f" [id={motif.id}]"` to the motif label line.

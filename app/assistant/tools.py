@@ -144,6 +144,7 @@ _BASE_TOOLS: list[dict[str, Any]] = [
         "name": "trigger_sync",
         "description": (
             "Trigger a sync job to re-import the dream journal from Google Docs. "
+            "Omit doc_id to sync all configured sources. "
             "Use only when the user explicitly requests a sync or archive refresh."
         ),
         "input_schema": {
@@ -151,10 +152,10 @@ _BASE_TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "doc_id": {
                     "type": "string",
-                    "description": "Google Docs document ID to sync.",
+                    "description": "Optional Google Docs document ID to sync. Omit to sync all configured sources.",
                 },
             },
-            "required": ["doc_id"],
+            "required": [],
             "additionalProperties": False,
         },
     },

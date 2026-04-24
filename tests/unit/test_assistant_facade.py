@@ -20,6 +20,7 @@ from app.assistant.facade import (
     _extract_quote,
     _resolve_dream_title,
 )
+from app.services.gdocs_client import GDocsWriteError
 from app.retrieval.query import EvidenceBlock, FragmentMatch, InsufficientEvidence
 
 
@@ -274,6 +275,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "list_recent_dreams",
         "get_patterns",
         "create_dream",
+        "write_dream_to_google_doc",
         "get_theme_history",
         "trigger_sync",
         "get_archive_source",
@@ -416,18 +418,20 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
         index_dream_callable=index_dream_callable,
     )
 
-    result = await facade.create_dream(
-        "I was walking through a dark river valley.",
-        title="River valley",
-        dream_date=date(2026, 4, 21),
-        chat_id=42,
-    )
+    with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=True)):
+        result = await facade.create_dream(
+            "I was walking through a dark river valley.",
+            title="River valley",
+            dream_date=date(2026, 4, 21),
+            chat_id=42,
+        )
 
     assert isinstance(result, CreatedDreamItem)
     assert result.created is True
     assert result.title == "21.04.26 - River valley"
     assert result.date == "2026-04-21"
     assert result.source_doc_id == "telegram:42"
+    assert result.written_to_google_doc is True
     session.add.assert_called_once()
     added = session.add.call_args[0][0]
     assert added.raw_text == "I was walking through a dark river valley."
@@ -512,6 +516,85 @@ async def test_create_dream_returns_existing_entry_without_rerunning_pipeline() 
     session.commit.assert_not_awaited()
     analysis_service.analyse_dream_with_session_factory.assert_not_awaited()
     index_dream_callable.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_dream_to_google_doc_returns_true_on_success() -> None:
+    dream_id = uuid4()
+    dream = SimpleNamespace(
+        id=dream_id,
+        date=date(2026, 4, 24),
+        title="Мост",
+        raw_text="Я шёл по мосту.",
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession(get_result=dream)),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with patch("app.assistant.facade.GDocsClient.append_text", MagicMock()):
+        result = await facade.write_dream_to_google_doc(dream_id)
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_write_dream_to_google_doc_returns_false_on_write_error() -> None:
+    dream_id = uuid4()
+    dream = SimpleNamespace(
+        id=dream_id,
+        date=date(2026, 4, 24),
+        title="Мост",
+        raw_text="Я шёл по мосту.",
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession(get_result=dream)),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with patch(
+        "app.assistant.facade.GDocsClient.append_text",
+        MagicMock(side_effect=GDocsWriteError("permission denied")),
+    ):
+        result = await facade.write_dream_to_google_doc(dream_id)
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_create_dream_sets_written_to_google_doc_true_on_success() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+    )
+
+    with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=True)):
+        result = await facade.create_dream("Text", chat_id=1)
+
+    assert result.written_to_google_doc is True
+
+
+@pytest.mark.asyncio
+async def test_create_dream_sets_written_to_google_doc_false_on_write_failure() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+    )
+
+    with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=False)):
+        result = await facade.create_dream("Text", chat_id=1)
+
+    assert result.written_to_google_doc is False
 
 
 @pytest.mark.asyncio

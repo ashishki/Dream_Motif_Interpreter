@@ -6,7 +6,7 @@ from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 from httplib2 import Response
 
-from app.services.gdocs_client import GDocsAuthError, GDocsClient
+from app.services.gdocs_client import GDocsAuthError, GDocsClient, GDocsWriteError
 
 
 def _build_settings(**overrides: str) -> SimpleNamespace:
@@ -59,6 +59,7 @@ def test_builds_service_account_credentials_when_configured() -> None:
         "/tmp/service-account.json",
         scopes=[
             "https://www.googleapis.com/auth/documents.readonly",
+            "https://www.googleapis.com/auth/documents",
             "https://www.googleapis.com/auth/drive.readonly",
         ],
     )
@@ -156,3 +157,38 @@ def test_fetch_document_metadata_returns_lightweight_change_marker() -> None:
     assert metadata.version == "17"
     assert metadata.head_revision_id == "rev-17"
     assert metadata.change_marker == "rev-17"
+
+
+def test_append_text_calls_batch_update_with_correct_payload() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {"content": [{"endIndex": 50}]}
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        client.append_text("doc-123", "Текст сна")
+
+    mocked_service.documents.return_value.batchUpdate.assert_called_once_with(
+        documentId="doc-123",
+        body={
+            "requests": [
+                {
+                    "insertText": {
+                        "location": {"index": 49},
+                        "text": "\n\nТекст сна",
+                    }
+                }
+            ]
+        },
+    )
+
+
+def test_append_text_raises_gdocs_write_error_on_403() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.side_effect = _build_http_error(403)
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        with pytest.raises(GDocsWriteError):
+            client.append_text("doc-123", "text")

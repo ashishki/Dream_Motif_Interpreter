@@ -15,12 +15,15 @@ from app.models.motif import MotifInduction
 from app.models.theme import DreamTheme, ThemeCategory
 from app.retrieval.query import EvidenceBlock, InsufficientEvidence, RagQueryService
 from app.services.analysis import AnalysisService
+from app.services.gdocs_client import GDocsClient, GDocsWriteError
 from app.services.motif_service import MotifService
 from app.services.patterns import CoOccurrencePattern, PatternService, RecurringPattern
 from app.services.research_service import ResearchService
 from app.services.versioning import VersioningService
 from app.shared.config import get_settings
-from app.shared.tracing import get_tracer
+from app.shared.tracing import get_logger, get_tracer
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,7 @@ class CreatedDreamItem:
     source_doc_id: str
     created_at: str
     created: bool
+    written_to_google_doc: bool = False
 
 
 @dataclass(frozen=True)
@@ -338,6 +342,8 @@ class AssistantFacade:
                     await self._motif_service.run(dream_entry, session)
                     await session.commit()
 
+        written = await self.write_dream_to_google_doc(dream_id=dream.id)
+
         return CreatedDreamItem(
             id=dream.id,
             date=dream.date.isoformat() if dream.date is not None else None,
@@ -346,7 +352,60 @@ class AssistantFacade:
             source_doc_id=dream.source_doc_id,
             created_at=dream.created_at.isoformat(),
             created=True,
+            written_to_google_doc=written,
         )
+
+    async def write_dream_to_google_doc(
+        self, dream_id: uuid.UUID, doc_id: str | None = None
+    ) -> bool:
+        """Write a dream entry to Google Doc. Returns True on success, False on failure."""
+        from app.shared.config import get_effective_google_doc_id
+
+        resolved_doc_id = doc_id or get_effective_google_doc_id()
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span("assistant.write_dream_to_google_doc"):
+            try:
+                async with self._session_factory() as session:
+                    dream = await session.get(DreamEntry, dream_id)
+                if dream is None:
+                    logger.warning(
+                        "write_dream_to_google_doc: dream not found", dream_id=str(dream_id)
+                    )
+                    return False
+
+                date_str = dream.date.strftime("%d.%m.%y") if dream.date else "??.??.??"
+                title_str = (
+                    dream.title.strip()
+                    if dream.title and dream.title.strip()
+                    else "без названия"
+                )
+                header = f"{date_str} - {title_str}"
+                raw_text = dream.raw_text or ""
+                formatted = f"{header}\n\n{raw_text}"
+
+                client = GDocsClient()
+                client.append_text(resolved_doc_id, formatted)
+                logger.info(
+                    "Dream written to Google Doc",
+                    dream_id=str(dream_id),
+                    doc_id=resolved_doc_id,
+                )
+                return True
+            except GDocsWriteError as exc:
+                logger.warning(
+                    "Failed to write dream to Google Doc",
+                    dream_id=str(dream_id),
+                    doc_id=resolved_doc_id,
+                    error=str(exc),
+                )
+                return False
+            except Exception as exc:
+                logger.error(
+                    "Unexpected error writing dream to Google Doc",
+                    dream_id=str(dream_id),
+                    error=str(exc),
+                )
+                return False
 
     async def get_theme_history(self, dream_id: uuid.UUID) -> list[ThemeHistoryEntry]:
         async with self._session_factory() as session:

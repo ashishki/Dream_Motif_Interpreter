@@ -317,10 +317,15 @@ async def execute_tool(
             chat_id=chat_id,
         )
         status = "saved" if created.created else "already existed"
-        return (
+        lines = [
             f"Dream {status}: {created.id} | {created.title} | "
             f"date={created.date or 'unknown'} | source={created.source_doc_id}"
-        )
+        ]
+        if getattr(created, "written_to_google_doc", False):
+            lines.append("Запись добавлена в Google Doc.")
+        else:
+            lines.append("Добавить в Google Doc не удалось. Проверьте подключение к источнику.")
+        return "\n".join(lines)
 
     if tool_name == "get_dream":
         raw_id = str(tool_input.get("dream_id", "")).strip()

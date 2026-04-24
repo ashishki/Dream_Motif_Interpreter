@@ -95,9 +95,7 @@ async def test_digit_message_after_substantive_response_records_feedback() -> No
     }
     assert record_session is session
     assert session.committed is True
-    message1.reply_text.assert_awaited_once_with(
-        f"Detailed interpretation\n\n{FEEDBACK_PROMPT}"
-    )
+    message1.reply_text.assert_awaited_once_with(f"Detailed interpretation\n\n{FEEDBACK_PROMPT}")
     message2.reply_text.assert_awaited_once_with("Thanks, noted.")
 
 
@@ -126,9 +124,7 @@ async def test_digit_outside_range_is_not_treated_as_rating() -> None:
     assert mock_chat.await_count == 2
     mock_record.assert_not_awaited()
     assert session.committed is False
-    message2.reply_text.assert_awaited_once_with(
-        f"Second substantive reply\n\n{FEEDBACK_PROMPT}"
-    )
+    message2.reply_text.assert_awaited_once_with(f"Second substantive reply\n\n{FEEDBACK_PROMPT}")
 
 
 @pytest.mark.asyncio

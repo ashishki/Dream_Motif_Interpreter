@@ -291,7 +291,7 @@ async def execute_tool(
             title_str = item.title if item.title else "без названия"
             lines.append(f"- [{date_label}] {title_str} (score={item.relevance_score:.2f})")
             if item.quote:
-                lines.append(f"  Quote: \"{item.quote}\"")
+                lines.append(f'  Quote: "{item.quote}"')
             else:
                 lines.append(f"  {item.chunk_text[:200]}")
         return "\n".join(lines)
@@ -309,7 +309,7 @@ async def execute_tool(
             title_str = item.title if item.title else "без названия"
             lines.append(f"- [{date_label}] {title_str} (score={item.relevance_score:.2f})")
             if item.quote:
-                lines.append(f"  Quote: \"{item.quote}\"")
+                lines.append(f'  Quote: "{item.quote}"')
             else:
                 lines.append(f"  {item.chunk_text[:200]}")
         return "\n".join(lines)
@@ -335,15 +335,22 @@ async def execute_tool(
             dream_date=dream_date,
             chat_id=chat_id,
         )
-        status = "saved" if created.created else "already existed"
+        if not created.created:
+            return (
+                f"Запись уже существует в архиве (id={created.id}, title={created.title!r}). "
+                "В Google Doc повторно не записывается."
+            )
         lines = [
-            f"Dream {status}: {created.id} | {created.title} | "
+            f"Dream saved: {created.id} | {created.title} | "
             f"date={created.date or 'unknown'} | source={created.source_doc_id}"
         ]
         if getattr(created, "written_to_google_doc", False):
             lines.append("Запись добавлена в Google Doc.")
         else:
-            lines.append("Добавить в Google Doc не удалось. Проверьте подключение к источнику.")
+            lines.append(
+                "Запись сохранена в архиве. "
+                "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
+            )
         return "\n".join(lines)
 
     if tool_name == "retry_write_to_google_doc":
@@ -504,7 +511,9 @@ async def execute_tool(
                 status_note = "(confirmed by user)"
             else:
                 status_note = f"({motif.status})"
-            lines.append(f"- [{confidence_label} confidence] {motif.label} {status_note} [id={motif.id}]")
+            lines.append(
+                f"- [{confidence_label} confidence] {motif.label} {status_note} [id={motif.id}]"
+            )
             if motif.rationale:
                 lines.append(f"  Rationale: {motif.rationale}")
         return "\n".join(lines)

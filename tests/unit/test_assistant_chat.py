@@ -326,7 +326,10 @@ def test_system_prompt_contains_terminology_rules_for_google_docs_sources() -> N
     assert "## terminology rules".lower() in prompt_lower
     assert "google docs" in prompt_lower
     assert "not the internal database" in prompt_lower
-    assert "manage_archive_source and trigger_sync are operations on google docs sources" in prompt_lower
+    assert (
+        "manage_archive_source and trigger_sync are operations on google docs sources"
+        in prompt_lower
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -524,10 +527,7 @@ async def test_execute_tool_get_dream_motifs_includes_motif_uuid() -> None:
         facade,
     )
 
-    assert (
-        f"- [high confidence] Threshold crossing (confirmed by user) [id={motif_id}]"
-        in result
-    )
+    assert f"- [high confidence] Threshold crossing (confirmed by user) [id={motif_id}]" in result
     assert "  Rationale: The dream repeatedly frames passage through liminal spaces." in result
 
 
@@ -642,7 +642,6 @@ async def test_execute_tool_manage_archive_source_remove_returns_updated_list() 
     )
 
     assert (
-        result
-        == "Archive source removed. Updated list:\n1. doc-primary (primary)\n2. doc-extra-2"
+        result == "Archive source removed. Updated list:\n1. doc-primary (primary)\n2. doc-extra-2"
     )
     facade.remove_archive_source.assert_called_once_with("doc-extra-1")

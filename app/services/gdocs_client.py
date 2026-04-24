@@ -1,3 +1,4 @@
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -22,6 +23,8 @@ GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 GOOGLE_DOCS_SOURCE_TYPE = "google_doc"
 
 logger = get_logger(__name__)
+
+_DATE_PREFIX_RE = re.compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")
 
 
 class GDocsAuthError(Exception):
@@ -210,7 +213,8 @@ class GDocsClient:
 
                 # Layout: \n\n{date_str} - {title}\n\n{body}
                 prefix = "\n\n"
-                heading = f"{date_str} - {title}"
+                clean_title = _DATE_PREFIX_RE.sub("", title).strip()
+                heading = f"{date_str} - {clean_title}"
                 title_line = f"{heading}\n\n"
                 full_text = prefix + title_line + body
 

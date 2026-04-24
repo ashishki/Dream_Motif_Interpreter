@@ -85,3 +85,553 @@ sleep 3 && curl -s http://127.0.0.1:8000/health
 [2026-04-21T13:32:14Z] [TASK:?] EXIT=?        .venv/bin/pytest tests/unit/test_grounder.py tests/unit/test_theme_extractor.py -v 2>&1 | tail -30
 [2026-04-21T13:32:23Z] [TASK:?] EXIT=?        .venv/bin/ruff check app/ tests/ 2>&1 && .venv/bin/ruff format --check app/ tests/ 2>&1
 [2026-04-21T13:33:41Z] [TASK:?] EXIT=?        .venv/bin/pytest tests/ -q --tb=no 2>&1 | tail -10
+[2026-04-21T13:34:16Z] [TASK:?] EXIT=?        git add app/llm/client.py app/llm/grounder.py app/llm/theme_extractor.py tests/unit/test_grounder.py tests/unit/test_theme_extractor.py docs/hooks_log.txt && git commit -m "fix(llm): robust JSON extra
+[2026-04-21T13:34:21Z] [TASK:?] EXIT=?        git push origin main 2>&1
+[2026-04-21T13:34:24Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env 2>/dev/null && echo "exists" || echo "no .env"
+[2026-04-21T13:34:27Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/alembic current 2>&1
+[2026-04-21T13:34:32Z] [TASK:?] EXIT=?        set -a && source .env && set +a && curl -s http://127.0.0.1:8000/health 2>/dev/null || echo "server not running"
+[2026-04-21T13:34:32Z] [TASK:?] EXIT=?        cat /srv/openclaw-you/workspace/Dream_Motif_Interpreter/docs/PHASE_PLAN.md | grep -A5 "Current Checkpoint\|next.*checkpoint\|Next Start" | head -30
+[2026-04-21T13:34:35Z] [TASK:?] EXIT=?        grep -E "GOOGLE_DOC_ID|GOOGLE_SERVICE_ACCOUNT|TELEGRAM_BOT_TOKEN|DATABASE_URL" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env | sed 's/=.*/=<set>/'
+[2026-04-21T13:34:43Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 2>&1 &
+sleep 3 && curl -s http://127.0.0.1:8000/health | python3 -m json.tool
+[2026-04-21T13:34:57Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/
+[2026-04-21T13:35:01Z] [TASK:?] EXIT=?        grep -r "GDocsClient\|gdocs\|fetch_document\|google.*doc" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/ --include="*.py" -l 2>&1
+[2026-04-21T13:35:13Z] [TASK:?] EXIT=?        grep -n "def fetch_document\|async def fetch_document" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/services/gdocs_client.py | head -5
+[2026-04-21T13:35:20Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+import os
+
+client = GDocsClient()
+paragraphs = client.fetch_document()
+print(f'Paragraphs: {
+[2026-04-21T13:35:24Z] [TASK:?] EXIT=?        grep -n "X-API-Key\|API_KEY\|api_key" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env | head -5
+[2026-04-21T13:35:25Z] [TASK:?] EXIT=?        grep -n "X-API-Key\|API_KEY\|api_key" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/shared/config.py | head -10
+[2026-04-21T13:35:30Z] [TASK:?] EXIT=?        curl -s -X POST http://127.0.0.1:8000/sync \
+  -H "X-API-Key: local-dev-secret-key-change-me-123456" \
+  -H "Content-Type: application/json" | python3 -m json.tool
+[2026-04-21T13:35:42Z] [TASK:?] EXIT=?        sleep 5 && curl -s http://127.0.0.1:8000/sync/3373a7c5-e510-4a7d-8c84-f44e3ae1e5c4 \
+  -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -m json.tool
+[2026-04-21T13:38:44Z] [TASK:?] EXIT=?        JOB_ID=3373a7c5-e510-4a7d-8c84-f44e3ae1e5c4
+until curl -s http://127.0.0.1:8000/sync/$JOB_ID -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -c "import sys,json; d=json.load(sys.stdin)
+[2026-04-21T13:38:47Z] [TASK:?] EXIT=?        ps aux | grep uvicorn | grep -v grep
+[2026-04-21T13:38:57Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+from app.workers.ingest import ingest_document
+from app.services.gdocs
+[2026-04-21T13:39:00Z] [TASK:?] EXIT=?        grep -n "def ingest_document\|async def ingest_document" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/workers/ingest.py | head -5
+[2026-04-21T13:39:01Z] [TASK:?] EXIT=?        grep -n "ingest_document\|job_id\|doc_id" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/api/dreams.py | head -20
+[2026-04-21T13:39:05Z] [TASK:?] EXIT=?        grep -n "class JobEnqueuer\|enqueue_ingest\|arq\|redis_settings\|WorkerSettings" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/workers/ingest.py | head -20
+[2026-04-21T13:39:08Z] [TASK:?] EXIT=?        grep -n "enqueue_ingest\|JobEnqueuer" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/api/dreams.py | head -20
+[2026-04-21T13:40:13Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio
+import structlog
+import logging
+logging.basicConfig(level=logging.WARNING)
+
+from app.workers.ingest import ingest_document
+from
+[2026-04-21T13:40:36Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/hooks/ && cat /srv/openclaw-you/workspace/Dream_Motif_Interpreter/hooks/enforce_codex_exec.sh
+[2026-04-21T13:41:43Z] [TASK:?] EXIT=?        grep -n "5433\|TEST_DATABASE_URL\|postgresql_proc\|postgresql" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/integration/test_ingestion_pipeline.py | head -20
+[2026-04-21T13:41:44Z] [TASK:?] EXIT=?        grep -n "5433\|postgresql_proc\|port" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/pyproject.toml | head -20
+[2026-04-21T13:41:47Z] [TASK:?] EXIT=?        head -30 /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/integration/test_ingestion_controls.py
+[2026-04-21T13:41:53Z] [TASK:?] EXIT=?        grep -rn "TEST_DATABASE_URL\|localhost:543" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/ --include="*.py" | grep -v "__pycache__" | head -20
+[2026-04-21T13:41:54Z] [TASK:?] EXIT=?        cat /srv/openclaw-you/workspace/Dream_Motif_Interpreter/ci/ci.yml | head -60
+[2026-04-21T13:42:06Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.github/workflows/ 2>/dev/null || echo "no .github/workflows"
+[2026-04-21T13:42:19Z] [TASK:?] EXIT=?        grep -n "localhost:5433\|database_url" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/integration/test_ingestion_pipeline.py | head -10
+[2026-04-21T13:42:19Z] [TASK:?] EXIT=?        grep -n "localhost:5433\|database_url" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/integration/test_ingestion_controls.py | head -10
+[2026-04-21T13:42:26Z] [TASK:?] EXIT=?        head -10 /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/integration/test_ingestion_pipeline.py && echo "---" && head -10 /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/integratio
+[2026-04-21T13:43:19Z] [TASK:?] EXIT=?        .venv/bin/ruff check app/ tests/ && .venv/bin/ruff format --check app/ tests/ && echo "ruff OK"
+[2026-04-21T13:43:33Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/pytest tests/integration/test_ingestion_pipeline.py tests/integration/test_ingestion_controls.py -v --tb=short 2>&1 | tail -30
+[2026-04-21T13:45:25Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/pytest tests/ -q --tb=no 2>&1 | tail -5
+[2026-04-21T13:46:06Z] [TASK:?] EXIT=?        git add app/llm/theme_extractor.py tests/integration/test_ingestion_pipeline.py tests/integration/test_ingestion_controls.py .claude/settings.json && git commit -m "fix(llm,tests,ci): theme extractor 
+[2026-04-21T13:46:14Z] [TASK:?] EXIT=?        git push origin main 2>&1
+[2026-04-21T13:46:47Z] [TASK:?] EXIT=?        grep -rn "\.complete(" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/ --include="*.py" | grep -v "__pycache__"
+[2026-04-21T13:46:51Z] [TASK:?] EXIT=?        grep -A5 -B2 "self._client.complete" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/research/synthesizer.py /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/services/imagery.py /srv/op
+[2026-04-21T13:47:49Z] [TASK:?] EXIT=?        grep -rn "_extract_json_payload\|from app.llm.theme_extractor import" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/ --include="*.py" | grep -v __pycache__
+[2026-04-21T13:48:01Z] [TASK:?] EXIT=?        .venv/bin/ruff check app/ tests/ && echo "ruff OK"
+[2026-04-21T13:49:38Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/pytest tests/ -q --tb=short 2>&1 | tail -8
+[2026-04-21T13:49:45Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/pytest tests/unit/test_motif_inductor.py::test_stub_client_is_used_without_api_key -v --tb=short 2>&1 | tail -20
+[2026-04-21T13:49:51Z] [TASK:?] EXIT=?        grep -n "async def complete\|def complete" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/unit/test_motif_inductor.py /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/unit/test_res
+[2026-04-21T13:49:54Z] [TASK:?] EXIT=?        grep -rn "async def complete\|def complete" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/tests/ --include="*.py" | grep -v "__pycache__" | grep -v "test_grounder\|test_theme_extractor"
+[2026-04-21T13:51:46Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/pytest tests/ -q --tb=no 2>&1 | tail -5
+[2026-04-21T13:52:00Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/pytest tests/unit/test_motif_inductor.py::test_induce_retries_on_json_parse_failure tests/unit/test_research_synthesizer.py::test_synthesize_raises_on_pars
+[2026-04-21T13:54:07Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/pytest tests/ -q --tb=no 2>&1 | tail -5
+[2026-04-21T13:54:22Z] [TASK:?] EXIT=?        git add app/llm/theme_extractor.py app/research/synthesizer.py app/services/imagery.py app/services/motif_inductor.py tests/unit/test_motif_inductor.py tests/unit/test_research_synthesizer.py tests/un
+[2026-04-21T13:54:27Z] [TASK:?] EXIT=?        git push origin main 2>&1
+[2026-04-21T13:55:04Z] [TASK:?] EXIT=?        ps aux | grep uvicorn | grep -v grep
+[2026-04-21T13:55:09Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/dmi_server.log 2>&1 &
+echo "started PID $!"
+[2026-04-21T13:55:13Z] [TASK:?] EXIT=?        until curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; do sleep 1; done && curl -s http://127.0.0.1:8000/health | python3 -m json.tool
+[2026-04-21T14:05:23Z] [TASK:?] EXIT=?        JOB=$(curl -s -X POST http://127.0.0.1:8000/sync -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+echo "job_id: $JOB"
+until 
+[2026-04-21T14:05:45Z] [TASK:?] EXIT=?        tail -5 /tmp/dmi_server.log 2>/dev/null
+[2026-04-21T14:05:51Z] [TASK:?] EXIT=?        tail -1 /tmp/claude-0/-srv-openclaw-you-workspace-Dream-Motif-Interpreter/03c688b2-df9c-425a-8bc9-df15b9fe679a/tasks/btoj8liuf.output 2>/dev/null
+[2026-04-21T14:07:06Z] [TASK:?] EXIT=?        grep -c "event.*HTTP Request\|anthropic.com" /tmp/dmi_server.log 2>/dev/null && tail -3 /tmp/dmi_server.log | grep -o '"event":"[^"]*"'
+[2026-04-21T14:07:10Z] [TASK:?] EXIT=?        tail -1 /tmp/claude-0/-srv-openclaw-you-workspace-Dream-Motif-Interpreter/03c688b2-df9c-425a-8bc9-df15b9fe679a/tasks/btoj8liuf.output
+[2026-04-21T14:07:15Z] [TASK:?] EXIT=?        grep -i "error\|exception\|traceback\|failed\|ERROR" /tmp/dmi_server.log | tail -30
+[2026-04-21T14:07:24Z] [TASK:?] EXIT=?        grep -A2 "ingest_job_failed\|Traceback\|Error\b" /tmp/dmi_server.log | tail -40
+[2026-04-21T14:08:23Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio, traceback, uuid
+from app.workers.ingest import ingest_document
+from app.services.gdocs_client import GDocsClient
+from app.shar
+[2026-04-21T14:19:10Z] [TASK:?] EXIT=?        JOB=$(curl -s -X POST http://127.0.0.1:8000/sync -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+echo "job_id: $JOB"
+until 
+[2026-04-21T14:24:21Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio, traceback, uuid
+from app.workers.ingest import ingest_document
+from app.services.gdocs_client import GDocsClient
+from app.shar
+[2026-04-21T14:25:30Z] [TASK:?] EXIT=?        tail -f /tmp/claude-0/-srv-openclaw-you-workspace-Dream-Motif-Interpreter/03c688b2-df9c-425a-8bc9-df15b9fe679a/tasks/bru68jcmb.output 2>/dev/null &
+TAIL_PID=$!
+until grep -q "new entries\|Traceback\|E
+[2026-04-21T14:25:46Z] [TASK:?] EXIT=?        grep -E "error|exception|failed|Error" /tmp/dmi_server.log | grep "201f3f8d" | head -20
+[2026-04-21T14:25:52Z] [TASK:?] EXIT=?        grep -c "HTTP/1.1 200 OK" /tmp/dmi_server.log && grep "HTTP Request" /tmp/dmi_server.log | tail -5
+[2026-04-21T14:25:57Z] [TASK:?] EXIT=?        grep -E '"level":"(error|warning)"' /tmp/dmi_server.log | grep -v "request.completed" | tail -20
+[2026-04-21T14:26:14Z] [TASK:?] EXIT=?        grep -E 'level.*error|level.*warning' /tmp/dmi_server.log | tail -10
+[2026-04-21T14:26:31Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio, traceback, uuid
+from app.workers.ingest import ingest_document
+from app.services.gdocs_client import GDocsClient
+from app.shar
+[2026-04-21T14:27:10Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio, uuid, traceback
+from app.api.dreams import LocalAsyncJobEnqueuer, _get_redis_client
+from app.shared.database import get_sessio
+[2026-04-21T14:27:38Z] [TASK:?] EXIT=?        ps aux | grep uvicorn | grep -v grep | awk '{print $2}' | xargs kill 2>/dev/null; echo done
+[2026-04-21T14:27:42Z] [TASK:?] EXIT=?        set -a && source .env && set +a && nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/dmi_server2.log 2>&1 & echo "PID $!"
+[2026-04-21T14:27:47Z] [TASK:?] EXIT=?        until curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; do sleep 1; done && echo "ready" && curl -s http://127.0.0.1:8000/health | python3 -m json.tool
+[2026-04-21T14:28:16Z] [TASK:?] EXIT=?        JOB=$(curl -s -X POST http://127.0.0.1:8000/sync \
+  -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+echo "job: $JOB"
+until
+[2026-04-21T14:28:23Z] [TASK:?] EXIT=?        curl -s "http://127.0.0.1:8000/dreams?limit=5" \
+  -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -m json.tool
+[2026-04-21T14:28:31Z] [TASK:?] EXIT=?        # Themes for the first dream
+DREAM_ID="0e7d74a7-203a-4b23-9b74-e6163d17c7a5"
+curl -s "http://127.0.0.1:8000/dreams/$DREAM_ID/themes" \
+  -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3
+[2026-04-21T14:28:42Z] [TASK:?] EXIT=?        curl -s "http://127.0.0.1:8000/search?q=%D0%B2%D0%BE%D0%B4%D0%B0&limit=3" \
+  -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -m json.tool | head -30
+[2026-04-21T14:31:25Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/ 2>&1 | head -30
+[2026-04-21T14:31:28Z] [TASK:?] EXIT=?        cat docker-compose.yml 2>&1 | head -50
+[2026-04-21T14:31:50Z] [TASK:?] EXIT=?        pip show sqlalchemy asyncpg 2>&1 | grep -E "Name|Version|not found" | head -10
+[2026-04-21T14:31:55Z] [TASK:?] EXIT=?        which python3 && python3 --version && pip3 list 2>&1 | grep -iE "sqlalchemy|asyncpg|fastapi|anthropic" | head -10
+[2026-04-21T14:31:59Z] [TASK:?] EXIT=?        ls /root/.venv/bin/ 2>/dev/null | head -5 || find /srv/openclaw-you -name "python*" -type f 2>/dev/null | head -5 || ls /opt/ 2>/dev/null
+[2026-04-21T14:32:04Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter -name "python*" -o -name "activate" 2>/dev/null | head -10
+[2026-04-21T14:32:18Z] [TASK:?] EXIT=?        ss -tlnp 2>/dev/null | grep -E "5432|6379|8000|8080" || netstat -tlnp 2>/dev/null | grep -E "5432|6379|8000|8080"
+[2026-04-21T14:32:19Z] [TASK:?] EXIT=?        ls /tmp/*.pid 2>/dev/null; ps aux 2>/dev/null | grep -E "postgres|redis|uvicorn|fastapi" | grep -v grep | head -10
+[2026-04-21T14:32:30Z] [TASK:?] EXIT=?        cat .env 2>/dev/null | grep -E "DATABASE_URL|POSTGRES" | head -5
+[2026-04-21T14:32:44Z] [TASK:?] EXIT=?        .venv/bin/python3 -c "
+import asyncio, sys
+sys.path.insert(0, '.')
+
+async def check():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text
+    engine = create_as
+[2026-04-21T14:32:52Z] [TASK:?] EXIT=?        curl -s "http://127.0.0.1:8000/search?q=%D0%B2%D0%BE%D0%B4%D0%B0" 2>&1
+[2026-04-21T14:32:55Z] [TASK:?] EXIT=?        cat .env 2>/dev/null | grep -E "API_KEY|TOKEN|SECRET" | head -5
+[2026-04-21T14:33:02Z] [TASK:?] EXIT=?        curl -s "http://127.0.0.1:8000/search?q=%D0%B2%D0%BE%D0%B4%D0%B0" -H "X-API-Key: local-dev-secret-key-change-me-123456" 2>&1
+[2026-04-21T14:33:16Z] [TASK:?] EXIT=?        grep -r "RETRIEVAL_THRESHOLD" app/ --include="*.py" | head -10
+[2026-04-21T14:33:17Z] [TASK:?] EXIT=?        cat .env | grep -i "threshold\|retrieval" | head -5
+[2026-04-21T14:33:53Z] [TASK:?] EXIT=?        .venv/bin/python3 - << 'EOF'
+import asyncio, sys, os
+sys.path.insert(0, '.')
+
+async def check():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text
+    from app
+[2026-04-21T14:34:19Z] [TASK:?] EXIT=?        .venv/bin/python3 - << 'EOF'
+import asyncio, sys, os
+sys.path.insert(0, '.')
+
+async def check():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text
+    from dot
+[2026-04-21T14:34:55Z] [TASK:?] EXIT=?        kill $(ps aux | grep uvicorn | grep -v grep | awk '{print $2}') 2>/dev/null; sleep 1
+set -a && source .env && set +a
+nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/dmi_server
+[2026-04-21T14:35:09Z] [TASK:?] EXIT=?        curl -s "http://127.0.0.1:8000/search?q=%D0%B2%D0%BE%D0%B4%D0%B0" -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -m json.tool 2>&1
+[2026-04-21T14:35:14Z] [TASK:?] EXIT=?        git diff --stat
+[2026-04-21T14:35:22Z] [TASK:?] EXIT=?        git status --short
+[2026-04-21T14:36:10Z] [TASK:?] EXIT=?        git add app/retrieval/query.py app/shared/config.py && git commit -m "$(cat <<'EOF'
+fix(search): lower retrieval threshold to 0.20 and switch FTS to Russian
+
+OpenAI embeddings for Russian text rarely 
+[2026-04-21T14:39:05Z] [TASK:?] EXIT=?        curl -s "http://127.0.0.1:8000/search?q=%D0%B2%D0%BE%D0%B4%D0%B0&q=%D0%B2%D0%BE%D0%B4%D0%B0" -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -c "
+import sys, json
+d = json.load(sys.std
+[2026-04-21T14:39:05Z] [TASK:?] EXIT=?        cat .env | grep -E "RESEARCH|TAVILY|RESEARCH_API"
+[2026-04-21T14:39:22Z] [TASK:?] EXIT=?        curl -s "http://127.0.0.1:8000/search?q=%D0%BF%D0%BE%D0%BB%D1%91%D1%82" -H "X-API-Key: local-dev-secret-key-change-me-123456" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print('result:', 
+[2026-04-21T14:40:25Z] [TASK:?] EXIT=?        .venv/bin/python3 - << 'EOF'
+import asyncio, sys
+sys.path.insert(0, '.')
+
+async def check():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text
+    engine = cre
+[2026-04-21T14:40:40Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 - << 'EOF'
+import asyncio
+async def test():
+    import anthropic, os
+    client = anthropic.AsyncAnthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+[2026-04-21T14:40:53Z] [TASK:?] EXIT=?        grep -r "DreamTheme\|dream_themes" app/ --include="*.py" -l
+[2026-04-21T14:41:49Z] [TASK:?] EXIT=?        # Show how expansion truncates
+set -a && source .env && set +a && .venv/bin/python3 - << 'EOF'
+import asyncio
+async def test():
+    import anthropic, os
+    client = anthropic.AsyncAnthropic(api_key=o
+[2026-04-21T14:42:08Z] [TASK:?] EXIT=?        git add app/retrieval/query.py && git commit -m "fix(rag): bump query expansion max_tokens from 100 to 200 (was being truncated)"
+[2026-04-21T14:45:26Z] [TASK:?] EXIT=?        cat .env | grep -E "RESEARCH|MOTIF|TAVILY"
+[2026-04-21T14:45:35Z] [TASK:?] EXIT=?        sed -i 's/MOTIF_INDUCTION_ENABLED=false/MOTIF_INDUCTION_ENABLED=true/' .env && sed -i 's/RESEARCH_AUGMENTATION_ENABLED=false/RESEARCH_AUGMENTATION_ENABLED=true/' .env && grep -E "MOTIF|RESEARCH_AUGMEN
+[2026-04-21T14:45:38Z] [TASK:?] EXIT=?        grep -E "MOTIF|RESEARCH_AUGMENTATION" .env
+[2026-04-21T14:45:42Z] [TASK:?] EXIT=?        grep "RESEARCH" .env
+[2026-04-21T14:45:45Z] [TASK:?] EXIT=?        grep -n "RESEARCH_AUGMENTATION" .env
+[2026-04-21T14:45:50Z] [TASK:?] EXIT=?        sed -i '21s/RESEARCH_AUGMENTATION_ENABLED=false/RESEARCH_AUGMENTATION_ENABLED=true/' .env && grep -E "MOTIF|RESEARCH" .env
+[2026-04-21T14:46:01Z] [TASK:?] EXIT=?        kill $(ps aux | grep uvicorn | grep -v grep | awk '{print $2}') 2>/dev/null; sleep 1
+set -a && source .env && set +a
+nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/dmi_server
+[2026-04-21T14:46:20Z] [TASK:?] EXIT=?        .venv/bin/python3 - << 'EOF'
+import asyncio, sys
+sys.path.insert(0, '.')
+
+async def check():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text
+    engine = cre
+[2026-04-21T14:46:32Z] [TASK:?] EXIT=?        grep -n "motif\|MotifService\|MOTIF" app/workers/ingest.py | head -20
+[2026-04-21T14:46:54Z] [TASK:?] EXIT=?        .venv/bin/python3 - << 'EOF'
+import asyncio, sys
+sys.path.insert(0, '.')
+
+async def get_dreams():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text
+    engine 
+[2026-04-21T14:47:38Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 - << 'EOF'
+import asyncio, sys
+sys.path.insert(0, '.')
+
+DREAM_ID = 'b5dd3512-b707-42aa-af2e-4284fc465d2b'  # короткий сон — быстрее
+
+async def run(
+[2026-04-21T14:47:52Z] [TASK:?] EXIT=?        DREAM_ID="b5dd3512-b707-42aa-af2e-4284fc465d2b"
+MOTIF_ID="73e374a7-97bd-4ab5-be1d-a2d9ed2f3432"  # Disguise Dissolution
+
+# Подтверждаем мотив
+curl -s -X PATCH "http://127.0.0.1:8000/dreams/$DREAM_ID/m
+[2026-04-21T14:48:10Z] [TASK:?] EXIT=?        MOTIF_ID="73e374a7-97bd-4ab5-be1d-a2d9ed2f3432"
+
+# Запускаем интернет-поиск
+curl -s -X POST "http://127.0.0.1:8000/motifs/$MOTIF_ID/research" \
+  -H "X-API-Key: local-dev-secret-key-change-me-123456" 
+[2026-04-21T14:52:13Z] [TASK:?] EXIT=?        .venv/bin/python3 - << 'EOF'
+import asyncio, sys
+sys.path.insert(0, '.')
+
+async def clean():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text
+    engine = cre
+[2026-04-21T14:56:47Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 - << 'EOF'
+import asyncio, sys
+sys.path.insert(0, '.')
+
+DREAM_ID = 'b5dd3512-b707-42aa-af2e-4284fc465d2b'
+
+async def run():
+    from sqlalchemy.ext
+[2026-04-21T14:59:26Z] [TASK:?] EXIT=?        DREAM_ID="b5dd3512-b707-42aa-af2e-4284fc465d2b"
+MOTIF_ID="c4174fc5-bbbc-491c-8770-746c2fb9d933"  # Маска как сокрытие подлинного лица
+
+curl -s -X PATCH "http://127.0.0.1:8000/dreams/$DREAM_ID/motifs/$
+[2026-04-21T14:59:52Z] [TASK:?] EXIT=?        MOTIF_ID="c4174fc5-bbbc-491c-8770-746c2fb9d933"
+
+curl -s -X POST "http://127.0.0.1:8000/motifs/$MOTIF_ID/research" \
+  -H "X-API-Key: local-dev-secret-key-change-me-123456" \
+  -H "Content-Type: appli
+[2026-04-21T14:59:59Z] [TASK:?] EXIT=?        git add app/services/motif_inductor.py app/services/research_service.py && git commit -m "feat(motifs): generate labels in Russian, translate to English before Tavily query"
+[2026-04-21T15:00:17Z] [TASK:?] EXIT=?        git log --oneline -5
+[2026-04-21T15:00:23Z] [TASK:?] EXIT=?        git push
+[2026-04-21T15:03:43Z] [TASK:?] EXIT=?        .venv/bin/pytest tests/unit/test_research_synthesizer.py -q 2>&1
+[2026-04-21T15:03:52Z] [TASK:?] EXIT=?        .venv/bin/python3 - << 'EOF'
+import asyncio, sys
+sys.path.insert(0, '.')
+async def clean():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text
+    engine = crea
+[2026-04-21T15:04:31Z] [TASK:?] EXIT=?        # Берём draft-мотив (не confirmed)
+DRAFT_MOTIF_ID=$(
+  .venv/bin/python3 - << 'EOF'
+import asyncio, sys; sys.path.insert(0, '.')
+async def get():
+    from sqlalchemy.ext.asyncio import create_async_en
+[2026-04-21T15:04:48Z] [TASK:?] EXIT=?        git add app/research/synthesizer.py app/services/research_service.py app/api/research.py tests/unit/test_research_synthesizer.py
+git commit -m "feat(research): replace confidence with overlap_degree, 
+[2026-04-21T15:05:30Z] [TASK:?] EXIT=?        find app/telegram* app/bot* -name "*.py" 2>/dev/null | head -20; ls app/ | grep -i "tele\|bot"
+[2026-04-21T15:08:40Z] [TASK:?] EXIT=?        git add app/assistant/prompts.py app/assistant/facade.py && git commit -m "feat(assistant): proactively offer mythological search after motifs; fix overlap_degree in facade" && git push
+[2026-04-21T15:09:02Z] [TASK:?] EXIT=?        git status --short && git log origin/main..HEAD --oneline
+[2026-04-23T07:11:58Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter -type f -name "*.md" | head -20
+[2026-04-23T07:12:02Z] [TASK:?] EXIT=?        ls -la /srv/openclaw-you/workspace/Dream_Motif_Interpreter/ | head -50
+[2026-04-23T07:12:06Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app -type f -name "*.py" | head -40
+[2026-04-23T07:12:06Z] [TASK:?] EXIT=?        ls -la /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/
+[2026-04-23T07:12:07Z] [TASK:?] EXIT=?        ls -la /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/telegram/
+[2026-04-23T07:12:39Z] [TASK:?] EXIT=?        ls -la /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/services/
+[2026-04-23T07:12:56Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter -name "CLAUDE.md" -o -name ".claude.md"
+[2026-04-23T07:12:59Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter -name "CLAUDE.md" -o -name "*.json" | grep -E "(CLAUDE|config)" | head -20
+[2026-04-23T07:13:00Z] [TASK:?] EXIT=?        ls -la /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/api/
+[2026-04-23T07:13:08Z] [TASK:?] EXIT=?        ls -la /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/models/
+[2026-04-23T07:13:20Z] [TASK:?] EXIT=?        head -100 /srv/openclaw-you/workspace/Dream_Motif_Interpreter/pyproject.toml
+[2026-04-23T07:49:40Z] [TASK:?] EXIT=?        git diff --stat && git status --short
+[2026-04-23T07:49:50Z] [TASK:?] EXIT=?        git add app/shared/config.py docs/PHASE_PLAN.md docs/TELEGRAM_INTERACTION_MODEL.md docs/tasks_phase12.md && git commit -m "$(cat <<'EOF'
+Phase 12: open UX fix backlog from Тест 1; enable motif inducti
+[2026-04-23T07:49:56Z] [TASK:?] EXIT=?        git push
+[2026-04-23T07:53:18Z] [TASK:?] EXIT=?        git add docs/tasks_phase12.md docs/CODEX_PROMPT.md && git commit -m "docs: update CODEX_PROMPT to Phase 12; add prompt economy rule; clean up tasks_phase12 workflow dup"
+[2026-04-23T07:53:31Z] [TASK:?] EXIT=?        git push
+[2026-04-23T10:43:26Z] [TASK:?] EXIT=?        git status && git pull
+[2026-04-23T10:43:26Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/
+[2026-04-23T10:43:38Z] [TASK:?] EXIT=?        systemctl list-units --type=service | grep -i dream 2>/dev/null; systemctl list-units --type=service | grep -i telegram 2>/dev/null; systemctl list-units --type=service | grep -i motif 2>/dev/null
+[2026-04-23T10:43:56Z] [TASK:?] EXIT=?        systemctl restart dream-motif-telegram.service dream-motif-api.service dream-motif-auto-sync.service && echo "OK"
+[2026-04-23T10:44:06Z] [TASK:?] EXIT=?        sleep 3 && systemctl status dream-motif-telegram.service dream-motif-api.service dream-motif-auto-sync.service --no-pager -l | grep -E "Active:|Main PID:|dream-motif"
+[2026-04-23T10:45:24Z] [TASK:?] EXIT=?        grep -r "TELEGRAM_ALLOWED_CHAT_ID" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env 2>/dev/null || grep -r "TELEGRAM_ALLOWED_CHAT_ID" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/deploy
+[2026-04-23T10:46:11Z] [TASK:?] EXIT=?        grep "TELEGRAM_BOT_TOKEN" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env
+[2026-04-23T10:46:33Z] [TASK:?] EXIT=?        curl -s -X POST "https://api.telegram.org/bot8242951823:AAE4t3YrO66_R1vdCuQJ4NlsUf7PY9jOPnU/sendMessage" \
+  -d chat_id=5648359231 \
+  -d parse_mode=HTML \
+  --data-urlencode text="Привет. Сегодня обн
+[2026-04-24T06:52:16Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/
+[2026-04-24T06:52:16Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter/docs -type f | sort
+[2026-04-24T06:52:24Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/assistant/
+[2026-04-24T06:52:29Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/ && ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/retrieval/ 2>/dev/null || echo "no retrieval dir"
+[2026-04-24T06:54:01Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/telegram/ && grep -n "rate\|rating\|оцените\|Reply to\|1-5\|1–5" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/telegram/*.py 2>/dev
+[2026-04-24T06:54:36Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/auto_sync/ && grep -n "GOOGLE_DOC_ID\|doc_id\|source_doc" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/auto_sync/*.py 2>/dev/null 
+[2026-04-24T06:54:37Z] [TASK:?] EXIT=?        grep -rn "GOOGLE_DOC_ID\|source_doc_id" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/ --include="*.py" | head -20
+[2026-04-24T06:54:43Z] [TASK:?] EXIT=?        grep -n "trigger_sync\|GOOGLE_DOC_ID\|doc_ids\|manage_archive" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/assistant/tools.py | head -30
+[2026-04-24T07:08:05Z] [TASK:?] EXIT=?        wc -l /srv/openclaw-you/workspace/Dream_Motif_Interpreter/docs/tasks_phase13.md /srv/openclaw-you/workspace/Dream_Motif_Interpreter/docs/tasks_phase14.md && grep "^## WS-" /srv/openclaw-you/workspace/
+[2026-04-24T07:09:01Z] [TASK:?] EXIT=?        git -C /srv/openclaw-you/workspace/Dream_Motif_Interpreter status
+[2026-04-24T07:09:06Z] [TASK:?] EXIT=?        git -C /srv/openclaw-you/workspace/Dream_Motif_Interpreter add docs/PHASE_PLAN.md docs/tasks_phase13.md docs/tasks_phase14.md && git -C /srv/openclaw-you/workspace/Dream_Motif_Interpreter commit -m "d
+[2026-04-24T07:09:25Z] [TASK:?] EXIT=?        git -C /srv/openclaw-you/workspace/Dream_Motif_Interpreter stash && git -C /srv/openclaw-you/workspace/Dream_Motif_Interpreter pull --rebase && git -C /srv/openclaw-you/workspace/Dream_Motif_Interpret
+[2026-04-24T13:26:14Z] [TASK:?] EXIT=?        git pull origin main 2>&1
+[2026-04-24T13:26:14Z] [TASK:?] EXIT=?        git log --oneline -15
+[2026-04-24T13:26:23Z] [TASK:?] EXIT=?        git log --oneline 81eb3ba..96986b1 --format="%s"
+[2026-04-24T13:26:27Z] [TASK:?] EXIT=?        git show 99ea2fb --stat | head -30
+[2026-04-24T13:26:36Z] [TASK:?] EXIT=?        systemctl list-units --type=service 2>/dev/null | grep -i dream; ps aux | grep -E "(python|uvicorn|bot)" | grep -v grep | head -10
+[2026-04-24T13:26:47Z] [TASK:?] EXIT=?        systemctl restart dream-motif-api.service dream-motif-auto-sync.service dream-motif-telegram.service 2>&1 && sleep 3 && systemctl is-active dream-motif-api.service dream-motif-auto-sync.service dream-
+[2026-04-24T13:27:59Z] [TASK:?] EXIT=?        grep -n "manage_archive_source\|GOOGLE_DOC_IDS\|get_all_doc_ids" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/assistant/tools.py | head -40
+[2026-04-24T13:28:00Z] [TASK:?] EXIT=?        grep -n "manage_archive_source\|doc_ids_override\|add\|remove\|list" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/assistant/facade.py | head -40
+[2026-04-24T13:29:18Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/models -name "*.py" | xargs grep -l "setting\|config\|preference" 2>/dev/null; ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/m
+[2026-04-24T13:29:20Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter -name "*.py" -path "*/migrations/*" | head -5; ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/alembic/versions/ 2>/dev/null | tail -5
+[2026-04-24T13:30:29Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter/docs -name "*.md" | xargs ls -lt 2>/dev/null | head -20
+[2026-04-24T13:33:40Z] [TASK:?] EXIT=?        grep -r "chat_id\|CHAT_ID\|allowed_chat" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env* /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/shared/config.py 2>/dev/null | grep -v "^Bina
+[2026-04-24T13:33:42Z] [TASK:?] EXIT=?        grep -r "TELEGRAM_ALLOWED\|ALLOWED_CHAT\|chat_id" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/ --include="*.env" --include="*.env.example" --include="*.py" -l 2>/dev/null | head -10
+[2026-04-24T13:34:12Z] [TASK:?] EXIT=?        grep "TELEGRAM_BOT_TOKEN" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env | head -1
+[2026-04-24T13:34:26Z] [TASK:?] EXIT=?        curl -s -X POST "https://api.telegram.org/bot8242951823:AAE4t3YrO66_R1vdCuQJ4NlsUf7PY9jOPnU/sendMessage" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chat_id": "5648359231",
+    "text": "При
+[2026-04-24T13:34:58Z] [TASK:?] EXIT=?        grep -r "token\|usage\|input_tokens\|output_tokens" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/models/ --include="*.py" -l 2>/dev/null
+[2026-04-24T13:34:59Z] [TASK:?] EXIT=?        grep -r "usage\|input_tokens\|output_tokens\|token" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/assistant/ --include="*.py" -n | grep -i "token\|usage" | head -20
+[2026-04-24T13:35:07Z] [TASK:?] EXIT=?        journalctl -u dream-motif-telegram -u dream-motif-api --since "2026-04-20" --no-pager 2>/dev/null | grep -i "token\|usage\|cost" | head -30
+[2026-04-24T13:35:09Z] [TASK:?] EXIT=?        psql -U postgres -d dream_motif 2>/dev/null -c "\dt" || psql $(grep DATABASE_URL /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env | cut -d= -f2-) -c "\dt" 2>/dev/null | head -30
+[2026-04-24T13:35:11Z] [TASK:?] EXIT=?        grep "DATABASE_URL\|DB_URL\|POSTGRES" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env | head -5
+[2026-04-24T13:40:06Z] [TASK:?] EXIT=?        /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.venv/bin/python -c "
+import asyncio
+import asyncpg
+
+async def main():
+    conn = await asyncpg.connect('postgresql://postgres@127.0.0.1:5433/dream_
+[2026-04-24T13:40:13Z] [TASK:?] EXIT=?        /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.venv/bin/python -c "
+import asyncio
+import asyncpg
+
+async def main():
+    conn = await asyncpg.connect('postgresql://postgres@127.0.0.1:5433/dream_
+[2026-04-24T13:40:39Z] [TASK:?] EXIT=?        /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.venv/bin/python -c "
+import asyncio, asyncpg, json
+
+async def main():
+    conn = await asyncpg.connect('postgresql://postgres@127.0.0.1:5433/dream_
+[2026-04-24T13:40:42Z] [TASK:?] EXIT=?        journalctl -u dream-motif-telegram -u dream-motif-api --since "2026-04-20" --no-pager 2>/dev/null | grep -E "tool_use|handle_chat|Claude|request" | head -30
+[2026-04-24T13:41:38Z] [TASK:?] EXIT=?        systemctl restart dream-motif-telegram.service && sleep 2 && systemctl is-active dream-motif-telegram.service
+[2026-04-24T18:03:14Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter -type f -name "*.py" | sort | head -40
+[2026-04-24T18:03:18Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter -path ./.venv -prune -o -type f -name "*.py" -print | sort
+[2026-04-24T18:03:18Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/
+[2026-04-24T18:03:22Z] [TASK:?] EXIT=?        find /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app -type f -name "*.py" | sort
+[2026-04-24T18:03:23Z] [TASK:?] EXIT=?        ls /srv/openclaw-you/workspace/Dream_Motif_Interpreter/docs/
+[2026-04-24T18:04:00Z] [TASK:?] EXIT=?        grep -v '^#' /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env 2>/dev/null | grep -iE 'GOOGLE|SERVICE_ACCOUNT' | sed 's/=.*/=***/'
+[2026-04-24T18:04:12Z] [TASK:?] EXIT=?        grep -v '^#' /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env 2>/dev/null | grep -iE 'GOOGLE_SERVICE_ACCOUNT_FILE' 
+[2026-04-24T18:04:22Z] [TASK:?] EXIT=?        cat /srv/openclaw-you/workspace/Dream_Motif_Interpreter/dream-493107-1663e9547597.json | python3 -c "import sys,json; d=json.load(sys.stdin); print('type:', d.get('type')); print('client_email:', d.ge
+[2026-04-24T18:04:36Z] [TASK:?] EXIT=?        grep -n "write_dream_to_google_doc\|written_to_google_doc" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/assistant/facade.py | head -20
+[2026-04-24T18:04:37Z] [TASK:?] EXIT=?        grep -n "written_to_google_doc\|write_dream_to_google_doc\|Google Doc" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/assistant/tools.py | head -20
+[2026-04-24T18:04:44Z] [TASK:?] EXIT=?        grep -v '^#' /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env 2>/dev/null | grep -iE 'GOOGLE_DOC'
+[2026-04-24T18:04:51Z] [TASK:?] EXIT=?        grep -v '^#' /srv/openclaw-you/workspace/Dream_Motif_Interpreter/.env 2>/dev/null | grep -iE 'GOOGLE_DOC_IDS'
+[2026-04-24T18:10:29Z] [TASK:?] EXIT=?        .venv/bin/python3 -c "
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
+SCOPES = [
+    'https://www.googl
+[2026-04-24T18:10:40Z] [TASK:?] EXIT=?        ps aux | grep -E 'telegram|app.telegram|dream' | grep -v grep
+[2026-04-24T18:10:45Z] [TASK:?] EXIT=?        systemctl status dream-telegram 2>/dev/null || systemctl status dream_telegram 2>/dev/null || systemctl list-units --type=service | grep -i dream
+[2026-04-24T18:11:02Z] [TASK:?] EXIT=?        systemctl restart dream-motif-telegram.service && sleep 2 && systemctl is-active dream-motif-telegram.service
+[2026-04-24T18:13:40Z] [TASK:?] EXIT=?        journalctl -u dream-motif-telegram.service -n 100 --no-pager 2>&1 | tail -80
+[2026-04-24T18:14:21Z] [TASK:?] EXIT=?        journalctl -u dream-motif-telegram.service --since "20:11:00" --no-pager 2>&1 | grep -E 'create_dream|write_dream|GDocs|ERROR|WARNING|WRITE|append|403|batchUpdate|Добавить|written'
+[2026-04-24T18:14:52Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.shared.config import get_settings, get_effective_google_doc_id
+s = get_settings()
+print('GOOGLE_DOC_ID:', s.GOOGLE_DOC_ID)
+print('eff
+[2026-04-24T18:15:03Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio
+import uuid
+from app.services.gdocs_client import GDocsClient, GDocsWriteError
+from app.shared.config import get_effective_goog
+[2026-04-24T18:16:18Z] [TASK:?] EXIT=?        grep -n "session_factory\|expire_on_commit\|async_sessionmaker" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/shared/database.py /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/main.
+[2026-04-24T18:16:21Z] [TASK:?] EXIT=?        journalctl -u dream-motif-telegram.service --since "20:11:00" --no-pager 2>&1 | grep -v 'getUpdates\|HTTP Request'
+[2026-04-24T18:17:59Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio
+import json
+from app.shared.database import get_session_factory
+from app.models.session import BotSession
+
+CHAT_ID = 5648359231
+[2026-04-24T18:18:21Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio
+from app.shared.database import get_session_factory
+from app.models.dream import DreamEntry
+from sqlalchemy import select, desc
+[2026-04-24T18:18:38Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio
+from app.shared.database import get_session_factory
+from app.models.dream import DreamEntry
+from app.services.gdocs_client impo
+[2026-04-24T18:18:51Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio
+import json
+from datetime import datetime, timezone
+from sqlalchemy.dialects.postgresql import insert
+from app.shared.database 
+[2026-04-24T18:26:26Z] [TASK:?] EXIT=?        .venv/bin/python3 -c "
+from app.assistant.tools import build_tools
+from app.assistant.prompts import SYSTEM_PROMPT
+from app.assistant.session import HISTORY_TTL_DAYS
+
+tools = build_tools()
+names = [t[
+[2026-04-24T18:26:37Z] [TASK:?] EXIT=?        systemctl restart dream-motif-telegram.service && sleep 2 && systemctl is-active dream-motif-telegram.service
+[2026-04-24T18:27:23Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_effective_google_doc
+[2026-04-24T18:27:43Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_effective_google_doc
+[2026-04-24T18:29:37Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient, GDocsWriteError
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_eff
+[2026-04-24T18:29:47Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_effective_google_doc
+[2026-04-24T18:30:17Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_effective_google_doc
+[2026-04-24T18:30:32Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_effective_google_doc
+[2026-04-24T18:30:51Z] [TASK:?] EXIT=?        systemctl restart dream-motif-telegram.service && sleep 2 && systemctl is-active dream-motif-telegram.service
+[2026-04-24T18:31:19Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_effective_google_doc
+[2026-04-24T18:31:46Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient, GDocsWriteError
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_eff
+[2026-04-24T18:31:56Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_effective_google_doc
+[2026-04-24T18:32:36Z] [TASK:?] EXIT=?        git diff --stat HEAD
+[2026-04-24T18:34:27Z] [TASK:?] EXIT=?        git add app/assistant/chat.py app/assistant/facade.py app/assistant/prompts.py app/assistant/session.py app/assistant/tools.py app/services/gdocs_client.py docs/PHASE_PLAN.md docs/AUDIT_INDEX.md docs/
+[2026-04-24T18:34:40Z] [TASK:?] EXIT=?        git commit -m "$(cat <<'EOF'
+fix(phase14/post-release): retry tool, heading format, history TTL, prompt fix
+
+Defects found in Тест 3 (24.04.26) and fixed:
+
+- Add retry_write_to_google_doc tool so user
+[2026-04-24T18:34:58Z] [TASK:?] EXIT=?        git push
+[2026-04-24T18:35:39Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+
+doc_id = get_effective_google_doc
+[2026-04-24T18:36:09Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+import asyncio
+from app.shared.dat
+[2026-04-24T18:36:22Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+from app.services.gdocs_client import GDocsClient
+from app.shared.config import get_effective_google_doc_id
+doc_id = get_effective_google_doc_
+[2026-04-24T18:36:41Z] [TASK:?] EXIT=?        systemctl restart dream-motif-telegram.service && sleep 2 && systemctl is-active dream-motif-telegram.service
+[2026-04-24T18:36:49Z] [TASK:?] EXIT=?        git add app/services/gdocs_client.py && git commit -m "$(cat <<'EOF'
+fix(phase14): combine date and title in HEADING_1 (dd.mm.yy - Title)
+
+Previously the date was a separate NORMAL_TEXT line and only 
+[2026-04-24T19:25:40Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import asyncio
+from app.shared.database import get_session_factory
+from app.models.dream import DreamEntry
+from sqlalchemy import select, desc
+[2026-04-24T19:25:49Z] [TASK:?] EXIT=?        grep -n "_resolve_dream_title" /srv/openclaw-you/workspace/Dream_Motif_Interpreter/app/assistant/facade.py
+[2026-04-24T19:27:43Z] [TASK:?] EXIT=?        cat > /srv/openclaw-you/workspace/Dream_Motif_Interpreter/docs/tasks_phase15.md << 'EOF'
+# Task Graph — Dream Motif Interpreter Phase 15
+
+Version: 1.0
+Last updated: 2026-04-24
+Status: Active — source:
+[2026-04-24T19:29:02Z] [TASK:?] EXIT=?        set -a && source .env && set +a && .venv/bin/python3 -c "
+import re
+
+# Test _strip_date_prefix
+DATE_PREFIX_RE = re.compile(r'^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+')
+
+cases = [
+    '21.04.26 - Квартира на Арб
+[2026-04-24T19:29:10Z] [TASK:?] EXIT=?        systemctl restart dream-motif-telegram.service && sleep 2 && systemctl is-active dream-motif-telegram.service
+[2026-04-24T19:29:26Z] [TASK:?] EXIT=?        git add app/assistant/facade.py app/assistant/chat.py app/assistant/prompts.py app/assistant/tools.py app/services/gdocs_client.py docs/tasks_phase15.md && git commit -m "$(cat <<'EOF'
+feat(phase15): 
+[2026-04-24T19:29:42Z] [TASK:?] EXIT=?        git log --oneline -5
+[2026-04-24T19:31:16Z] [TASK:?] EXIT=?        .venv/bin/ruff check --fix . 2>&1 | tail -5 && .venv/bin/ruff format . 2>&1 | tail -5
+[2026-04-24T19:31:20Z] [TASK:?] EXIT=?        .venv/bin/ruff check . 2>&1 | tail -3 && .venv/bin/ruff format --check . 2>&1 | tail -3

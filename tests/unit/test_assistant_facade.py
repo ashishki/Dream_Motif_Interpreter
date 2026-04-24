@@ -129,10 +129,7 @@ async def test_search_dreams_returns_facade_search_result() -> None:
 
 
 def test_extract_quote_finds_matching_russian_sentence() -> None:
-    chunk_text = (
-        "Сначала я шел по лесу. Потом увидел церковь на холме! "
-        "После этого начался дождь."
-    )
+    chunk_text = "Сначала я шел по лесу. Потом увидел церковь на холме! После этого начался дождь."
 
     assert _extract_quote(chunk_text, "церковь") == "Потом увидел церковь на холме"
 
@@ -365,7 +362,10 @@ def test_add_archive_source_appends_new_non_primary_doc_id() -> None:
     with (
         patch(
             "app.shared.config.get_all_doc_ids",
-            side_effect=[["doc-primary", "doc-extra-1"], ["doc-primary", "doc-extra-1", "doc-extra-2"]],
+            side_effect=[
+                ["doc-primary", "doc-extra-1"],
+                ["doc-primary", "doc-extra-1", "doc-extra-2"],
+            ],
         ),
         patch("app.shared.config.set_google_doc_ids_override") as mock_set_override,
     ):
@@ -385,7 +385,10 @@ def test_remove_archive_source_removes_non_primary_doc_id() -> None:
         patch("app.shared.config.get_effective_google_doc_id", return_value="doc-primary"),
         patch(
             "app.shared.config.get_all_doc_ids",
-            side_effect=[["doc-primary", "doc-extra-1", "doc-extra-2"], ["doc-primary", "doc-extra-2"]],
+            side_effect=[
+                ["doc-primary", "doc-extra-1", "doc-extra-2"],
+                ["doc-primary", "doc-extra-2"],
+            ],
         ),
         patch("app.shared.config.set_google_doc_ids_override") as mock_set_override,
     ):

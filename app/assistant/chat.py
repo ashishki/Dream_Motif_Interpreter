@@ -87,9 +87,13 @@ async def handle_chat_with_metadata(
         except Exception:
             LOGGER.warning("Failed to load feedback context", exc_info=True)
 
-    system_prompt = SYSTEM_PROMPT
-    if feedback_rows:
-        system_prompt = build_system_prompt(feedback_rows)
+    from datetime import date as _date
+
+    today = _date.today()
+    date_header = f"Сегодня: {today.strftime('%d.%m.%y')} ({today.isoformat()}).\n\n"
+    system_prompt = date_header + (
+        build_system_prompt(feedback_rows) if feedback_rows else SYSTEM_PROMPT
+    )
     messages: list[dict[str, Any]] = history + [{"role": "user", "content": message_text}]
     round_counter = 0
     last_text = ""

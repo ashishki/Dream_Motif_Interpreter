@@ -182,7 +182,7 @@ class AssistantFacade:
             else:
                 existing = grouped[did]
                 new_score = max(existing.relevance_score, item.relevance_score)
-                new_text = existing.chunk_text + '\n---\n' + item.chunk_text
+                new_text = existing.chunk_text + "\n---\n" + item.chunk_text
                 new_fragments = existing.matched_fragments + item.matched_fragments
                 grouped[did] = SearchResultItem(
                     dream_id=existing.dream_id,
@@ -375,9 +375,7 @@ class AssistantFacade:
 
                 date_str = dream.date.strftime("%d.%m.%y") if dream.date else "??.??.??"
                 title_str = (
-                    dream.title.strip()
-                    if dream.title and dream.title.strip()
-                    else "без названия"
+                    dream.title.strip() if dream.title and dream.title.strip() else "без названия"
                 )
                 raw_text = dream.raw_text or ""
 
@@ -633,9 +631,7 @@ def _theme_item(*, theme: DreamTheme, category_name: str) -> DreamThemeItem:
     )
 
 
-def _dream_summary_item(
-    dream: DreamEntry, *, theme_names: list[str] | None = None
-) -> DreamSummary:
+def _dream_summary_item(dream: DreamEntry, *, theme_names: list[str] | None = None) -> DreamSummary:
     return DreamSummary(
         id=dream.id,
         date=dream.date.isoformat() if dream.date is not None else None,
@@ -645,22 +641,20 @@ def _dream_summary_item(
     )
 
 
+_DATE_PREFIX_RE = __import__("re").compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")
+
+
+def _strip_date_prefix(s: str) -> str:
+    return _DATE_PREFIX_RE.sub("", s).strip()
+
+
 def _resolve_dream_title(
     raw_text: str, *, title: str | None, dream_date: date | None = None
 ) -> str:
-    del raw_text
-
-    def fmt_date(d: date | None) -> str:
-        if d is None:
-            d = datetime.now().date()
-        return d.strftime("%d.%m.%y")
-
+    del raw_text, dream_date
     if title is not None and title.strip():
-        if dream_date is not None:
-            return f"{fmt_date(dream_date)} - {title.strip()}"
-        return title.strip()
-
-    return f"{fmt_date(dream_date)}, без названия"
+        return _strip_date_prefix(title.strip())
+    return "без названия"
 
 
 def _recurring_pattern_item(pattern: RecurringPattern) -> RecurringPatternItem:

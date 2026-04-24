@@ -396,6 +396,45 @@ class AssistantFacade:
         set_google_doc_id_override(doc_id)
         return doc_id
 
+    def list_archive_sources(self) -> list[str]:
+        from app.shared.config import get_all_doc_ids
+
+        return get_all_doc_ids()
+
+    def add_archive_source(self, doc_id: str) -> list[str]:
+        from app.shared.config import (
+            get_all_doc_ids,
+            get_settings,
+            set_google_doc_ids_override,
+        )
+
+        current_all = get_all_doc_ids()
+        primary = current_all[0] if current_all else get_settings().GOOGLE_DOC_ID
+        extras = [resolved_doc_id for resolved_doc_id in current_all if resolved_doc_id != primary]
+        if doc_id not in current_all:
+            extras.append(doc_id)
+        set_google_doc_ids_override(extras)
+        return get_all_doc_ids()
+
+    def remove_archive_source(self, doc_id: str) -> list[str]:
+        from app.shared.config import (
+            get_all_doc_ids,
+            get_effective_google_doc_id,
+            set_google_doc_ids_override,
+        )
+
+        primary = get_effective_google_doc_id()
+        if doc_id == primary:
+            raise ValueError("Cannot remove the primary archive source")
+        current_all = get_all_doc_ids()
+        extras = [
+            resolved_doc_id
+            for resolved_doc_id in current_all
+            if resolved_doc_id != primary and resolved_doc_id != doc_id
+        ]
+        set_google_doc_ids_override(extras)
+        return get_all_doc_ids()
+
     def _build_index_dream_callable(self) -> Callable[[uuid.UUID], Awaitable[int]]:
         async def _index(dream_id: uuid.UUID) -> int:
             from app.workers.index import index_dream

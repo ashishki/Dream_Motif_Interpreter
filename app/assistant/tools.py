@@ -141,27 +141,26 @@ _BASE_TOOLS: list[dict[str, Any]] = [
     {
         "name": "manage_archive_source",
         "description": (
-            "Get or set the active Google Doc ID used as the dream archive source. "
-            "Use action='get' to see the current doc_id; action='set' with doc_id "
-            "to update it for the next sync."
+            "Manage Google Docs connected as dream archive sources. "
+            "Use action='list' to see all connected docs; action='add' with doc_id "
+            "to add a new source; action='remove' with doc_id to remove a source; "
+            "action='get' to see primary doc_id; action='set' with doc_id to replace primary."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["get", "set"],
+                    "enum": ["get", "set", "list", "add", "remove"],
                     "description": (
-                        "Action to perform: 'get' returns current doc_id, "
-                        "'set' updates it."
+                        "Action to perform: 'get' returns current primary doc_id, "
+                        "'set' replaces it, 'list' returns all connected docs, "
+                        "'add' adds a source, 'remove' removes a non-primary source."
                     ),
                 },
                 "doc_id": {
                     "type": "string",
-                    "description": (
-                        "The Google Doc ID to set as the archive source "
-                        "(required for action='set')."
-                    ),
+                    "description": "Google Doc ID. Required for actions: set, add, remove.",
                 },
             },
             "required": ["action"],
@@ -367,14 +366,46 @@ async def execute_tool(
         action = str(tool_input.get("action", "")).strip()
         if action == "get":
             current = facade.get_archive_source()
-            return f"Current archive source: {current}"
+            return f"Current primary archive source: {current}"
         if action == "set":
             new_doc_id = str(tool_input.get("doc_id", "")).strip()
             if not new_doc_id:
                 return "doc_id is required for action='set'."
             facade.set_archive_source(new_doc_id)
-            return f"Archive source updated to: {new_doc_id} (takes effect on next sync)"
-        return f"Unknown action: {action!r}. Use 'get' or 'set'."
+            return f"Primary archive source updated to: {new_doc_id} (takes effect on next sync)"
+        if action == "list":
+            sources = facade.list_archive_sources()
+            if not sources:
+                return "No archive sources configured."
+            lines = ["Connected Google Docs:"]
+            for i, source in enumerate(sources, 1):
+                tag = " (primary)" if i == 1 else ""
+                lines.append(f"{i}. {source}{tag}")
+            return "\n".join(lines)
+        if action == "add":
+            new_doc_id = str(tool_input.get("doc_id", "")).strip()
+            if not new_doc_id:
+                return "doc_id is required for action='add'."
+            updated = facade.add_archive_source(new_doc_id)
+            lines = ["Archive source added. Updated list:"]
+            for i, source in enumerate(updated, 1):
+                tag = " (primary)" if i == 1 else ""
+                lines.append(f"{i}. {source}{tag}")
+            return "\n".join(lines)
+        if action == "remove":
+            doc_id_to_remove = str(tool_input.get("doc_id", "")).strip()
+            if not doc_id_to_remove:
+                return "doc_id is required for action='remove'."
+            try:
+                updated = facade.remove_archive_source(doc_id_to_remove)
+            except ValueError as exc:
+                return str(exc)
+            lines = ["Archive source removed. Updated list:"]
+            for i, source in enumerate(updated, 1):
+                tag = " (primary)" if i == 1 else ""
+                lines.append(f"{i}. {source}{tag}")
+            return "\n".join(lines)
+        return f"Unknown action: {action!r}. Use 'list', 'add', 'remove', 'get', or 'set'."
 
     if tool_name == "get_dream_motifs":
         raw_id = str(tool_input.get("dream_id", "")).strip()

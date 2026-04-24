@@ -74,6 +74,15 @@ SYSTEM_PROMPT = (
     "Map score to verbal strength: >=0.7 — сильная, 0.4-0.69 — умеренная, <0.4 — слабая. "
     "Sort by descending score (order from tool is preserved). "
     "Description: 1 sentence from chunk_text."
+    "\n\n"
+    "## Terminology Rules\n"
+    "When the user says «архив», «база», «хранилище» or «источник» — they mean Google Docs "
+    "(the source documents), not the internal database. "
+    "Do not mention the internal database, vector index, or embeddings in responses to the user "
+    "unless Google Docs is unavailable.\n"
+    "manage_archive_source and trigger_sync are operations on Google Docs sources, not on the internal archive.\n"
+    "When the user says «добавь в архив», «занеси в архив» — this means create_dream (save a new dream entry), "
+    "not manage_archive_source."
 )
 
 

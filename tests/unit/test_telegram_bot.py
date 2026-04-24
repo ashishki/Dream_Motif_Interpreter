@@ -9,7 +9,7 @@ from telegram.ext import ApplicationHandlerStop
 
 from app.assistant.chat import ChatResult
 from app.assistant.facade import AssistantFacade
-from app.telegram.handlers import chat_guard, text_message_handler
+from app.telegram.handlers import FEEDBACK_PROMPT, chat_guard, text_message_handler
 
 
 @pytest.mark.asyncio
@@ -68,9 +68,7 @@ async def test_text_message_handler_routes_to_handle_chat() -> None:
         session_factory=None,
         chat_id=42,
     )
-    message.reply_text.assert_awaited_once_with(
-        "Here are your dreams.\n\nReply to this message to rate (1–5), or add a comment after the digit."
-    )
+    message.reply_text.assert_awaited_once_with(f"Here are your dreams.\n\n{FEEDBACK_PROMPT}")
 
 
 @pytest.mark.asyncio
@@ -87,9 +85,7 @@ async def test_text_message_handler_sends_handle_chat_response() -> None:
     ):
         await text_message_handler(update, context)
 
-    message.reply_text.assert_awaited_once_with(
-        "pong\n\nReply to this message to rate (1–5), or add a comment after the digit."
-    )
+    message.reply_text.assert_awaited_once_with(f"pong\n\n{FEEDBACK_PROMPT}")
 
 
 # ---------------------------------------------------------------------------
@@ -114,9 +110,7 @@ async def test_text_message_handler_sends_insufficient_evidence_reply() -> None:
     ):
         await text_message_handler(update, context)
 
-    message.reply_text.assert_awaited_once_with(
-        f"{insufficient_reply}\n\nReply to this message to rate (1–5), or add a comment after the digit."
-    )
+    message.reply_text.assert_awaited_once_with(f"{insufficient_reply}\n\n{FEEDBACK_PROMPT}")
 
 
 @pytest.mark.asyncio

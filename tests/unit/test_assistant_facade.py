@@ -240,6 +240,9 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "trigger_sync",
         "get_archive_source",
         "set_archive_source",
+        "list_archive_sources",
+        "add_archive_source",
+        "remove_archive_source",
         "get_dream_motifs",
         "research_motif_parallels",
     }
@@ -299,6 +302,68 @@ async def test_trigger_sync_without_doc_id_enqueues_all_configured_sources() -> 
         "doc-b",
         "doc-c",
     ]
+
+
+def test_list_archive_sources_returns_all_configured_doc_ids() -> None:
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession()),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with patch("app.shared.config.get_all_doc_ids", return_value=["doc-a", "doc-b", "doc-c"]):
+        result = facade.list_archive_sources()
+
+    assert result == ["doc-a", "doc-b", "doc-c"]
+
+
+def test_add_archive_source_appends_new_non_primary_doc_id() -> None:
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession()),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with (
+        patch(
+            "app.shared.config.get_all_doc_ids",
+            side_effect=[["doc-primary", "doc-extra-1"], ["doc-primary", "doc-extra-1", "doc-extra-2"]],
+        ),
+        patch("app.shared.config.set_google_doc_ids_override") as mock_set_override,
+    ):
+        result = facade.add_archive_source("doc-extra-2")
+
+    mock_set_override.assert_called_once_with(["doc-extra-1", "doc-extra-2"])
+    assert result == ["doc-primary", "doc-extra-1", "doc-extra-2"]
+
+
+def test_remove_archive_source_removes_non_primary_doc_id() -> None:
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession()),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with (
+        patch("app.shared.config.get_effective_google_doc_id", return_value="doc-primary"),
+        patch(
+            "app.shared.config.get_all_doc_ids",
+            side_effect=[["doc-primary", "doc-extra-1", "doc-extra-2"], ["doc-primary", "doc-extra-2"]],
+        ),
+        patch("app.shared.config.set_google_doc_ids_override") as mock_set_override,
+    ):
+        result = facade.remove_archive_source("doc-extra-1")
+
+    mock_set_override.assert_called_once_with(["doc-extra-2"])
+    assert result == ["doc-primary", "doc-extra-2"]
+
+
+def test_remove_archive_source_rejects_primary_doc_id() -> None:
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession()),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with patch("app.shared.config.get_effective_google_doc_id", return_value="doc-primary"):
+        with pytest.raises(ValueError, match="Cannot remove the primary archive source"):
+            facade.remove_archive_source("doc-primary")
 
 
 @pytest.mark.asyncio

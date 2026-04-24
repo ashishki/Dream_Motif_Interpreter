@@ -321,6 +321,14 @@ def test_system_prompt_requires_create_dream_for_explicit_save_requests() -> Non
     assert "занеси в архив" in prompt_lower
 
 
+def test_system_prompt_contains_terminology_rules_for_google_docs_sources() -> None:
+    prompt_lower = SYSTEM_PROMPT.lower()
+    assert "## terminology rules".lower() in prompt_lower
+    assert "google docs" in prompt_lower
+    assert "not the internal database" in prompt_lower
+    assert "manage_archive_source and trigger_sync are operations on google docs sources" in prompt_lower
+
+
 # ---------------------------------------------------------------------------
 # build_tools — conditional get_dream_motifs registration
 # ---------------------------------------------------------------------------
@@ -500,7 +508,7 @@ async def test_execute_tool_manage_archive_source_get_returns_current_doc_id() -
         facade,
     )
 
-    assert result == "Current archive source: doc-current-123"
+    assert result == "Current primary archive source: doc-current-123"
     facade.get_archive_source.assert_called_once_with()
     facade.set_archive_source.assert_not_called()
 
@@ -554,5 +562,53 @@ async def test_execute_tool_manage_archive_source_set_updates_doc_id() -> None:
         facade,
     )
 
-    assert result == "Archive source updated to: doc-next-456 (takes effect on next sync)"
+    assert result == "Primary archive source updated to: doc-next-456 (takes effect on next sync)"
     facade.set_archive_source.assert_called_once_with("doc-next-456")
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_manage_archive_source_list_formats_connected_docs() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.list_archive_sources.return_value = ["doc-primary", "doc-extra"]
+
+    result = await tools_module.execute_tool(
+        "manage_archive_source",
+        {"action": "list"},
+        facade,
+    )
+
+    assert result == "Connected Google Docs:\n1. doc-primary (primary)\n2. doc-extra"
+    facade.list_archive_sources.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_manage_archive_source_add_returns_updated_list() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_archive_source.return_value = ["doc-primary", "doc-extra"]
+
+    result = await tools_module.execute_tool(
+        "manage_archive_source",
+        {"action": "add", "doc_id": "doc-extra"},
+        facade,
+    )
+
+    assert result == "Archive source added. Updated list:\n1. doc-primary (primary)\n2. doc-extra"
+    facade.add_archive_source.assert_called_once_with("doc-extra")
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_manage_archive_source_remove_returns_updated_list() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.remove_archive_source.return_value = ["doc-primary", "doc-extra-2"]
+
+    result = await tools_module.execute_tool(
+        "manage_archive_source",
+        {"action": "remove", "doc_id": "doc-extra-1"},
+        facade,
+    )
+
+    assert (
+        result
+        == "Archive source removed. Updated list:\n1. doc-primary (primary)\n2. doc-extra-2"
+    )
+    facade.remove_archive_source.assert_called_once_with("doc-extra-1")

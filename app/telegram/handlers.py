@@ -18,7 +18,7 @@ from app.telegram.voice import download_voice_file
 LOGGER = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
 VOICE_PROCESSING_ACK = "Processing your voice note..."
-FEEDBACK_PROMPT = "Reply to this message to rate (1–5), or add a comment after the digit."
+FEEDBACK_PROMPT = "Оцените ответ от 1 до 5 или добавьте комментарий после цифры."
 FEEDBACK_ACK = "Thanks, noted."
 _FEEDBACK_STATE_KEY = "_feedback_pending_by_chat"
 _BOT_MESSAGE_IDS_KEY = "_bot_message_ids_by_chat"

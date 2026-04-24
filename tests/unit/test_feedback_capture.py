@@ -8,7 +8,7 @@ import pytest
 from app.assistant.chat import ChatResult
 from app.assistant.facade import AssistantFacade
 from app.services.feedback_service import FeedbackService
-from app.telegram.handlers import text_message_handler
+from app.telegram.handlers import FEEDBACK_PROMPT, text_message_handler
 
 
 class StubSession:
@@ -96,7 +96,7 @@ async def test_digit_message_after_substantive_response_records_feedback() -> No
     assert record_session is session
     assert session.committed is True
     message1.reply_text.assert_awaited_once_with(
-        "Detailed interpretation\n\nReply to this message to rate (1–5), or add a comment after the digit."
+        f"Detailed interpretation\n\n{FEEDBACK_PROMPT}"
     )
     message2.reply_text.assert_awaited_once_with("Thanks, noted.")
 
@@ -127,7 +127,7 @@ async def test_digit_outside_range_is_not_treated_as_rating() -> None:
     mock_record.assert_not_awaited()
     assert session.committed is False
     message2.reply_text.assert_awaited_once_with(
-        "Second substantive reply\n\nReply to this message to rate (1–5), or add a comment after the digit."
+        f"Second substantive reply\n\n{FEEDBACK_PROMPT}"
     )
 
 
@@ -157,7 +157,7 @@ async def test_message_with_digits_and_other_characters_is_not_treated_as_rating
     mock_record.assert_not_awaited()
     assert session.committed is False
     message2.reply_text.assert_awaited_once_with(
-        "Mixed text handled normally\n\nReply to this message to rate (1–5), or add a comment after the digit."
+        f"Mixed text handled normally\n\n{FEEDBACK_PROMPT}"
     )
 
 
@@ -180,7 +180,7 @@ async def test_digit_message_before_any_substantive_response_is_not_treated_as_r
     mock_record.assert_not_awaited()
     assert session.committed is False
     message.reply_text.assert_awaited_once_with(
-        "Digit treated as normal input\n\nReply to this message to rate (1–5), or add a comment after the digit."
+        f"Digit treated as normal input\n\n{FEEDBACK_PROMPT}"
     )
 
 
@@ -300,7 +300,7 @@ async def test_reply_to_bot_message_with_text_only_treated_as_chat() -> None:
     mock_record.assert_not_awaited()
     assert session.committed is False
     message2.reply_text.assert_awaited_once_with(
-        "Text-only reply handled as chat\n\nReply to this message to rate (1–5), or add a comment after the digit."
+        f"Text-only reply handled as chat\n\n{FEEDBACK_PROMPT}"
     )
 
 
@@ -330,5 +330,5 @@ async def test_reply_to_different_message_id_treated_as_chat() -> None:
     mock_record.assert_not_awaited()
     assert session.committed is False
     message2.reply_text.assert_awaited_once_with(
-        "Different reply target handled as chat\n\nReply to this message to rate (1–5), or add a comment after the digit."
+        f"Different reply target handled as chat\n\n{FEEDBACK_PROMPT}"
     )

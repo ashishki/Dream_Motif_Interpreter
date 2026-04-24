@@ -97,6 +97,11 @@ def set_google_doc_id_override(doc_id: str) -> None:
     _google_doc_id_override = doc_id
 
 
+def set_google_doc_ids_override(doc_ids: list[str]) -> None:
+    global _google_doc_ids_override
+    _google_doc_ids_override = doc_ids
+
+
 def get_all_doc_ids() -> list[str]:
     primary = get_effective_google_doc_id()
     extras = (

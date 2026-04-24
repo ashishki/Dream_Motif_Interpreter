@@ -167,7 +167,29 @@ class AssistantFacade:
         if isinstance(result, InsufficientEvidence):
             return SearchResult(items=[], insufficient_reason=result.reason)
 
-        return SearchResult(items=[_search_result_item(block, query) for block in result])
+        # Group multiple chunks per dream — one SearchResultItem per dream_id,
+        # fragments joined with '\n---\n', highest relevance_score kept.
+        grouped: dict[uuid.UUID, SearchResultItem] = {}
+        for block in result:
+            did = block.dream_id
+            item = _search_result_item(block, query)
+            if did not in grouped:
+                grouped[did] = item
+            else:
+                existing = grouped[did]
+                new_score = max(existing.relevance_score, item.relevance_score)
+                new_text = existing.chunk_text + '\n---\n' + item.chunk_text
+                new_fragments = existing.matched_fragments + item.matched_fragments
+                grouped[did] = SearchResultItem(
+                    dream_id=existing.dream_id,
+                    date=existing.date,
+                    title=existing.title,
+                    chunk_text=new_text,
+                    relevance_score=new_score,
+                    matched_fragments=new_fragments,
+                    quote=existing.quote,
+                )
+        return SearchResult(items=list(grouped.values()))
 
     async def search_dreams_exact(self, query: str) -> list[SearchResultItem]:
         tracer = get_tracer(__name__)

@@ -21,7 +21,7 @@ from app.shared.tracing import get_tracer
 RRF_K = 60
 VECTOR_CANDIDATE_LIMIT = 20
 FTS_CANDIDATE_LIMIT = 20
-RESULT_LIMIT = 5
+RESULT_LIMIT = 20
 
 logger = logging.getLogger(__name__)
 QUERY_EXPANSION_MODEL = "claude-haiku-4-5-20251001"

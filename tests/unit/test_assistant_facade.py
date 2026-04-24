@@ -715,3 +715,43 @@ async def test_get_dream_motifs_dto_is_frozen() -> None:
         raise AssertionError("Expected FrozenInstanceError")
     except Exception as exc:
         assert "frozen" in type(exc).__name__.lower() or "can't" in str(exc).lower()
+
+
+@pytest.mark.asyncio
+async def test_search_dreams_groups_multiple_chunks_per_dream() -> None:
+    dream_id = uuid4()
+    rag_query_service = SimpleNamespace(
+        retrieve=AsyncMock(
+            return_value=[
+                EvidenceBlock(
+                    dream_id=dream_id,
+                    date=date(2026, 4, 15),
+                    title="Water dream",
+                    chunk_text="Фрагмент первый.",
+                    relevance_score=0.75,
+                    matched_fragments=[],
+                ),
+                EvidenceBlock(
+                    dream_id=dream_id,
+                    date=date(2026, 4, 15),
+                    title="Water dream",
+                    chunk_text="Фрагмент второй.",
+                    relevance_score=0.60,
+                    matched_fragments=[],
+                ),
+            ]
+        )
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession()),
+        rag_query_service=rag_query_service,
+    )
+
+    result = await facade.search_dreams("вода")
+
+    assert len(result.items) == 1, "Chunks from same dream must be grouped into one item"
+    item = result.items[0]
+    assert item.relevance_score == 0.75  # higher score kept
+    assert "Фрагмент первый." in item.chunk_text
+    assert "Фрагмент второй." in item.chunk_text
+    assert "\n---\n" in item.chunk_text

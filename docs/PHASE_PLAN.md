@@ -268,9 +268,10 @@ improved search recall for specific words/images, exact quote extraction, and UX
 
 See [docs/tasks_phase13.md §4](tasks_phase13.md).
 
-### Status: Planning — 2026-04-24
+### Status: Complete — 2026-04-24
 
 See [docs/tasks_phase13.md](tasks_phase13.md) for the detailed task graph.
+See [docs/REVIEW_REPORT.md](REVIEW_REPORT.md) for the deep review report (all defects closed).
 
 ## 14. Phase 14 — Write to Google Docs (Bidirectional Sync)
 

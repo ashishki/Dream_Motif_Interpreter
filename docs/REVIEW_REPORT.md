@@ -7,9 +7,9 @@ Reviewers: META · ARCH · CODE · CONSOLIDATED (4-agent deep review)
 
 ---
 
-## Overall Verdict: PASS_WITH_FIXES
+## Overall Verdict: PASS (all defects closed)
 
-One blocking defect fixed before release (D2). Four deferred to Phase 14 backlog.
+D2 fixed before release. D1/D3/D4/D5 fixed in follow-up commit (2026-04-24).
 
 ---
 
@@ -82,12 +82,12 @@ manifests if a list with whitespace elements is provided programmatically (not v
 
 ---
 
-## Phase 14 Backlog (from this review)
+## Deferred Fixes (all closed 2026-04-24)
 
-- D1: Fix FTS ranking language (change ts_rank_cd to use 'russian' in fts_candidates CTE)
-- D3: Re-extract quote from merged chunk_text after grouping in search_dreams
-- D4: Improve _extract_quote to use word-boundary matching (consider pymorphy2 integration)
-- D5: Normalize list elements in _parse_google_doc_ids validator
+- D1: Fixed — ts_rank_cd now uses 'russian' morphology in fts_candidates CTE
+- D3: Fixed — quote re-extracted from merged chunk_text after grouping
+- D4: Fixed — _extract_quote uses Cyrillic-safe word-boundary regex lookaround
+- D5: Fixed — _parse_google_doc_ids normalizes list elements (strip + type filter)
 
 ---
 
@@ -96,4 +96,5 @@ manifests if a list with whitespace elements is provided programmatically (not v
 - aee4135 feat(phase13/ws-13.2+13.3+13.4): multi-doc archive management, terminology, rating prompt
 - 6af110b feat(phase13/ws-13.5+13.6): exact FTS search tool with Russian morphology and quote extraction
 - 9c781f0 feat(phase13/ws-13.7+13.8): increase result limit, group multi-fragment search results, finalize prompt
-- (D2 fix) fix(phase13/review): trigger_sync schema — doc_id is optional, not required
+- d8333dc fix(phase13/review): trigger_sync schema — doc_id is optional, not required
+- c05a573 fix(phase13/deferred): close D1/D3/D4/D5 from deep review

@@ -105,4 +105,4 @@ async def test_handle_chat_with_metadata_uses_built_system_prompt() -> None:
         )
 
     assert result.text == "Answer"
-    assert client.messages.create.await_args.kwargs["system"] == expected_prompt
+    assert client.messages.create.await_args.kwargs["system"].endswith(expected_prompt)

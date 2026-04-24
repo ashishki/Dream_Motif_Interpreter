@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -42,6 +43,7 @@ async def test_load_history_returns_empty_list_when_no_session_row() -> None:
 async def test_load_history_returns_parsed_history() -> None:
     history = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
     row = MagicMock()
+    row.updated_at = datetime.now(timezone.utc)
     row.history_json = json.dumps(history)
 
     factory, _ = _make_session_factory(row=row)
@@ -52,6 +54,7 @@ async def test_load_history_returns_parsed_history() -> None:
 @pytest.mark.asyncio
 async def test_load_history_returns_empty_list_on_invalid_json() -> None:
     row = MagicMock()
+    row.updated_at = datetime.now(timezone.utc)
     row.history_json = "not-valid-json{"
 
     factory, _ = _make_session_factory(row=row)
@@ -62,6 +65,7 @@ async def test_load_history_returns_empty_list_on_invalid_json() -> None:
 @pytest.mark.asyncio
 async def test_load_history_returns_empty_list_when_json_is_not_a_list() -> None:
     row = MagicMock()
+    row.updated_at = datetime.now(timezone.utc)
     row.history_json = json.dumps({"role": "user"})
 
     factory, _ = _make_session_factory(row=row)

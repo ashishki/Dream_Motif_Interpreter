@@ -273,6 +273,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "get_patterns",
         "create_dream",
         "write_dream_to_google_doc",
+        "retry_write_to_google_doc",
         "get_theme_history",
         "trigger_sync",
         "get_archive_source",
@@ -431,7 +432,7 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
 
     assert isinstance(result, CreatedDreamItem)
     assert result.created is True
-    assert result.title == "21.04.26 - River valley"
+    assert result.title == "River valley"
     assert result.date == "2026-04-21"
     assert result.source_doc_id == "telegram:42"
     assert result.written_to_google_doc is True
@@ -448,33 +449,25 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
     index_dream_callable.assert_awaited_once_with(result.id)
 
 
-def test_resolve_dream_title_without_title_uses_today(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _FrozenDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            del tz
-            return cls(2026, 4, 23)
-
-    monkeypatch.setattr("app.assistant.facade.datetime", _FrozenDateTime)
-
-    assert _resolve_dream_title("raw text", title=None) == "23.04.26, без названия"
+def test_resolve_dream_title_without_title_returns_unnamed() -> None:
+    assert _resolve_dream_title("raw text", title=None) == "без названия"
 
 
-def test_resolve_dream_title_without_title_uses_dream_date() -> None:
+def test_resolve_dream_title_without_title_ignores_dream_date() -> None:
     assert (
         _resolve_dream_title("raw text", title=None, dream_date=date(2026, 4, 21))
-        == "21.04.26, без названия"
+        == "без названия"
     )
 
 
-def test_resolve_dream_title_with_title_and_dream_date_prefixes_date() -> None:
+def test_resolve_dream_title_with_title_and_dream_date_returns_clean_title() -> None:
     assert (
         _resolve_dream_title(
             "raw text",
             title="River valley",
             dream_date=date(2026, 4, 21),
         )
-        == "21.04.26 - River valley"
+        == "River valley"
     )
 
 
@@ -535,7 +528,7 @@ async def test_write_dream_to_google_doc_returns_true_on_success() -> None:
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
     )
 
-    with patch("app.assistant.facade.GDocsClient.append_text", MagicMock()):
+    with patch("app.assistant.facade.GDocsClient.append_dream_entry", MagicMock()):
         result = await facade.write_dream_to_google_doc(dream_id)
 
     assert result is True
@@ -556,7 +549,7 @@ async def test_write_dream_to_google_doc_returns_false_on_write_error() -> None:
     )
 
     with patch(
-        "app.assistant.facade.GDocsClient.append_text",
+        "app.assistant.facade.GDocsClient.append_dream_entry",
         MagicMock(side_effect=GDocsWriteError("permission denied")),
     ):
         result = await facade.write_dream_to_google_doc(dream_id)

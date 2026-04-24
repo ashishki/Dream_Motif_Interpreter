@@ -240,8 +240,8 @@ class RagQueryService:
                 WHERE to_tsvector('russian', dc.chunk_text)
                     @@ websearch_to_tsquery('russian', :fts_query)
                 ORDER BY ts_rank_cd(
-                    to_tsvector('english', dc.chunk_text),
-                    websearch_to_tsquery('english', :fts_query)
+                    to_tsvector('russian', dc.chunk_text),
+                    websearch_to_tsquery('russian', :fts_query)
                 ) DESC,
                 dc.created_at DESC
                 LIMIT :fts_candidate_limit

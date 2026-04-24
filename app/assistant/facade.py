@@ -187,7 +187,7 @@ class AssistantFacade:
                     chunk_text=new_text,
                     relevance_score=new_score,
                     matched_fragments=new_fragments,
-                    quote=existing.quote,
+                    quote=_extract_quote(new_text, query),
                 )
         return SearchResult(items=list(grouped.values()))
 
@@ -515,7 +515,13 @@ def _extract_quote(chunk_text: str, query: str) -> str | None:
         if not stripped_sentence:
             continue
         sentence_lower = stripped_sentence.lower()
-        if any(word in sentence_lower for word in words):
+        if any(
+            re.search(
+                r"(?<![а-яёА-ЯЁa-zA-Z\d])" + re.escape(word) + r"(?![а-яёА-ЯЁa-zA-Z\d])",
+                sentence_lower,
+            )
+            for word in words
+        ):
             return stripped_sentence
     return None
 

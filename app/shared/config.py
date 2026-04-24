@@ -55,7 +55,7 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [s.strip() for s in v.split(",") if s.strip()]
         if isinstance(v, list):
-            return v
+            return [s.strip() for s in v if isinstance(s, str) and s.strip()]
         return []
 
     def resolve_operator_parser_profile(

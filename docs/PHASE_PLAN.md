@@ -1,7 +1,7 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 2.3
-Last updated: 2026-04-24 (Phases 13–14 planned — UX and feature backlog from Тест 2)
+Version: 2.4
+Last updated: 2026-04-24 (Phase 14 complete — bidirectional Google Docs sync with heading format, retry tool, history TTL)
 
 ## 1. Current Status: Phases 1–12 Complete; Phases 13–14 Planned
 
@@ -196,7 +196,7 @@ Deployment docs, env docs, runbooks, and tests cover the Telegram-enabled stack.
 - Chat-driven curation mutations remain deferred. See [Telegram Interaction Model §11](TELEGRAM_INTERACTION_MODEL.md) for preconditions required before enabling.
 - Phase 12 is complete. See [docs/PHASE12_RELEASE_NOTES.md](PHASE12_RELEASE_NOTES.md).
 - Phase 13 is planned. See [docs/tasks_phase13.md](tasks_phase13.md) for the full backlog.
-- Phase 14 is planned. See [docs/tasks_phase14.md](tasks_phase14.md). Requires developer credential setup (WS-14.1) before coding starts.
+- Phase 14 is complete. See [docs/tasks_phase14.md](tasks_phase14.md).
 
 ## 12. Phase 12 — UX Quality Fixes (Тест 1)
 
@@ -290,10 +290,12 @@ sync loop so the user's journal stays up to date without manual copy-paste.
 ### Scope In
 
 - Developer setup: service account or OAuth2 credentials with write scope (WS-14.1, dev task)
-- GDocsClient.append_text: insert text at end of document via batchUpdate API
+- GDocsClient.append_dream_entry: insert text with title as HEADING_1 via batchUpdate API
 - write_dream_to_google_doc in AssistantFacade
 - Integrate into create_dream flow: auto-write after DB insert; report status to user
-- SYSTEM_PROMPT update: describe bidirectional sync; remove outdated "requires developer" message
+- retry_write_to_google_doc tool: lets user retry write without creating a duplicate DB entry
+- SYSTEM_PROMPT update: exact failure message with retry instruction; no improvised technical explanations
+- Session history TTL: 7-day auto-reset so stale failure context does not repeat
 
 ### Scope Out
 
@@ -310,7 +312,7 @@ sync loop so the user's journal stays up to date without manual copy-paste.
 
 See [docs/tasks_phase14.md §5](tasks_phase14.md).
 
-### Status: Complete — 2026-04-24 (WS-14.1 is a dev-side credential prerequisite; WS-14.2–14.5 implemented)
+### Status: Complete — 2026-04-24
 
 See [docs/tasks_phase14.md](tasks_phase14.md) for the detailed task graph.
 

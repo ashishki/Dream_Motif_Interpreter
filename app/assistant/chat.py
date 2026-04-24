@@ -114,6 +114,19 @@ async def handle_chat_with_metadata(
                 tool_calls_made=tool_calls_made,
             )
 
+        usage = response.usage
+        LOGGER.info(
+            "anthropic_usage chat_id=%s model=%s round=%s "
+            "input_tokens=%s output_tokens=%s cache_read=%s cache_write=%s",
+            chat_id,
+            model,
+            round_counter,
+            usage.input_tokens,
+            usage.output_tokens,
+            getattr(usage, "cache_read_input_tokens", 0),
+            getattr(usage, "cache_creation_input_tokens", 0),
+        )
+
         current_text = _extract_text(response)
         if current_text:
             last_text = current_text

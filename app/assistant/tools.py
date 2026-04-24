@@ -160,6 +160,25 @@ _BASE_TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "retry_write_to_google_doc",
+        "description": (
+            "Retry writing a dream entry to Google Doc after a previous failure. "
+            "Use when the user asks to retry, repeat, or re-save the write to Google Doc. "
+            "Omit dream_id to retry for the most recently created dream."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "dream_id": {
+                    "type": "string",
+                    "description": "Optional UUID of the dream to write. Omit to use the most recently created dream.",
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "manage_archive_source",
         "description": (
             "Manage Google Docs connected as dream archive sources. "
@@ -326,6 +345,19 @@ async def execute_tool(
         else:
             lines.append("Добавить в Google Doc не удалось. Проверьте подключение к источнику.")
         return "\n".join(lines)
+
+    if tool_name == "retry_write_to_google_doc":
+        raw_id = str(tool_input.get("dream_id", "")).strip()
+        dream_id = None
+        if raw_id:
+            try:
+                dream_id = uuid.UUID(raw_id)
+            except ValueError:
+                return f"Invalid dream_id: {raw_id!r}"
+        success = await facade.retry_write_to_google_doc(dream_id=dream_id)
+        if success:
+            return "Запись добавлена в Google Doc."
+        return "Не удалось записать в Google Doc. Проверьте подключение к источнику."
 
     if tool_name == "get_dream":
         raw_id = str(tool_input.get("dream_id", "")).strip()

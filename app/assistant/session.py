@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert
@@ -20,6 +20,7 @@ from app.models.session import BotSession
 LOGGER = logging.getLogger(__name__)
 
 MAX_HISTORY_MESSAGES = 20
+HISTORY_TTL_DAYS = 7
 
 
 async def load_history(
@@ -34,6 +35,13 @@ async def load_history(
         row = await session.get(BotSession, chat_id)
         if row is None:
             return []
+        updated = row.updated_at
+        if updated is not None:
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            if datetime.now(tz=timezone.utc) - updated > timedelta(days=HISTORY_TTL_DAYS):
+                LOGGER.info("Session history expired for chat_id=%s — resetting", chat_id)
+                return []
         try:
             parsed = json.loads(row.history_json)
             if isinstance(parsed, list):

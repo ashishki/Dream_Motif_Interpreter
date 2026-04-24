@@ -261,12 +261,20 @@ Context-Refs:
 
 Phase 14 считается завершённой когда:
 
-- [ ] [Dev] Service account / OAuth2 credentials настроены на scope=documents write (WS-14.1)
-- [ ] GDocsClient.append_text записывает текст в конец Google Doc без ошибок (WS-14.2)
-- [ ] write_dream_to_google_doc возвращает True после успешной записи (WS-14.3)
-- [ ] create_dream автоматически пишет в Google Doc; результат виден в выводе инструмента (WS-14.4)
-- [ ] SYSTEM_PROMPT корректно описывает двустороннюю синхронизацию (WS-14.5)
-- [ ] Сбой write НЕ откатывает создание записи в БД; пользователь уведомлён явно (WS-14.4 AC-4)
+- [x] [Dev] Service account / OAuth2 credentials настроены на scope=documents write (WS-14.1)
+- [x] GDocsClient.append_dream_entry записывает текст в конец Google Doc с заголовком HEADING_1 (WS-14.2+)
+- [x] write_dream_to_google_doc возвращает True после успешной записи (WS-14.3)
+- [x] create_dream автоматически пишет в Google Doc; результат виден в выводе инструмента (WS-14.4)
+- [x] SYSTEM_PROMPT корректно описывает двустороннюю синхронизацию (WS-14.5)
+- [x] Сбой write НЕ откатывает создание записи в БД; пользователь уведомлён явно (WS-14.4 AC-4)
+
+**Status: COMPLETE — 2026-04-24**
+
+Post-release additions (Тест 3, 24.04.26):
+- retry_write_to_google_doc tool (facade + tools.py) — retry without duplicate
+- append_dream_entry with HEADING_1 paragraph style (gdocs_client.py)
+- System prompt exact failure message; no improvised technical explanations
+- Session history 7-day TTL (session.py)
 
 ## 6. Continuity Notes
 

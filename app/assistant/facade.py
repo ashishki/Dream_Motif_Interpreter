@@ -379,12 +379,10 @@ class AssistantFacade:
                     if dream.title and dream.title.strip()
                     else "без названия"
                 )
-                header = f"{date_str} - {title_str}"
                 raw_text = dream.raw_text or ""
-                formatted = f"{header}\n\n{raw_text}"
 
                 client = GDocsClient()
-                client.append_text(resolved_doc_id, formatted)
+                client.append_dream_entry(resolved_doc_id, date_str, title_str, raw_text)
                 logger.info(
                     "Dream written to Google Doc",
                     dream_id=str(dream_id),
@@ -406,6 +404,19 @@ class AssistantFacade:
                     error=str(exc),
                 )
                 return False
+
+    async def retry_write_to_google_doc(self, dream_id: uuid.UUID | None = None) -> bool:
+        """Write a dream to Google Doc. If dream_id is None, uses the most recently created dream."""
+        if dream_id is None:
+            async with self._session_factory() as session:
+                result = await session.execute(
+                    select(DreamEntry).order_by(DreamEntry.created_at.desc()).limit(1)
+                )
+                entry = result.scalar_one_or_none()
+                if entry is None:
+                    return False
+                dream_id = entry.id
+        return await self.write_dream_to_google_doc(dream_id=dream_id)
 
     async def get_theme_history(self, dream_id: uuid.UUID) -> list[ThemeHistoryEntry]:
         async with self._session_factory() as session:

@@ -195,6 +195,78 @@ class GDocsClient:
                     f"Google Docs batchUpdate failed (HTTP {status_code})"
                 ) from exc
 
+    def append_dream_entry(self, doc_id: str, date_str: str, title: str, body: str) -> None:
+        """Append a dream entry with the title styled as Heading 1."""
+        with self._tracer.start_as_current_span("gdocs.append_dream_entry"):
+            logger.info("Appending dream entry to Google Docs document", document_id=doc_id)
+            try:
+                service = self._build_docs_service()
+                document = service.documents().get(documentId=doc_id).execute()
+                body_content = document.get("body", {}).get("content", [])
+                end_index = 1
+                if body_content:
+                    last = body_content[-1]
+                    end_index = max(1, last.get("endIndex", 1) - 1)
+
+                # Layout: \n\n{date_str}\n{title}\n\n{body}
+                prefix = f"\n\n{date_str}\n"
+                title_line = f"{title}\n\n"
+                full_text = prefix + title_line + body
+
+                title_start = end_index + len(prefix)
+                title_end = title_start + len(title) + 1  # +1 for trailing \n
+
+                requests: list[dict] = [
+                    {
+                        "insertText": {
+                            "location": {"index": end_index},
+                            "text": full_text,
+                        }
+                    },
+                    {
+                        "updateParagraphStyle": {
+                            "range": {
+                                "startIndex": title_start,
+                                "endIndex": title_end,
+                            },
+                            "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                            "fields": "namedStyleType",
+                        }
+                    },
+                ]
+                service.documents().batchUpdate(
+                    documentId=doc_id,
+                    body={"requests": requests},
+                ).execute()
+                logger.info(
+                    "Successfully appended dream entry to Google Docs document", document_id=doc_id
+                )
+            except RefreshError as exc:
+                logger.warning("Google Docs authentication failed during append")
+                raise GDocsWriteError("Google Docs authentication failed during write") from exc
+            except HttpError as exc:
+                status_code = _get_status_code(exc)
+                if status_code in {401, 403}:
+                    logger.warning(
+                        "Google Docs write permission denied",
+                        status_code=status_code,
+                        document_id=doc_id,
+                    )
+                    raise GDocsWriteError(
+                        f"Google Docs write permission denied (HTTP {status_code}). "
+                        "Ensure credentials have documents write scope."
+                    ) from exc
+                if status_code == 404:
+                    raise GDocsWriteError(f"Google Docs document not found: {doc_id}") from exc
+                logger.error(
+                    "Google Docs batchUpdate failed",
+                    status_code=status_code,
+                    document_id=doc_id,
+                )
+                raise GDocsWriteError(
+                    f"Google Docs batchUpdate failed (HTTP {status_code})"
+                ) from exc
+
     def _build_docs_service(self) -> Any:
         credentials = self._build_credentials()
         return build("docs", "v1", credentials=credentials, cache_discovery=False)

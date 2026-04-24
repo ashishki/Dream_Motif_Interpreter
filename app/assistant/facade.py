@@ -371,13 +371,19 @@ class AssistantFacade:
 
         return _research_parallel_items(research_result)
 
-    async def trigger_sync(self, doc_id: str) -> SyncJobRef:
+    async def trigger_sync(self, doc_id: str = "") -> list[SyncJobRef]:
+        from app.shared.config import get_all_doc_ids
+
         if self._sync_job_enqueuer is None:
             raise RuntimeError("AssistantFacade trigger_sync requires a sync job enqueuer")
 
-        job_id = uuid.uuid4()
-        await self._sync_job_enqueuer.enqueue_ingest(job_id=job_id, doc_id=doc_id)
-        return SyncJobRef(job_id=job_id, status="queued", doc_id=doc_id)
+        doc_ids = [doc_id] if doc_id.strip() else get_all_doc_ids()
+        refs: list[SyncJobRef] = []
+        for resolved_doc_id in doc_ids:
+            job_id = uuid.uuid4()
+            await self._sync_job_enqueuer.enqueue_ingest(job_id=job_id, doc_id=resolved_doc_id)
+            refs.append(SyncJobRef(job_id=job_id, status="queued", doc_id=resolved_doc_id))
+        return refs
 
     def get_archive_source(self) -> str:
         from app.shared.config import get_effective_google_doc_id

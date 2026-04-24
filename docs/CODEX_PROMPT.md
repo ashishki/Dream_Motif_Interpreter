@@ -1,29 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.41
-Date: 2026-04-23
-Phase: Phase 12 active — UX fix backlog from Тест 1
+Version: 1.42
+Date: 2026-04-24
+Phase: Phase 13 active — multi-source, search recall, UX polish (Тест 2)
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 12 active — UX fix backlog (WS-12.1–12.10)
-- **Baseline:** 305 tests passing, 9 skipped
+- **Phase:** Phase 13 active (WS-13.1–13.8)
+- **Baseline:** 276 unit tests passing, 0 failed
 - **Ruff:** clean (0 violations)
 - **Last CI run:** not yet configured
-- **Last updated:** 2026-04-23 (Phase 12 opened; MOTIF_INDUCTION_ENABLED default → true)
-- **Session tokens (approx):** not yet tracked
-- **Cumulative phase tokens (approx):** not yet tracked
+- **Last updated:** 2026-04-24 (Phase 12 complete; Phase 13 opened from Тест 2 backlog)
 
 ---
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 11 complete; tasks.md Phase 6 (T21–T25) complete
-- **Current planning state:** Phase 12 active — UX fix backlog from Тест 1 (22.04.26); see `docs/tasks_phase12.md`
-- **Latest completed implementation task:** T25 — Operator Controls, Reviewability, Folder Intake
-- **Current baseline:** 305 tests passing, 9 skipped
+- **Phases completed:** Phase 1 through Phase 12 complete
+- **Current planning state:** Phase 13 active — multi-source Google Docs, search recall, UX polish; see `docs/tasks_phase13.md`
+- **Latest completed implementation task:** WS-12.8 — manage_archive_source tool
+- **Current baseline:** 276 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -33,7 +31,8 @@ Phase: Phase 12 active — UX fix backlog from Тест 1
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
-- **Active task graph:** `docs/tasks_phase12.md` (Phase 12: WS-12.1–12.10)
+- **Active task graph:** `docs/tasks_phase13.md` (Phase 13: WS-13.1–13.8)
+- **Previous task graph (Phase 12):** `docs/tasks_phase12.md` (complete)
 - **Previous task graph (Phase 11):** `docs/tasks_phase11.md`
 - **Previous task graph (Phase 10):** `docs/tasks_phase10.md`
 - **Previous task graph (Phase 9):** `docs/tasks_phase9.md`

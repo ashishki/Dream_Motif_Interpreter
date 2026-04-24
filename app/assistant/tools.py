@@ -354,10 +354,14 @@ async def execute_tool(
 
     if tool_name == "trigger_sync":
         doc_id = str(tool_input.get("doc_id", "")).strip()
-        if not doc_id:
-            return "doc_id is required to trigger a sync."
-        ref = await facade.trigger_sync(doc_id)
-        return f"Sync job queued: {ref.job_id} (doc_id={ref.doc_id}, status={ref.status})"
+        refs = await facade.trigger_sync(doc_id)
+        if len(refs) == 1:
+            ref = refs[0]
+            return f"Sync job queued: {ref.job_id} (doc_id={ref.doc_id}, status={ref.status})"
+        lines = [f"Sync jobs queued ({len(refs)} sources):"]
+        for ref in refs:
+            lines.append(f"  - {ref.doc_id}: job_id={ref.job_id} ({ref.status})")
+        return "\n".join(lines)
 
     if tool_name == "manage_archive_source":
         action = str(tool_input.get("action", "")).strip()

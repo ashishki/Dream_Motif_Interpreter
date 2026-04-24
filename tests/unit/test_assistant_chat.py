@@ -506,6 +506,44 @@ async def test_execute_tool_manage_archive_source_get_returns_current_doc_id() -
 
 
 @pytest.mark.asyncio
+async def test_execute_tool_trigger_sync_formats_single_ref() -> None:
+    job_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.trigger_sync.return_value = [
+        SimpleNamespace(job_id=job_id, doc_id="doc-123", status="queued")
+    ]
+
+    result = await tools_module.execute_tool(
+        "trigger_sync",
+        {"doc_id": "doc-123"},
+        facade,
+    )
+
+    assert result == f"Sync job queued: {job_id} (doc_id=doc-123, status=queued)"
+    facade.trigger_sync.assert_awaited_once_with("doc-123")
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_trigger_sync_formats_multiple_refs() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.trigger_sync.return_value = [
+        SimpleNamespace(job_id=uuid.uuid4(), doc_id="doc-a", status="queued"),
+        SimpleNamespace(job_id=uuid.uuid4(), doc_id="doc-b", status="queued"),
+    ]
+
+    result = await tools_module.execute_tool(
+        "trigger_sync",
+        {},
+        facade,
+    )
+
+    assert "Sync jobs queued (2 sources):" in result
+    assert "  - doc-a: job_id=" in result
+    assert "  - doc-b: job_id=" in result
+    facade.trigger_sync.assert_awaited_once_with("")
+
+
+@pytest.mark.asyncio
 async def test_execute_tool_manage_archive_source_set_updates_doc_id() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     facade.set_archive_source.return_value = "doc-next-456"

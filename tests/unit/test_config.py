@@ -130,3 +130,31 @@ def test_get_effective_google_doc_id_falls_back_to_settings(
     finally:
         config_module._google_doc_id_override = None
         config_module.get_settings.cache_clear()
+
+
+def test_google_doc_ids_parse_from_env_csv(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("GOOGLE_DOC_IDS", "doc-b, doc-c ,,")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.GOOGLE_DOC_IDS == ["doc-b", "doc-c"]
+
+
+def test_get_all_doc_ids_primary_first_and_deduplicated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("GOOGLE_DOC_IDS", "doc-b,doc-c")
+    config_module.get_settings.cache_clear()
+    config_module._google_doc_id_override = None
+    config_module._google_doc_ids_override = None
+
+    try:
+        assert config_module.get_all_doc_ids() == ["test-doc-id", "doc-b", "doc-c"]
+        config_module._google_doc_ids_override = ["test-doc-id", "doc-b"]
+        assert config_module.get_all_doc_ids() == ["test-doc-id", "doc-b"]
+    finally:
+        config_module._google_doc_id_override = None
+        config_module._google_doc_ids_override = None
+        config_module.get_settings.cache_clear()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -255,7 +255,7 @@ def test_assistant_facade_does_not_expose_chat_mutation_methods() -> None:
 
 
 @pytest.mark.asyncio
-async def test_trigger_sync_enqueues_job_and_returns_ref() -> None:
+async def test_trigger_sync_enqueues_job_and_returns_refs() -> None:
     sync_job_enqueuer = SimpleNamespace(enqueue_ingest=AsyncMock())
     facade = AssistantFacade(
         session_factory=_FakeSessionFactory(_FakeSession()),
@@ -267,13 +267,38 @@ async def test_trigger_sync_enqueues_job_and_returns_ref() -> None:
 
     result = await facade.trigger_sync("doc-789")
 
-    assert isinstance(result, SyncJobRef)
-    assert result.status == "queued"
-    assert result.doc_id == "doc-789"
+    assert len(result) == 1
+    assert isinstance(result[0], SyncJobRef)
+    assert result[0].status == "queued"
+    assert result[0].doc_id == "doc-789"
     sync_job_enqueuer.enqueue_ingest.assert_awaited_once_with(
-        job_id=result.job_id,
+        job_id=result[0].job_id,
         doc_id="doc-789",
     )
+
+
+@pytest.mark.asyncio
+async def test_trigger_sync_without_doc_id_enqueues_all_configured_sources() -> None:
+    sync_job_enqueuer = SimpleNamespace(enqueue_ingest=AsyncMock())
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession()),
+        rag_query_service=SimpleNamespace(
+            retrieve=AsyncMock(return_value=InsufficientEvidence("x"))
+        ),
+        sync_job_enqueuer=sync_job_enqueuer,
+    )
+
+    with patch("app.shared.config.get_all_doc_ids", return_value=["doc-a", "doc-b", "doc-c"]):
+        result = await facade.trigger_sync()
+
+    assert [ref.doc_id for ref in result] == ["doc-a", "doc-b", "doc-c"]
+    assert all(ref.status == "queued" for ref in result)
+    assert sync_job_enqueuer.enqueue_ingest.await_count == 3
+    assert [call.kwargs["doc_id"] for call in sync_job_enqueuer.enqueue_ingest.await_args_list] == [
+        "doc-a",
+        "doc-b",
+        "doc-c",
+    ]
 
 
 @pytest.mark.asyncio

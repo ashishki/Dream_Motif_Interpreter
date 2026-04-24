@@ -1,8 +1,10 @@
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import BaseModel
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class OperatorParserProfileAssignments(BaseModel):
@@ -20,6 +22,7 @@ class Settings(BaseSettings):
     GOOGLE_REFRESH_TOKEN: str = ""
     GOOGLE_SERVICE_ACCOUNT_FILE: str = ""
     GOOGLE_DOC_ID: str
+    GOOGLE_DOC_IDS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     SECRET_KEY: str
     ENV: str
     AUTO_SYNC_ENABLED: bool = False
@@ -46,6 +49,15 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    @field_validator("GOOGLE_DOC_IDS", mode="before")
+    @classmethod
+    def _parse_google_doc_ids(cls, v: object) -> list[str]:
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        if isinstance(v, list):
+            return v
+        return []
+
     def resolve_operator_parser_profile(
         self,
         *,
@@ -69,6 +81,7 @@ def get_settings() -> Settings:
 
 # Runtime override for GOOGLE_DOC_ID - settable without process restart
 _google_doc_id_override: str | None = None
+_google_doc_ids_override: list[str] | None = None
 
 
 def get_effective_google_doc_id() -> str:
@@ -82,6 +95,22 @@ def set_google_doc_id_override(doc_id: str) -> None:
     """Override GOOGLE_DOC_ID at runtime without restarting the process."""
     global _google_doc_id_override
     _google_doc_id_override = doc_id
+
+
+def get_all_doc_ids() -> list[str]:
+    primary = get_effective_google_doc_id()
+    extras = (
+        _google_doc_ids_override
+        if _google_doc_ids_override is not None
+        else get_settings().GOOGLE_DOC_IDS
+    )
+    seen: set[str] = {primary}
+    result = [primary]
+    for doc_id in extras:
+        if doc_id and doc_id not in seen:
+            seen.add(doc_id)
+            result.append(doc_id)
+    return result
 
 
 def _source_container_from_path(source_path: str) -> str | None:

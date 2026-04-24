@@ -98,6 +98,7 @@ async def handle_chat_with_metadata(
     round_counter = 0
     last_text = ""
     tool_calls_made: list[str] = []
+    _create_dream_called = False  # allow only one create_dream per user turn
 
     while True:
         try:
@@ -139,8 +140,21 @@ async def handle_chat_with_metadata(
             break
 
         tool_blocks = [b for b in response.content if getattr(b, "type", None) == "tool_use"]
-        tool_results: list[str] = []
+        tool_pairs: list[tuple[Any, str]] = []
         for block in tool_blocks:
+            if block.name == "create_dream":
+                if _create_dream_called:
+                    LOGGER.warning(
+                        "Blocked duplicate create_dream call in same turn chat_id=%s", chat_id
+                    )
+                    tool_pairs.append((
+                        block,
+                        "ERROR: create_dream called more than once in a single user turn. "
+                        "Only one dream may be created per user message. "
+                        "Do not call create_dream again for this request.",
+                    ))
+                    continue
+                _create_dream_called = True
             tool_calls_made.append(block.name)
             result = await execute_tool(
                 block.name,
@@ -149,7 +163,7 @@ async def handle_chat_with_metadata(
                 chat_id=chat_id,
                 request_text=message_text,
             )
-            tool_results.append(result)
+            tool_pairs.append((block, result))
 
         messages.append({"role": "assistant", "content": response.content})
         messages.append(
@@ -161,7 +175,7 @@ async def handle_chat_with_metadata(
                         "tool_use_id": block.id,
                         "content": result,
                     }
-                    for block, result in zip(tool_blocks, tool_results, strict=True)
+                    for block, result in tool_pairs
                 ],
             }
         )

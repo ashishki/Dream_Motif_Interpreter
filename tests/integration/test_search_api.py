@@ -211,6 +211,7 @@ async def test_search_returns_ranked_results(
             EvidenceBlock(
                 dream_id=dream.id,
                 date=dream.date,
+                title=dream.title,
                 chunk_text=dream.raw_text,
                 relevance_score=0.95 - (index * 0.05),
                 matched_fragments=[
@@ -345,6 +346,7 @@ async def test_search_with_theme_filter(
             EvidenceBlock(
                 dream_id=confirmed_dream.id,
                 date=confirmed_dream.date,
+                title=confirmed_dream.title,
                 chunk_text=confirmed_dream.raw_text,
                 relevance_score=0.92,
                 matched_fragments=[
@@ -358,6 +360,7 @@ async def test_search_with_theme_filter(
             EvidenceBlock(
                 dream_id=draft_dream.id,
                 date=draft_dream.date,
+                title=draft_dream.title,
                 chunk_text=draft_dream.raw_text,
                 relevance_score=0.89,
                 matched_fragments=[

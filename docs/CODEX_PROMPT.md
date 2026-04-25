@@ -1,26 +1,26 @@
 # CODEX_PROMPT.md
 
-Version: 1.42
-Date: 2026-04-24
-Phase: Phase 13 active — multi-source, search recall, UX polish (Тест 2)
+Version: 1.43
+Date: 2026-04-25
+Phase: Phase 16 planning — search quality, hallucination prevention, UX (Тест 4)
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 13 active (WS-13.1–13.8)
+- **Phase:** Phase 16 planning (WS-16.1–16.6)
 - **Baseline:** 300 unit tests passing, 0 failed
 - **Ruff:** clean (0 violations)
-- **Last CI run:** not yet configured
-- **Last updated:** 2026-04-24 (Phase 14 complete)
+- **Last CI run:** passing (2026-04-25)
+- **Last updated:** 2026-04-25 (Phases 13–15 complete — multi-source docs, write flow, doc-name clarity)
 
 ---
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 14 complete
-- **Current planning state:** Phase 13 active — multi-source Google Docs, search recall, UX polish; see `docs/tasks_phase13.md`
-- **Latest completed implementation task:** WS-12.8 — manage_archive_source tool
+- **Phases completed:** Phase 1 through Phase 15 complete
+- **Current planning state:** Phase 16 planning — search quality, hallucination prevention, sync notification, dream notes; see `docs/tasks_phase16.md`
+- **Latest completed implementation task:** Phase 15 — doc-name clarity across all write paths (write_dream_to_google_doc → tuple[bool, str], CreatedDreamItem.written_to_doc_name, manage_archive_source list shows human-readable names)
 - **Current baseline:** 300 unit tests passing
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
@@ -31,12 +31,12 @@ Phase: Phase 13 active — multi-source, search recall, UX polish (Тест 2)
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
-- **Active task graph:** `docs/tasks_phase13.md` (Phase 13: WS-13.1–13.8)
+- **Active task graph:** `docs/tasks_phase16.md` (Phase 16: WS-16.1–16.6)
+- **Previous task graph (Phase 15):** `docs/tasks_phase15.md` (complete)
+- **Previous task graph (Phase 14):** `docs/tasks_phase14.md` (complete)
+- **Previous task graph (Phase 13):** `docs/tasks_phase13.md` (complete)
 - **Previous task graph (Phase 12):** `docs/tasks_phase12.md` (complete)
-- **Previous task graph (Phase 11):** `docs/tasks_phase11.md`
-- **Previous task graph (Phase 10):** `docs/tasks_phase10.md`
-- **Previous task graph (Phase 9):** `docs/tasks_phase9.md`
-- **Previous task graph (Phases 6–8):** `docs/tasks_phase6.md`
+- **Previous task graph (Phases 6–11):** `docs/tasks_phase6.md` through `docs/tasks_phase11.md`
 - **Historical backend task graph:** `docs/tasks.md`
 - **Task-scoped context:** read `Context-Refs` in the active task graph before broad searching
 
@@ -50,18 +50,19 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-**Phase 14 complete. All planned phases implemented.**
+**Phase 15 complete. Phase 16 planning.**
 
-WS-12.1: add motif UUID to `get_dream_motifs` tool output.
-File: `app/assistant/tools.py:343` — add `f" [id={motif.id}]"` to the motif label line.
-This unblocks `research_motif_parallels` which is currently broken for all users.
+WS-16.1: Hallucination prevention — add strict grounding rule to SYSTEM_PROMPT.
+File: `app/assistant/prompts.py` — new "Search Grounding Rules" section.
+Rule: model may ONLY present dream text from tool result fields verbatim.
+Never generate, paraphrase, or infer dream content. No exceptions.
 
-After WS-12.1: WS-12.2 (no markdown in responses, prompts.py).
+After WS-16.1: WS-16.2 (search routing fix + fallback) and WS-16.3 (multi-query motif search) — can be done in one commit.
 
 Context refs:
-- `docs/tasks.md` — Phase 6 task graph (T21–T25 complete)
-- `docs/PHASE_PLAN.md` — next phase scope
-- `docs/IMPLEMENTATION_JOURNAL.md` — Phase 6 journal entry
+- `docs/tasks_phase16.md` — Phase 16 task graph (WS-16.1–16.6)
+- `app/assistant/prompts.py` — SYSTEM_PROMPT
+- `app/assistant/tools.py` — execute_tool search handlers
 
 ---
 
@@ -385,7 +386,7 @@ Read these instructions every time you pick up a task. Do not skip steps.
 ### Pre-Task Protocol (mandatory — do not skip)
 
 1. **Read `docs/IMPLEMENTATION_CONTRACT.md`** — before anything else. Know the rules before touching code.
-2. **Read the full active task in `docs/tasks_phase11.md` for Phase 11 work, in `docs/tasks_phase10.md` for Phase 10 reference, or in `docs/tasks.md` for historical/backend follow-up work** — including all acceptance criteria, file lists, and notes.
+2. **Read the full active task in `docs/tasks_phase16.md`** — including all acceptance criteria, file lists, and notes. For historical reference use `docs/tasks_phase15.md` (Phase 15) or earlier phase files.
 3. **Read all Depends-On tasks** — understand the interface contracts your task must satisfy.
 4. **Read task `Context-Refs` and continuity artifacts as needed** — required when the task resolves a finding, changes a risky boundary, or depends on prior decisions / evidence.
 5. **Run `pytest -q`** — capture the current baseline. Record: `N passing, M failed`. If M > 0, stop and report: you cannot add failures to an already-failing baseline.

@@ -22,6 +22,7 @@ from app.shared.tracing import get_logger, get_tracer
 
 router = APIRouter()
 logger = get_logger(__name__)
+SYNC_NOTIFY_PREFIX = "sync_notify:"
 
 
 class _InMemoryRedisClient:
@@ -35,6 +36,9 @@ class _InMemoryRedisClient:
 
     async def get(self, key: str) -> str | None:
         return self._values.get(key)
+
+    async def delete(self, key: str) -> int:
+        return 1 if self._values.pop(key, None) is not None else 0
 
     async def aclose(self) -> None:
         return None
@@ -95,7 +99,13 @@ class SyncBackend(Protocol):
 
 
 class JobEnqueuer(Protocol):
-    async def enqueue_ingest(self, *, job_id: uuid.UUID, doc_id: str) -> None: ...
+    async def enqueue_ingest(
+        self,
+        *,
+        job_id: uuid.UUID,
+        doc_id: str,
+        chat_id: int | None = None,
+    ) -> None: ...
 
 
 class RedisSyncBackend:
@@ -225,6 +235,34 @@ async def read_sync_job_state(redis_client: Any, job_id: uuid.UUID) -> SyncJobSt
     )
 
 
+async def set_sync_notify(
+    redis_client: Any,
+    job_id: uuid.UUID,
+    chat_id: int,
+    ttl: int = 3600,
+) -> None:
+    tracer = get_tracer(__name__)
+    with tracer.start_as_current_span("redis.sync_notify.set") as span:
+        span.set_attribute("job_id", str(job_id))
+        await redis_client.set(f"{SYNC_NOTIFY_PREFIX}{job_id}", str(chat_id), ex=ttl)
+
+
+async def get_and_delete_sync_notify(redis_client: Any, job_id: uuid.UUID) -> int | None:
+    tracer = get_tracer(__name__)
+    key = f"{SYNC_NOTIFY_PREFIX}{job_id}"
+    with tracer.start_as_current_span("redis.sync_notify.get") as span:
+        span.set_attribute("job_id", str(job_id))
+        value = await redis_client.get(key)
+
+    if value is None:
+        return None
+
+    with tracer.start_as_current_span("redis.sync_notify.delete") as span:
+        span.set_attribute("job_id", str(job_id))
+        await redis_client.delete(key)
+    return int(value)
+
+
 async def _load_dream(
     session: AsyncSession,
     dream_id: uuid.UUID,
@@ -266,8 +304,17 @@ class LocalAsyncJobEnqueuer:
         self._session_factory = session_factory
         self._tasks: set[asyncio.Task[None]] = set()
 
-    async def enqueue_ingest(self, *, job_id: uuid.UUID, doc_id: str) -> None:
+    async def enqueue_ingest(
+        self,
+        *,
+        job_id: uuid.UUID,
+        doc_id: str,
+        chat_id: int | None = None,
+    ) -> None:
         from app.workers.ingest import ingest_document
+
+        if chat_id is not None:
+            await set_sync_notify(self._redis_client, job_id, chat_id)
 
         task = asyncio.create_task(
             self._run_ingest_job(job_id=job_id, doc_id=doc_id, ingest_document=ingest_document)

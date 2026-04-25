@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.dream import DreamEntry
 from app.models.motif import MotifInduction
+from app.models.note import DreamNote
 from app.models.theme import DreamTheme, ThemeCategory
 from app.retrieval.query import EvidenceBlock, InsufficientEvidence, RagQueryService
 from app.services.analysis import AnalysisService
@@ -67,6 +68,7 @@ class DreamDetail:
     created_at: str
     segmentation_confidence: str
     themes: list[DreamThemeItem]
+    notes: list[str]
 
 
 @dataclass(frozen=True)
@@ -140,7 +142,13 @@ class SyncJobRef:
 
 
 class SyncJobEnqueuer(Protocol):
-    async def enqueue_ingest(self, *, job_id: uuid.UUID, doc_id: str) -> None: ...
+    async def enqueue_ingest(
+        self,
+        *,
+        job_id: uuid.UUID,
+        doc_id: str,
+        chat_id: int | None = None,
+    ) -> None: ...
 
 
 class AssistantFacade:
@@ -212,12 +220,19 @@ class AssistantFacade:
                 return None
 
             with tracer.start_as_current_span("assistant.get_dream.load_themes"):
-                result = await session.execute(
+                theme_result = await session.execute(
                     select(DreamTheme, ThemeCategory.name)
                     .join(ThemeCategory, ThemeCategory.id == DreamTheme.category_id)
                     .where(DreamTheme.dream_id == dream_id)
                     .order_by(DreamTheme.created_at.asc(), DreamTheme.id.asc())
                 )
+            with tracer.start_as_current_span("assistant.get_dream.load_notes"):
+                notes_result = await session.execute(
+                    select(DreamNote.text)
+                    .where(DreamNote.dream_id == dream.id)
+                    .order_by(DreamNote.created_at.asc(), DreamNote.id.asc())
+                )
+                notes = list(notes_result.scalars().all())
 
         return DreamDetail(
             id=dream.id,
@@ -230,8 +245,9 @@ class AssistantFacade:
             segmentation_confidence=dream.segmentation_confidence,
             themes=[
                 _theme_item(theme=theme, category_name=category_name)
-                for theme, category_name in result.all()
+                for theme, category_name in theme_result.all()
             ],
+            notes=notes,
         )
 
     async def list_recent_dreams(self, limit: int = 10) -> list[DreamSummary]:
@@ -428,6 +444,63 @@ class AssistantFacade:
                 dream_id = entry.id
         return await self.write_dream_to_google_doc(dream_id=dream_id)
 
+    async def add_dream_note(
+        self,
+        note_text: str,
+        dream_id: uuid.UUID | None = None,
+        chat_id: int | None = None,
+    ) -> tuple[bool, str]:
+        """Add a note to a dream. Returns (success, message)."""
+        normalized_text = note_text.strip()
+        if not normalized_text:
+            return False, "Текст заметки пуст."
+
+        tracer = get_tracer(__name__)
+
+        async with self._session_factory() as session:
+            with tracer.start_as_current_span("assistant.add_dream_note.resolve_dream"):
+                dream = await self._resolve_note_target_dream(
+                    session,
+                    dream_id=dream_id,
+                    chat_id=chat_id,
+                )
+            if dream is None:
+                return False, "Не найден сон для добавления заметки."
+
+            note = DreamNote(
+                id=uuid.uuid4(),
+                dream_id=dream.id,
+                text=normalized_text,
+                source="telegram",
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(note)
+            with tracer.start_as_current_span("assistant.add_dream_note.commit"):
+                await session.commit()
+
+        date_str = datetime.now(timezone.utc).strftime("%d.%m.%y")
+        note_line = f"[Note {date_str}]: {normalized_text}"
+        target_doc_id = self._resolve_note_doc_id(dream)
+        try:
+            with tracer.start_as_current_span("assistant.add_dream_note.append_google_doc"):
+                GDocsClient().append_text(target_doc_id, note_line)
+        except GDocsWriteError:
+            logger.warning(
+                "Failed to append dream note to Google Doc",
+                dream_id=str(dream.id),
+                doc_id=target_doc_id,
+            )
+            return False, "Заметка сохранена в архиве, но не добавлена в Google Doc."
+        except Exception:
+            logger.error(
+                "Unexpected error appending dream note to Google Doc",
+                dream_id=str(dream.id),
+                doc_id=target_doc_id,
+            )
+            return False, "Заметка сохранена в архиве, но не добавлена в Google Doc."
+
+        return True, "Заметка добавлена."
+
     async def get_theme_history(self, dream_id: uuid.UUID) -> list[ThemeHistoryEntry]:
         async with self._session_factory() as session:
             _, versions = await self._versioning_service.list_theme_history(
@@ -480,7 +553,7 @@ class AssistantFacade:
 
         return _research_parallel_items(research_result)
 
-    async def trigger_sync(self, doc_id: str = "") -> list[SyncJobRef]:
+    async def trigger_sync(self, doc_id: str = "", chat_id: int | None = None) -> list[SyncJobRef]:
         from app.shared.config import get_all_doc_ids
 
         if self._sync_job_enqueuer is None:
@@ -490,7 +563,11 @@ class AssistantFacade:
         refs: list[SyncJobRef] = []
         for resolved_doc_id in doc_ids:
             job_id = uuid.uuid4()
-            await self._sync_job_enqueuer.enqueue_ingest(job_id=job_id, doc_id=resolved_doc_id)
+            await self._sync_job_enqueuer.enqueue_ingest(
+                job_id=job_id,
+                doc_id=resolved_doc_id,
+                chat_id=chat_id,
+            )
             refs.append(SyncJobRef(job_id=job_id, status="queued", doc_id=resolved_doc_id))
         return refs
 
@@ -575,6 +652,30 @@ class AssistantFacade:
             return await index_dream({"session_factory": self._session_factory}, dream_id=dream_id)
 
         return _index
+
+    async def _resolve_note_target_dream(
+        self,
+        session: AsyncSession,
+        *,
+        dream_id: uuid.UUID | None,
+        chat_id: int | None,
+    ) -> DreamEntry | None:
+        if dream_id is not None:
+            return await session.get(DreamEntry, dream_id)
+
+        stmt = select(DreamEntry)
+        if chat_id is not None:
+            stmt = stmt.where(DreamEntry.source_doc_id == f"telegram:{chat_id}")
+        stmt = stmt.order_by(DreamEntry.created_at.desc()).limit(1)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    def _resolve_note_doc_id(self, dream: DreamEntry) -> str:
+        from app.shared.config import get_effective_google_doc_id
+
+        if dream.source_doc_id.startswith("telegram:"):
+            return get_effective_google_doc_id()
+        return dream.source_doc_id
 
 
 def _search_result_item(block: EvidenceBlock, query: str) -> SearchResultItem:

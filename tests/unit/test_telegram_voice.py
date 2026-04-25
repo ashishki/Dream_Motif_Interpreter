@@ -188,7 +188,7 @@ async def test_voice_handler_sends_processing_acknowledgement() -> None:
     ):
         await voice_message_handler(update, context)
 
-    message.reply_text.assert_awaited_once_with("Processing your voice note...")
+    message.reply_text.assert_awaited_once_with("Обрабатываю голосовое сообщение...")
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +233,7 @@ async def test_voice_handler_continues_without_session_factory() -> None:
         await voice_message_handler(update, context)
 
     mock_persist.assert_not_awaited()
-    message.reply_text.assert_awaited_once_with("Processing your voice note...")
+    message.reply_text.assert_awaited_once_with("Обрабатываю голосовое сообщение...")
 
 
 # ---------------------------------------------------------------------------
@@ -287,4 +287,4 @@ async def test_voice_handler_enqueues_transcription_task_when_fully_configured()
         await voice_message_handler(update, context)
 
     assert len(enqueued_coros) == 1
-    message.reply_text.assert_awaited_once_with("Processing your voice note...")
+    message.reply_text.assert_awaited_once_with("Обрабатываю голосовое сообщение...")

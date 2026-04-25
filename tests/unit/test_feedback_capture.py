@@ -64,7 +64,8 @@ def _make_context(session_factory: object | None = None) -> SimpleNamespace:
             "facade": AsyncMock(spec=AssistantFacade),
             "session_factory": session_factory,
             "allowed_chat_id": 77,
-        }
+        },
+        bot=SimpleNamespace(send_chat_action=AsyncMock()),
     )
 
 

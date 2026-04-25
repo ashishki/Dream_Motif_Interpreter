@@ -564,7 +564,7 @@ async def test_execute_tool_trigger_sync_formats_single_ref() -> None:
     )
 
     assert result == f"Sync job queued: {job_id} (doc_id=doc-123, status=queued)"
-    facade.trigger_sync.assert_awaited_once_with("doc-123")
+    facade.trigger_sync.assert_awaited_once_with("doc-123", chat_id=None)
 
 
 @pytest.mark.asyncio
@@ -584,7 +584,7 @@ async def test_execute_tool_trigger_sync_formats_multiple_refs() -> None:
     assert "Sync jobs queued (2 sources):" in result
     assert "  - doc-a: job_id=" in result
     assert "  - doc-b: job_id=" in result
-    facade.trigger_sync.assert_awaited_once_with("")
+    facade.trigger_sync.assert_awaited_once_with("", chat_id=None)
 
 
 @pytest.mark.asyncio

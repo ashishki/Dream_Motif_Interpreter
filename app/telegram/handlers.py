@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import MutableMapping
 from typing import Any
 
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.error import TelegramError
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
@@ -17,7 +19,7 @@ from app.telegram.voice import download_voice_file
 
 LOGGER = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
-VOICE_PROCESSING_ACK = "Processing your voice note..."
+VOICE_PROCESSING_ACK = "Обрабатываю голосовое сообщение..."
 FEEDBACK_PROMPT = "Оцените ответ от 1 до 5 или добавьте комментарий после цифры."
 FEEDBACK_ACK = "Thanks, noted."
 _FEEDBACK_STATE_KEY = "_feedback_pending_by_chat"
@@ -100,12 +102,22 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         bot_msg_ids.pop(chat_key, None)
 
     facade = _get_facade(context)
-    result = await handle_chat_with_metadata(
-        message.text,
-        facade,
-        session_factory=session_factory,
-        chat_id=chat_id,
-    )
+    typing_task: asyncio.Task[None] | None = None
+    if chat_id is not None:
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        typing_task = asyncio.create_task(_send_typing_action_loop(context, chat_id))
+    try:
+        result = await handle_chat_with_metadata(
+            message.text,
+            facade,
+            session_factory=session_factory,
+            chat_id=chat_id,
+        )
+    finally:
+        if typing_task is not None:
+            typing_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await typing_task
     reply_text = _format_reply_text(result)
     sent_message = await message.reply_text(reply_text)
 
@@ -281,3 +293,15 @@ def _format_reply_text(result: ChatResult) -> str:
     if not _is_substantive_response(result.text):
         return result.text
     return f"{result.text}\n\n{FEEDBACK_PROMPT}"
+
+
+async def _send_typing_action_loop(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+) -> None:
+    while True:
+        await asyncio.sleep(4)
+        try:
+            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        except TelegramError:
+            LOGGER.warning("Failed to send typing action", exc_info=True)

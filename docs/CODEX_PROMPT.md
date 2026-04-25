@@ -50,21 +50,19 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-**WS-16.1 + WS-16.2 + WS-16.3 complete (2026-04-25). Next: WS-16.4 + WS-16.7.**
+**WS-16.1 + WS-16.2 + WS-16.3 + WS-16.4 + WS-16.7 complete (2026-04-25). Next: WS-16.5.**
 
-WS-16.4: Russian processing messages + typing indicator for text queries.
-File: `app/telegram/__main__.py`
-- Voice: "Обрабатываю голосовое сообщение..."
-- Text: sendChatAction(action="typing") before LLM call, repeat every 4s.
-
-WS-16.7: Emoji reactions infrastructure (parallel with WS-16.4).
-Files: `app/models/reaction.py` (new), alembic migration (new),
-       `app/telegram/__main__.py` (MessageReactionHandler + allowed_updates).
-Schema: message_id, chat_id, emoji, created_at. No semantic mapping yet.
+WS-16.5: Sync completion notification.
+Baseline: 306 unit tests passing.
+Design:
+  1. trigger_sync → save in Redis sync_notify:{job_id} = chat_id, TTL 1h.
+  2. app/workers/ingest.py after completion → read Redis, if chat_id → Bot API sendMessage.
 
 Context refs:
-- `docs/tasks_phase16.md` — Phase 16 task graph (WS-16.4–16.7 open)
-- `app/telegram/__main__.py` — bot entry point
+- `docs/tasks_phase16.md` — Phase 16 task graph (WS-16.5–16.6 open)
+- `app/assistant/tools.py` — trigger_sync tool
+- `app/assistant/facade.py` — facade layer
+- `app/workers/ingest.py` — ingest worker
 
 ---
 

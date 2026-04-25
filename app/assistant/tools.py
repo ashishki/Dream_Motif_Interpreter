@@ -48,6 +48,28 @@ _BASE_TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "add_dream_note",
+        "description": (
+            "Add a note to a dream entry. Use when the user says 'note: ...' or asks to "
+            "add a note to a dream."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "note_text": {
+                    "type": "string",
+                    "description": "The note text to add.",
+                },
+                "dream_id": {
+                    "type": "string",
+                    "description": "UUID of the dream (optional; uses most recent if omitted).",
+                },
+            },
+            "required": ["note_text"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "create_dream",
         "description": (
             "Create a new dream entry in the archive from user-provided text. "
@@ -385,6 +407,24 @@ async def execute_tool(
             )
         return "\n".join(lines)
 
+    if tool_name == "add_dream_note":
+        note_text = str(tool_input.get("note_text", "")).strip()
+        if not note_text:
+            return "note_text is required."
+        raw_id = str(tool_input.get("dream_id", "")).strip()
+        dream_id = None
+        if raw_id:
+            try:
+                dream_id = uuid.UUID(raw_id)
+            except ValueError:
+                return f"Invalid dream_id: {raw_id!r}"
+        success, message = await facade.add_dream_note(
+            note_text,
+            dream_id=dream_id,
+            chat_id=chat_id,
+        )
+        return message
+
     if tool_name == "retry_write_to_google_doc":
         raw_id = str(tool_input.get("dream_id", "")).strip()
         dream_id = None
@@ -410,14 +450,18 @@ async def execute_tool(
             return f"Dream not found: {raw_id}"
         theme_names = ", ".join(t.category_name for t in detail.themes) or "none"
         raw_text_clean = detail.raw_text.replace("*", "").replace("<", "")
-        return (
+        lines = [
             f"Dream {detail.id}\n"
             f"Date: {detail.date or 'unknown'}\n"
             f"Title: {detail.title}\n"
             f"Words: {detail.word_count}\n"
             f"Themes: {theme_names}\n"
             f"Text: {raw_text_clean[:2000]}"
-        )
+        ]
+        if detail.notes:
+            lines.append("Notes:")
+            lines.extend(f"- {note}" for note in detail.notes)
+        return "\n".join(lines)
 
     if tool_name == "list_recent_dreams":
         raw_limit = tool_input.get("limit", 10)
@@ -473,7 +517,7 @@ async def execute_tool(
     if tool_name == "trigger_sync":
         doc_id = str(tool_input.get("doc_id", "")).strip()
         try:
-            refs = await facade.trigger_sync(doc_id)
+            refs = await facade.trigger_sync(doc_id, chat_id=chat_id)
         except RuntimeError as exc:
             return f"Sync unavailable: {exc}"
         if len(refs) == 1:
@@ -507,7 +551,7 @@ async def execute_tool(
                 tag = " ← куда пишем" if i == 1 else ""
                 lines.append(f"{i}. {_gdn2(source)} ({source}){tag}")
             try:
-                refs = await facade.trigger_sync(doc_id)
+                refs = await facade.trigger_sync(doc_id, chat_id=chat_id)
                 if refs:
                     lines.append(f"Sync job queued: {refs[0].job_id}")
             except RuntimeError:
@@ -542,7 +586,7 @@ async def execute_tool(
                     tag = " ← куда пишем" if i == 1 else ""
                     lines.append(f"{i}. {_gdn(source)} ({source}){tag}")
                 try:
-                    refs = await facade.trigger_sync(doc_id)
+                    refs = await facade.trigger_sync(doc_id, chat_id=chat_id)
                     if refs:
                         lines.append(f"Sync job queued: {refs[0].job_id}")
                 except RuntimeError:
@@ -589,7 +633,7 @@ async def execute_tool(
                 tag = " ← куда пишем" if i == 1 else ""
                 lines.append(f"{i}. {_gdn3(source)} ({source}){tag}")
             try:
-                refs = await facade.trigger_sync(new_doc_id)
+                refs = await facade.trigger_sync(new_doc_id, chat_id=chat_id)
                 if refs:
                     lines.append(f"Sync job queued: {refs[0].job_id}")
             except RuntimeError:

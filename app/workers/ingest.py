@@ -5,11 +5,12 @@ from dataclasses import dataclass
 import asyncio
 from typing import Any, Protocol
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.dreams import SyncJobState, write_sync_job_state
+from app.api.dreams import SyncJobState, get_and_delete_sync_notify, write_sync_job_state
 from app.models.dream import DreamChunk, DreamEntry
 from app.models.theme import DreamTheme
 from app.retrieval.ingestion import fetch_source_documents, process_source_document
@@ -91,15 +92,36 @@ async def ingest_document(ctx: dict[str, Any], *, job_id: uuid.UUID, doc_id: str
         except GDocsAuthError:
             logger.warning("worker.ingest_document_auth_failed", job_id=str(job_id))
             await write_sync_job_state(redis_client, job_id, SyncJobState(status="failed"))
+            await _notify_sync_complete(
+                redis_client,
+                job_id,
+                count=0,
+                doc_id=doc_id,
+                error="Ошибка аутентификации Google Docs",
+            )
             return 0
         except Exception:
             await write_sync_job_state(redis_client, job_id, SyncJobState(status="failed"))
+            await _notify_sync_complete(
+                redis_client,
+                job_id,
+                count=0,
+                doc_id=doc_id,
+                error="Внутренняя ошибка",
+            )
             raise
 
     await write_sync_job_state(
         redis_client,
         job_id,
         SyncJobState(status="done", new_entries=stored_entries.new_entries),
+    )
+    await _notify_sync_complete(
+        redis_client,
+        job_id,
+        count=stored_entries.new_entries,
+        doc_id=doc_id,
+        error=None,
     )
     return stored_entries.new_entries
 
@@ -126,42 +148,105 @@ async def ingest_source_container(
             exc_info=True,
         )
 
-    with tracer.start_as_current_span("worker.ingest_source_container") as span:
-        span.set_attribute("job_id", str(job_id))
-        span.set_attribute("client_id", client_id)
+    try:
+        with tracer.start_as_current_span("worker.ingest_source_container") as span:
+            span.set_attribute("job_id", str(job_id))
+            span.set_attribute("client_id", client_id)
 
-        with tracer.start_as_current_span("worker.ingest_source_container.enumerate_documents"):
-            fetched_documents = await asyncio.to_thread(fetch_source_documents, connector)
+            with tracer.start_as_current_span("worker.ingest_source_container.enumerate_documents"):
+                fetched_documents = await asyncio.to_thread(fetch_source_documents, connector)
 
-        total_new_entries = 0
-        dream_ids: list[uuid.UUID] = []
-        for fetched_document in fetched_documents:
-            stored_entries = await _store_entries(
+            total_new_entries = 0
+            dream_ids: list[uuid.UUID] = []
+            for fetched_document in fetched_documents:
+                stored_entries = await _store_entries(
+                    session_factory=session_factory,
+                    fetched_document=fetched_document,
+                    client_id=client_id,
+                )
+                total_new_entries += stored_entries.new_entries
+                dream_ids.extend(stored_entries.dream_ids)
+
+            pipeline_targets = await _collect_pipeline_targets(
                 session_factory=session_factory,
-                fetched_document=fetched_document,
-                client_id=client_id,
+                dream_ids=dream_ids,
             )
-            total_new_entries += stored_entries.new_entries
-            dream_ids.extend(stored_entries.dream_ids)
-
-        pipeline_targets = await _collect_pipeline_targets(
-            session_factory=session_factory,
-            dream_ids=dream_ids,
+            await _run_post_store_pipeline(
+                ctx=ctx,
+                session_factory=session_factory,
+                analysis_service=analysis_service,
+                motif_service=motif_service,
+                pipeline_targets=pipeline_targets,
+            )
+    except GDocsAuthError:
+        await write_sync_job_state(redis_client, job_id, SyncJobState(status="failed"))
+        await _notify_sync_complete(
+            redis_client,
+            job_id,
+            count=0,
+            doc_id=client_id,
+            error="Ошибка аутентификации Google Docs",
         )
-        await _run_post_store_pipeline(
-            ctx=ctx,
-            session_factory=session_factory,
-            analysis_service=analysis_service,
-            motif_service=motif_service,
-            pipeline_targets=pipeline_targets,
+        return 0
+    except Exception:
+        await write_sync_job_state(redis_client, job_id, SyncJobState(status="failed"))
+        await _notify_sync_complete(
+            redis_client,
+            job_id,
+            count=0,
+            doc_id=client_id,
+            error="Внутренняя ошибка",
         )
+        raise
 
     await write_sync_job_state(
         redis_client,
         job_id,
         SyncJobState(status="done", new_entries=total_new_entries),
     )
+    await _notify_sync_complete(
+        redis_client,
+        job_id,
+        count=total_new_entries,
+        doc_id=client_id,
+        error=None,
+    )
     return total_new_entries
+
+
+async def _notify_sync_complete(
+    redis_client: Any,
+    job_id: uuid.UUID,
+    *,
+    count: int,
+    doc_id: str,
+    error: str | None,
+) -> None:
+    tracer = get_tracer(__name__)
+    try:
+        chat_id = await get_and_delete_sync_notify(redis_client, job_id)
+        if chat_id is None:
+            return
+
+        settings = get_settings()
+        if not settings.TELEGRAM_BOT_TOKEN:
+            return
+
+        if error is None:
+            text = f"Синхронизация завершена: {doc_id}. Добавлено {count} записей."
+        else:
+            text = f"Синхронизация не удалась: {error}."
+
+        with tracer.start_as_current_span("http.telegram.send_sync_notification") as span:
+            span.set_attribute("job_id", str(job_id))
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage",
+                    json={"chat_id": chat_id, "text": text},
+                )
+                response.raise_for_status()
+    except Exception:
+        logger.warning("ingest.sync_notify_failed", job_id=str(job_id), exc_info=True)
 
 
 async def _store_entries(

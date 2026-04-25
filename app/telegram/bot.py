@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
-from telegram import Update
-from telegram.ext import Application, ApplicationBuilder, MessageHandler, TypeHandler, filters
+import sqlalchemy as sa
+
+from telegram import ReactionTypeCustomEmoji, ReactionTypeEmoji, Update
+from telegram.ext import (
+    Application,
+    ApplicationBuilder,
+    MessageHandler,
+    MessageReactionHandler,
+    TypeHandler,
+    filters,
+)
 
 from app.assistant.facade import AssistantFacade
+from app.models.reaction import MessageReaction
 from app.shared.config import Settings, get_settings
 from app.telegram.handlers import (
     chat_guard,
@@ -43,6 +54,12 @@ def build_application(
     application.add_handler(TypeHandler(Update, chat_guard), group=-1000)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
     application.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
+    application.add_handler(
+        MessageReactionHandler(
+            handle_message_reaction,
+            message_reaction_types=MessageReactionHandler.MESSAGE_REACTION_UPDATED,
+        )
+    )
     application.add_error_handler(error_handler)
     return application
 
@@ -63,6 +80,8 @@ def main(
 
     LOGGER.info("Starting Telegram bot with long polling")
     try:
+        # Verified against the installed python-telegram-bot version: Update.ALL_TYPES
+        # already includes UpdateType.MESSAGE_REACTION, so no manual override is needed.
         application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)
     except (KeyboardInterrupt, SystemExit):
         LOGGER.info("Telegram bot shutdown requested")
@@ -73,3 +92,68 @@ def _validate_bot_settings(settings: Settings) -> None:
         raise RuntimeError("TELEGRAM_BOT_TOKEN must be set to start the Telegram bot runtime")
     if settings.TELEGRAM_ALLOWED_CHAT_ID == 0:
         raise RuntimeError("TELEGRAM_ALLOWED_CHAT_ID must be set to start the Telegram bot runtime")
+
+
+async def handle_message_reaction(
+    update: Update,
+    context,
+) -> None:
+    reaction_update = update.message_reaction
+    if reaction_update is None:
+        return
+
+    session_factory = context.bot_data.get("session_factory")
+    if session_factory is None:
+        return
+
+    new_reactions = {
+        raw_reaction
+        for raw_reaction in (
+            _serialize_reaction(reaction) for reaction in reaction_update.new_reaction
+        )
+        if raw_reaction is not None
+    }
+    old_reactions = {
+        raw_reaction
+        for raw_reaction in (
+            _serialize_reaction(reaction) for reaction in reaction_update.old_reaction
+        )
+        if raw_reaction is not None
+    }
+    if not new_reactions and not old_reactions:
+        return
+
+    async with session_factory() as session:
+        for raw_reaction in new_reactions - old_reactions:
+            session.add(
+                MessageReaction(
+                    message_id=reaction_update.message_id,
+                    chat_id=reaction_update.chat.id,
+                    emoji=raw_reaction,
+                )
+            )
+
+        removed_reactions = old_reactions - new_reactions
+        if removed_reactions:
+            # Use application UTC time for tombstones so removals are tracked even though the
+            # Telegram update does not map to a specific DB row timestamp on the server side.
+            await session.execute(
+                sa.update(MessageReaction)
+                .where(
+                    MessageReaction.message_id == reaction_update.message_id,
+                    MessageReaction.chat_id == reaction_update.chat.id,
+                    MessageReaction.emoji.in_(removed_reactions),
+                    MessageReaction.removed_at.is_(None),
+                )
+                .values(removed_at=datetime.now(timezone.utc))
+            )
+
+        await session.commit()
+
+
+def _serialize_reaction(reaction: object) -> str | None:
+    if isinstance(reaction, ReactionTypeEmoji):
+        return reaction.emoji
+    if isinstance(reaction, ReactionTypeCustomEmoji):
+        return reaction.custom_emoji_id
+    return None

@@ -186,7 +186,10 @@ async def test_get_dream_returns_plain_dataclass_with_themes() -> None:
     )
     session = _FakeSession(
         get_result=dream,
-        execute_results=[_FakeResult(rows=[(theme, "Transitions")])],
+        execute_results=[
+            _FakeResult(rows=[(theme, "Transitions")]),
+            _FakeResult(scalars=[]),
+        ],
     )
     facade = AssistantFacade(
         session_factory=_FakeSessionFactory(session),
@@ -217,7 +220,52 @@ async def test_get_dream_returns_plain_dataclass_with_themes() -> None:
                 created_at=created_at.isoformat(),
             )
         ],
+        notes=[],
     )
+
+
+@pytest.mark.asyncio
+async def test_get_dream_includes_notes() -> None:
+    dream_id = uuid4()
+    category_id = uuid4()
+    theme_id = uuid4()
+    created_at = datetime(2026, 4, 15, tzinfo=timezone.utc)
+    dream = SimpleNamespace(
+        id=dream_id,
+        date=date(2026, 4, 14),
+        title="Bridge dream",
+        raw_text="I crossed a bridge at dusk.",
+        word_count=6,
+        source_doc_id="doc-123",
+        created_at=created_at,
+        segmentation_confidence="high",
+    )
+    theme = SimpleNamespace(
+        id=theme_id,
+        category_id=category_id,
+        salience=0.91,
+        status="draft",
+        match_type="semantic",
+        fragments=[{"text": "bridge"}],
+        deprecated=False,
+        created_at=created_at,
+    )
+    session = _FakeSession(
+        get_result=dream,
+        execute_results=[
+            _FakeResult(rows=[(theme, "Transitions")]),
+            _FakeResult(scalars=["note text"]),
+        ],
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    result = await facade.get_dream(dream_id)
+
+    assert result is not None
+    assert result.notes == ["note text"]
 
 
 @pytest.mark.asyncio
@@ -272,6 +320,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "list_recent_dreams",
         "get_patterns",
         "create_dream",
+        "add_dream_note",
         "write_dream_to_google_doc",
         "retry_write_to_google_doc",
         "get_theme_history",
@@ -318,6 +367,28 @@ async def test_trigger_sync_enqueues_job_and_returns_refs() -> None:
     sync_job_enqueuer.enqueue_ingest.assert_awaited_once_with(
         job_id=result[0].job_id,
         doc_id="doc-789",
+        chat_id=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_trigger_sync_passes_chat_id_to_enqueuer() -> None:
+    sync_job_enqueuer = SimpleNamespace(enqueue_ingest=AsyncMock())
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession()),
+        rag_query_service=SimpleNamespace(
+            retrieve=AsyncMock(return_value=InsufficientEvidence("x"))
+        ),
+        sync_job_enqueuer=sync_job_enqueuer,
+    )
+
+    result = await facade.trigger_sync("doc-789", chat_id=12345)
+
+    assert len(result) == 1
+    sync_job_enqueuer.enqueue_ingest.assert_awaited_once_with(
+        job_id=result[0].job_id,
+        doc_id="doc-789",
+        chat_id=12345,
     )
 
 
@@ -342,6 +413,13 @@ async def test_trigger_sync_without_doc_id_enqueues_all_configured_sources() -> 
         "doc-a",
         "doc-b",
         "doc-c",
+    ]
+    assert [
+        call.kwargs["chat_id"] for call in sync_job_enqueuer.enqueue_ingest.await_args_list
+    ] == [
+        None,
+        None,
+        None,
     ]
 
 
@@ -450,6 +528,37 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
         facade._session_factory,
     )
     index_dream_callable.assert_awaited_once_with(result.id)
+
+
+@pytest.mark.asyncio
+async def test_add_dream_note_returns_true_on_success() -> None:
+    dream_id = uuid4()
+    created_at = datetime(2026, 4, 21, tzinfo=timezone.utc)
+    dream = SimpleNamespace(
+        id=dream_id,
+        source_doc_id="doc-123",
+        created_at=created_at,
+    )
+    session = _FakeSession(execute_results=[_FakeResult(scalar=dream)])
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with patch("app.assistant.facade.GDocsClient") as mock_client_cls:
+        mock_client_cls.return_value.append_text = MagicMock()
+
+        success, message = await facade.add_dream_note("remember the red door", chat_id=42)
+
+    assert success is True
+    assert message == "Заметка добавлена."
+    session.add.assert_called_once()
+    note = session.add.call_args[0][0]
+    assert note.dream_id == dream_id
+    assert note.text == "remember the red door"
+    assert note.source == "telegram"
+    session.commit.assert_awaited_once()
+    mock_client_cls.return_value.append_text.assert_called_once()
 
 
 def test_resolve_dream_title_without_title_returns_unnamed() -> None:

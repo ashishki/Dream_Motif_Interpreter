@@ -51,6 +51,7 @@ async def test_notify_sync_complete_sends_message_on_success() -> None:
     with (
         patch("app.workers.ingest.get_and_delete_sync_notify", AsyncMock(return_value=12345)),
         patch("app.workers.ingest.get_settings", return_value=settings),
+        patch("app.workers.ingest.get_doc_name", return_value="Сны Николая"),
         patch("httpx.AsyncClient", return_value=client) as mock_async_client,
     ):
         await _notify_sync_complete(redis_client, job_id, count=3, doc_id="doc-123", error=None)
@@ -60,7 +61,7 @@ async def test_notify_sync_complete_sends_message_on_success() -> None:
         "https://api.telegram.org/botbot-token/sendMessage",
         json={
             "chat_id": 12345,
-            "text": "Синхронизация завершена: doc-123. Добавлено 3 записей.",
+            "text": "Синхронизация завершена: Сны Николая. Добавлено 3 записей.",
         },
     )
     response.raise_for_status.assert_called_once_with()

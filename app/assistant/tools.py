@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 from app.assistant.facade import AssistantFacade
-from app.shared.config import extract_google_doc_id
+from app.shared.config import extract_google_doc_id, get_doc_name
 
 _BASE_TOOLS: list[dict[str, Any]] = [
     {
@@ -540,16 +540,15 @@ async def execute_tool(
                 return f"Failed to create document: {exc}"
             doc_id = doc["id"]
             updated = facade.add_archive_source(doc_id, name=doc["name"])
-            from app.shared.config import get_doc_name as _gdn2
-
+            write_target_create = facade.get_archive_source()
             lines = [
                 f"Created new Google Doc: {doc['name']}",
                 f"URL: {doc['url']}",
                 "Sync started. Connected sources:",
             ]
             for i, source in enumerate(updated, 1):
-                tag = " ← куда пишем" if i == 1 else ""
-                lines.append(f"{i}. {_gdn2(source)} ({source}){tag}")
+                tag = " ← куда пишем" if source == write_target_create else ""
+                lines.append(f"{i}. {get_doc_name(source)} ({source}){tag}")
             try:
                 refs = await facade.trigger_sync(doc_id, chat_id=chat_id)
                 if refs:
@@ -578,13 +577,12 @@ async def execute_tool(
                 doc_id = matches[0]["id"]
                 doc_name = matches[0]["name"]
                 updated = facade.add_archive_source(doc_id, name=doc_name)
+                write_target_find = facade.get_archive_source()
                 lines = [f"Found and added: {doc_name} (id={doc_id}). Sync started."]
                 lines.append("Connected sources:")
                 for i, source in enumerate(updated, 1):
-                    from app.shared.config import get_doc_name as _gdn
-
-                    tag = " ← куда пишем" if i == 1 else ""
-                    lines.append(f"{i}. {_gdn(source)} ({source}){tag}")
+                    tag = " ← куда пишем" if source == write_target_find else ""
+                    lines.append(f"{i}. {get_doc_name(source)} ({source}){tag}")
                 try:
                     refs = await facade.trigger_sync(doc_id, chat_id=chat_id)
                     if refs:
@@ -611,8 +609,6 @@ async def execute_tool(
             sources = facade.list_archive_sources()
             if not sources:
                 return "No archive sources configured."
-            from app.shared.config import get_doc_name
-
             write_target = facade.get_archive_source()
             lines = ["Connected Google Docs:"]
             for i, source in enumerate(sources, 1):
@@ -626,12 +622,11 @@ async def execute_tool(
                 return "doc_id is required for action='add'."
             new_doc_id = extract_google_doc_id(raw)
             updated = facade.add_archive_source(new_doc_id)
-            from app.shared.config import get_doc_name as _gdn3
-
+            write_target_add = facade.get_archive_source()
             lines = ["Archive source added. Sync started. Updated list:"]
             for i, source in enumerate(updated, 1):
-                tag = " ← куда пишем" if i == 1 else ""
-                lines.append(f"{i}. {_gdn3(source)} ({source}){tag}")
+                tag = " ← куда пишем" if source == write_target_add else ""
+                lines.append(f"{i}. {get_doc_name(source)} ({source}){tag}")
             try:
                 refs = await facade.trigger_sync(new_doc_id, chat_id=chat_id)
                 if refs:
@@ -648,13 +643,11 @@ async def execute_tool(
                 updated = facade.remove_archive_source(doc_id_to_remove)
             except ValueError as exc:
                 return str(exc)
-            from app.shared.config import get_doc_name as _gdn4
-
             write_target = facade.get_archive_source()
             lines = ["Archive source removed. Updated list:"]
             for i, source in enumerate(updated, 1):
                 tag = " ← куда пишем" if source == write_target else ""
-                lines.append(f"{i}. {_gdn4(source)} ({source}){tag}")
+                lines.append(f"{i}. {get_doc_name(source)} ({source}){tag}")
             return "\n".join(lines)
         return f"Unknown action: {action!r}. Use 'list', 'add', 'remove', 'get', or 'set'."
 

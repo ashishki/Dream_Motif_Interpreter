@@ -18,7 +18,7 @@ from app.retrieval.types import FetchedSourceDocument, SourceConnector
 from app.services.analysis import AnalysisService
 from app.services.gdocs_client import GDocsAuthError, GDocsClient
 from app.services.motif_service import MotifService
-from app.shared.config import get_settings
+from app.shared.config import get_doc_name, get_settings
 from app.shared.tracing import get_logger, get_tracer
 from app.workers.index import index_dream
 
@@ -232,8 +232,9 @@ async def _notify_sync_complete(
         if not settings.TELEGRAM_BOT_TOKEN:
             return
 
+        doc_label = get_doc_name(doc_id)
         if error is None:
-            text = f"Синхронизация завершена: {doc_id}. Добавлено {count} записей."
+            text = f"Синхронизация завершена: {doc_label}. Добавлено {count} записей."
         else:
             text = f"Синхронизация не удалась: {error}."
 

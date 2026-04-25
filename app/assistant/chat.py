@@ -147,12 +147,14 @@ async def handle_chat_with_metadata(
                     LOGGER.warning(
                         "Blocked duplicate create_dream call in same turn chat_id=%s", chat_id
                     )
-                    tool_pairs.append((
-                        block,
-                        "ERROR: create_dream called more than once in a single user turn. "
-                        "Only one dream may be created per user message. "
-                        "Do not call create_dream again for this request.",
-                    ))
+                    tool_pairs.append(
+                        (
+                            block,
+                            "ERROR: create_dream called more than once in a single user turn. "
+                            "Only one dream may be created per user message. "
+                            "Do not call create_dream again for this request.",
+                        )
+                    )
                     continue
                 _create_dream_called = True
             tool_calls_made.append(block.name)

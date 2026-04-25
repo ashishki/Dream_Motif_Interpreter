@@ -272,6 +272,43 @@ class GDocsClient:
                     f"Google Docs batchUpdate failed (HTTP {status_code})"
                 ) from exc
 
+    def search_docs_by_title(self, title: str, *, max_results: int = 10) -> list[dict[str, str]]:
+        """Search Google Drive for Docs whose name contains *title*.
+
+        Returns a list of {"id": ..., "name": ...} dicts for files the service
+        account can access. Only returns Google Docs (not Sheets, etc.).
+        """
+        with self._tracer.start_as_current_span("gdocs.search_by_title"):
+            try:
+                service = self._build_drive_service()
+                safe_title = title.replace("'", "\\'")
+                query = (
+                    f"name contains '{safe_title}' "
+                    "and mimeType='application/vnd.google-apps.document' "
+                    "and trashed=false"
+                )
+                response = (
+                    service.files()
+                    .list(
+                        q=query,
+                        fields="files(id,name)",
+                        pageSize=max_results,
+                    )
+                    .execute()
+                )
+                return [
+                    {"id": f["id"], "name": f["name"]}
+                    for f in response.get("files", [])
+                    if f.get("id") and f.get("name")
+                ]
+            except RefreshError as exc:
+                raise GDocsAuthError("Google Docs authentication failed") from exc
+            except HttpError as exc:
+                status_code = _get_status_code(exc)
+                if status_code in {401, 403}:
+                    raise GDocsAuthError("Google Docs authentication failed") from exc
+                raise
+
     def _build_docs_service(self) -> Any:
         credentials = self._build_credentials()
         return build("docs", "v1", credentials=credentials, cache_discovery=False)

@@ -276,6 +276,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "retry_write_to_google_doc",
         "get_theme_history",
         "trigger_sync",
+        "search_archive_source_by_title",
         "get_archive_source",
         "set_archive_source",
         "list_archive_sources",
@@ -455,8 +456,7 @@ def test_resolve_dream_title_without_title_returns_unnamed() -> None:
 
 def test_resolve_dream_title_without_title_ignores_dream_date() -> None:
     assert (
-        _resolve_dream_title("raw text", title=None, dream_date=date(2026, 4, 21))
-        == "без названия"
+        _resolve_dream_title("raw text", title=None, dream_date=date(2026, 4, 21)) == "без названия"
     )
 
 

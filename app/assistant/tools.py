@@ -183,31 +183,38 @@ _BASE_TOOLS: list[dict[str, Any]] = [
         "name": "manage_archive_source",
         "description": (
             "Manage Google Docs connected as dream archive sources. "
-            "Use action='list' to see all connected docs; action='add' with doc_id "
-            "to add a new source (automatically triggers sync); action='remove' with doc_id "
-            "to remove a source; action='get' to see primary doc_id; "
-            "action='set' with doc_id to replace primary. "
-            "doc_id accepts either a bare Google Doc ID or a full Google Docs URL — "
-            "the ID is extracted automatically."
+            "action='find' with title searches Google Drive by document name — use this when "
+            "the user mentions a document by name instead of URL/ID; if a unique match is found "
+            "it is added and synced automatically. "
+            "action='add' with doc_id adds a source and starts sync. "
+            "action='list' lists all connected docs. "
+            "action='get' returns the primary doc_id. "
+            "action='set' replaces the primary. "
+            "action='remove' removes a non-primary source. "
+            "doc_id accepts a bare ID or a full Google Docs URL."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["get", "set", "list", "add", "remove"],
+                    "enum": ["get", "set", "list", "add", "remove", "find"],
                     "description": (
-                        "Action to perform: 'get' returns current primary doc_id, "
-                        "'set' replaces it, 'list' returns all connected docs, "
-                        "'add' adds a source and starts sync, 'remove' removes a non-primary source."
+                        "'find' searches by title (use when user gives a name); "
+                        "'add' adds by doc_id/URL and starts sync; "
+                        "'list' returns all connected docs; "
+                        "'get' returns primary doc_id; "
+                        "'set' replaces primary; "
+                        "'remove' removes a non-primary source."
                     ),
                 },
                 "doc_id": {
                     "type": "string",
-                    "description": (
-                        "Google Doc ID or full Google Docs URL. "
-                        "Required for actions: set, add, remove."
-                    ),
+                    "description": "Google Doc ID or URL. Required for: set, add, remove.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Document name to search for. Required for action='find'.",
                 },
             },
             "required": ["action"],
@@ -460,6 +467,44 @@ async def execute_tool(
 
     if tool_name == "manage_archive_source":
         action = str(tool_input.get("action", "")).strip()
+        if action == "find":
+            title = str(tool_input.get("title", "")).strip()
+            if not title:
+                return "title is required for action='find'."
+            try:
+                matches = facade.search_archive_source_by_title(title)
+            except Exception as exc:
+                return (
+                    f"Search failed: {exc}. "
+                    "Make sure the document is shared with the service account."
+                )
+            if not matches:
+                return (
+                    f"No Google Docs found matching '{title}'. "
+                    "Make sure the document is shared with the service account "
+                    f"(dream-180@dream-493107.iam.gserviceaccount.com)."
+                )
+            if len(matches) == 1:
+                doc_id = matches[0]["id"]
+                doc_name = matches[0]["name"]
+                updated = facade.add_archive_source(doc_id)
+                lines = [f"Found and added: {doc_name} (id={doc_id}). Sync started."]
+                lines.append("Connected sources:")
+                for i, source in enumerate(updated, 1):
+                    tag = " (primary)" if i == 1 else ""
+                    lines.append(f"{i}. {source}{tag}")
+                try:
+                    refs = await facade.trigger_sync(doc_id)
+                    if refs:
+                        lines.append(f"Sync job queued: {refs[0].job_id}")
+                except RuntimeError:
+                    lines.append("Note: sync could not be started automatically.")
+                return "\n".join(lines)
+            lines = [f"Multiple documents found matching '{title}'. Please clarify:"]
+            for i, m in enumerate(matches, 1):
+                lines.append(f"{i}. {m['name']} (id={m['id']})")
+            lines.append("Reply with the document name or ID to add it.")
+            return "\n".join(lines)
         if action == "get":
             current = facade.get_archive_source()
             return f"Current primary archive source: {current}"

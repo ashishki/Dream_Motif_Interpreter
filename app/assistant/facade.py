@@ -482,6 +482,11 @@ class AssistantFacade:
             refs.append(SyncJobRef(job_id=job_id, status="queued", doc_id=resolved_doc_id))
         return refs
 
+    def search_archive_source_by_title(self, title: str) -> list[dict[str, str]]:
+        """Search Google Drive for Docs matching *title*. Returns [{id, name}, ...]."""
+        client = GDocsClient()
+        return client.search_docs_by_title(title)
+
     def get_archive_source(self) -> str:
         from app.shared.config import get_effective_google_doc_id
 

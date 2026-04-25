@@ -50,19 +50,21 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-**Phase 15 complete. Phase 16 planning.**
+**WS-16.1 + WS-16.2 + WS-16.3 complete (2026-04-25). Next: WS-16.4 + WS-16.7.**
 
-WS-16.1: Hallucination prevention — add strict grounding rule to SYSTEM_PROMPT.
-File: `app/assistant/prompts.py` — new "Search Grounding Rules" section.
-Rule: model may ONLY present dream text from tool result fields verbatim.
-Never generate, paraphrase, or infer dream content. No exceptions.
+WS-16.4: Russian processing messages + typing indicator for text queries.
+File: `app/telegram/__main__.py`
+- Voice: "Обрабатываю голосовое сообщение..."
+- Text: sendChatAction(action="typing") before LLM call, repeat every 4s.
 
-After WS-16.1: WS-16.2 (search routing fix + fallback) and WS-16.3 (multi-query motif search) — can be done in one commit.
+WS-16.7: Emoji reactions infrastructure (parallel with WS-16.4).
+Files: `app/models/reaction.py` (new), alembic migration (new),
+       `app/telegram/__main__.py` (MessageReactionHandler + allowed_updates).
+Schema: message_id, chat_id, emoji, created_at. No semantic mapping yet.
 
 Context refs:
-- `docs/tasks_phase16.md` — Phase 16 task graph (WS-16.1–16.6)
-- `app/assistant/prompts.py` — SYSTEM_PROMPT
-- `app/assistant/tools.py` — execute_tool search handlers
+- `docs/tasks_phase16.md` — Phase 16 task graph (WS-16.4–16.7 open)
+- `app/telegram/__main__.py` — bot entry point
 
 ---
 

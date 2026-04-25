@@ -318,7 +318,22 @@ async def execute_tool(
             return "No query provided."
         items = await facade.search_dreams_exact(query)
         if not items:
-            return f"No dreams found containing '{query}'."
+            # Fallback: exact word not found — try semantic search for the same query
+            fallback = await facade.search_dreams(query)
+            if fallback.insufficient_reason is not None or not fallback.items:
+                return f"No dreams found containing '{query}'."
+            lines = [
+                f"Exact match for '{query}' not found. Semantic search results:",
+            ]
+            for item in fallback.items[:5]:
+                date_label = item.date.isoformat() if item.date is not None else "unknown date"
+                title_str = item.title if item.title else "без названия"
+                lines.append(f"- [{date_label}] {title_str} (score={item.relevance_score:.2f})")
+                if item.quote:
+                    lines.append(f'  Quote: "{item.quote}"')
+                else:
+                    lines.append(f"  {item.chunk_text[:200]}")
+            return "\n".join(lines)
         lines = [f"Exact search results for '{query}' ({len(items)} fragments):"]
         for item in items:
             date_label = item.date.isoformat() if item.date is not None else "unknown date"

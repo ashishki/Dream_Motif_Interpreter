@@ -101,6 +101,9 @@ def get_settings() -> Settings:
 _google_doc_id_override: str | None = None
 _google_doc_ids_override: list[str] | None = None
 
+# doc_id -> human-readable name; loaded from file + updated at runtime
+_doc_names: dict[str, str] = {}
+
 
 def get_effective_google_doc_id() -> str:
     """Return the currently active GOOGLE_DOC_ID (runtime override takes precedence)."""
@@ -118,25 +121,65 @@ def set_google_doc_id_override(doc_id: str) -> None:
 def set_google_doc_ids_override(doc_ids: list[str]) -> None:
     global _google_doc_ids_override
     _google_doc_ids_override = doc_ids
-    _save_extra_docs(doc_ids)
+    _persist_extra_docs()
 
 
-def _save_extra_docs(doc_ids: list[str]) -> None:
+def register_doc_name(doc_id: str, name: str) -> None:
+    """Store a human-readable name for *doc_id* and persist it."""
+    _doc_names[doc_id] = name
+    _persist_extra_docs()
+
+
+def get_doc_name(doc_id: str) -> str:
+    """Return the stored name for *doc_id*, or a short fallback."""
+    _ensure_names_loaded()
+    return _doc_names.get(doc_id) or f"…{doc_id[-8:]}"
+
+
+def _ensure_names_loaded() -> None:
+    if not _doc_names:
+        for entry in _load_extra_docs_raw():
+            if isinstance(entry, dict) and entry.get("id"):
+                _doc_names[entry["id"]] = entry.get("name") or entry["id"]
+
+
+def _persist_extra_docs() -> None:
+    primary = get_effective_google_doc_id()
+    extras_ids = _google_doc_ids_override if _google_doc_ids_override is not None else []
+    entries = [
+        {"id": doc_id, "name": _doc_names.get(doc_id, doc_id)}
+        for doc_id in extras_ids
+        if doc_id and doc_id != primary
+    ]
     try:
-        _EXTRA_DOCS_FILE.write_text(json.dumps(doc_ids), encoding="utf-8")
+        _EXTRA_DOCS_FILE.write_text(json.dumps(entries), encoding="utf-8")
     except Exception:
-        _logger.warning("Failed to persist extra doc IDs to %s", _EXTRA_DOCS_FILE)
+        _logger.warning("Failed to persist extra docs to %s", _EXTRA_DOCS_FILE)
 
 
-def _load_extra_docs() -> list[str]:
+def _load_extra_docs_raw() -> list[object]:
     try:
         if _EXTRA_DOCS_FILE.exists():
             data = json.loads(_EXTRA_DOCS_FILE.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                return [str(d) for d in data if d]
+                return data
     except Exception:
-        _logger.warning("Failed to load extra doc IDs from %s", _EXTRA_DOCS_FILE)
+        _logger.warning("Failed to load extra docs from %s", _EXTRA_DOCS_FILE)
     return []
+
+
+def _load_extra_docs() -> list[str]:
+    ids: list[str] = []
+    for entry in _load_extra_docs_raw():
+        if isinstance(entry, dict):
+            doc_id = entry.get("id")
+            if doc_id:
+                ids.append(str(doc_id))
+                if entry.get("name"):
+                    _doc_names[str(doc_id)] = str(entry["name"])
+        elif isinstance(entry, str) and entry:
+            ids.append(entry)
+    return ids
 
 
 def get_all_doc_ids() -> list[str]:

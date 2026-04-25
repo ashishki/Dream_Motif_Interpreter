@@ -653,3 +653,33 @@ async def test_execute_tool_manage_archive_source_remove_returns_updated_list() 
     assert "(doc-primary)" in result
     assert "(doc-extra-2)" in result
     facade.remove_archive_source.assert_called_once_with("doc-extra-1")
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_add_dream_note_returns_message() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note.return_value = (True, "Заметка добавлена.")
+
+    result = await tools_module.execute_tool(
+        "add_dream_note",
+        {"note_text": "красная дверь"},
+        facade,
+        chat_id=42,
+    )
+
+    assert result == "Заметка добавлена."
+    facade.add_dream_note.assert_called_once_with("красная дверь", dream_id=None, chat_id=42)
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_add_dream_note_empty_text_returns_error() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+
+    result = await tools_module.execute_tool(
+        "add_dream_note",
+        {"note_text": ""},
+        facade,
+    )
+
+    assert result == "note_text is required."
+    facade.add_dream_note.assert_not_called()

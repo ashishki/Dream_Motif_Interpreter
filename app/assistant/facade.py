@@ -482,6 +482,12 @@ class AssistantFacade:
             refs.append(SyncJobRef(job_id=job_id, status="queued", doc_id=resolved_doc_id))
         return refs
 
+    def create_archive_source_document(self, title: str) -> dict[str, str]:
+        """Create a new Google Doc, share with owner if configured, return {id, name, url}."""
+        owner_email = get_settings().GOOGLE_OWNER_EMAIL.strip() or None
+        client = GDocsClient()
+        return client.create_document(title, owner_email=owner_email)
+
     def search_archive_source_by_title(self, title: str) -> list[dict[str, str]]:
         """Search Google Drive for Docs matching *title*. Returns [{id, name}, ...]."""
         client = GDocsClient()

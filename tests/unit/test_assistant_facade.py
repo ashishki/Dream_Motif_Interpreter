@@ -276,6 +276,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "retry_write_to_google_doc",
         "get_theme_history",
         "trigger_sync",
+        "create_archive_source_document",
         "search_archive_source_by_title",
         "get_archive_source",
         "set_archive_source",

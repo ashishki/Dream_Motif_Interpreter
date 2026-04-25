@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     GOOGLE_SERVICE_ACCOUNT_FILE: str = ""
     GOOGLE_DOC_ID: str
     GOOGLE_DOC_IDS: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    GOOGLE_OWNER_EMAIL: str = ""  # Google account to share bot-created docs with
     SECRET_KEY: str
     ENV: str
     AUTO_SYNC_ENABLED: bool = False

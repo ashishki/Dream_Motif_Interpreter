@@ -191,16 +191,18 @@ _BASE_TOOLS: list[dict[str, Any]] = [
             "action='get' returns the primary doc_id. "
             "action='set' replaces the primary. "
             "action='remove' removes a non-primary source. "
-            "doc_id accepts a bare ID or a full Google Docs URL."
+            "doc_id accepts a bare ID or a full Google Docs URL. "
+            "action='create' creates a new document — the bot owns it so no sharing is needed."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["get", "set", "list", "add", "remove", "find"],
+                    "enum": ["get", "set", "list", "add", "remove", "find", "create"],
                     "description": (
-                        "'find' searches by title (use when user gives a name); "
+                        "'create' creates a new Google Doc by title, adds it, starts sync; "
+                        "'find' searches existing docs by title; "
                         "'add' adds by doc_id/URL and starts sync; "
                         "'list' returns all connected docs; "
                         "'get' returns primary doc_id; "
@@ -467,6 +469,31 @@ async def execute_tool(
 
     if tool_name == "manage_archive_source":
         action = str(tool_input.get("action", "")).strip()
+        if action == "create":
+            title = str(tool_input.get("title", "")).strip()
+            if not title:
+                return "title is required for action='create'."
+            try:
+                doc = facade.create_archive_source_document(title)
+            except Exception as exc:
+                return f"Failed to create document: {exc}"
+            doc_id = doc["id"]
+            updated = facade.add_archive_source(doc_id)
+            lines = [
+                f"Created new Google Doc: {doc['name']}",
+                f"URL: {doc['url']}",
+                "Sync started. Connected sources:",
+            ]
+            for i, source in enumerate(updated, 1):
+                tag = " (primary)" if i == 1 else ""
+                lines.append(f"{i}. {source}{tag}")
+            try:
+                refs = await facade.trigger_sync(doc_id)
+                if refs:
+                    lines.append(f"Sync job queued: {refs[0].job_id}")
+            except RuntimeError:
+                lines.append("Note: sync could not be started automatically.")
+            return "\n".join(lines)
         if action == "find":
             title = str(tool_input.get("title", "")).strip()
             if not title:

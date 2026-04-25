@@ -272,6 +272,44 @@ class GDocsClient:
                     f"Google Docs batchUpdate failed (HTTP {status_code})"
                 ) from exc
 
+    def create_document(self, title: str, *, owner_email: str | None = None) -> dict[str, str]:
+        """Create a new Google Doc owned by the service account.
+
+        If *owner_email* is provided, grants that address editor access so the
+        user can open the document in their browser.
+        Returns {"id": ..., "name": ..., "url": ...}.
+        """
+        with self._tracer.start_as_current_span("gdocs.create_document"):
+            try:
+                drive = self._build_drive_service()
+                file_meta = {"name": title, "mimeType": "application/vnd.google-apps.document"}
+                result = drive.files().create(body=file_meta, fields="id,name").execute()
+                doc_id: str = result["id"]
+                doc_name: str = result["name"]
+
+                if owner_email:
+                    drive.permissions().create(
+                        fileId=doc_id,
+                        body={"type": "user", "role": "writer", "emailAddress": owner_email},
+                        sendNotificationEmail=False,
+                    ).execute()
+                    logger.info(
+                        "Shared new Google Doc with owner",
+                        document_id=doc_id,
+                        owner_email=owner_email,
+                    )
+
+                url = f"https://docs.google.com/document/d/{doc_id}/edit"
+                logger.info("Created new Google Doc", document_id=doc_id, title=doc_name)
+                return {"id": doc_id, "name": doc_name, "url": url}
+            except RefreshError as exc:
+                raise GDocsAuthError("Google Docs authentication failed") from exc
+            except HttpError as exc:
+                status_code = _get_status_code(exc)
+                if status_code in {401, 403}:
+                    raise GDocsAuthError("Google Docs authentication failed") from exc
+                raise
+
     def search_docs_by_title(self, title: str, *, max_results: int = 10) -> list[dict[str, str]]:
         """Search Google Drive for Docs whose name contains *title*.
 

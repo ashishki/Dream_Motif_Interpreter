@@ -1,9 +1,9 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 2.4
-Last updated: 2026-04-24 (Phase 14 complete — bidirectional Google Docs sync with heading format, retry tool, history TTL)
+Version: 2.5
+Last updated: 2026-04-25 (Phases 13–15 complete — multi-source docs, write flow, doc-name clarity)
 
-## 1. Current Status: Phases 1–12 Complete; Phases 13–14 Planned
+## 1. Current Status: Phases 1–15 Complete; Phase 16 Planning
 
 **Phases 1–5** — Backend platform complete:
 
@@ -39,8 +39,10 @@ Execution graph:
 - [docs/tasks_phase10.md](tasks_phase10.md) — historical Phase 10 graph
 - [docs/tasks_phase11.md](tasks_phase11.md) — historical Phase 11 graph
 - [docs/tasks_phase12.md](tasks_phase12.md) — historical Phase 12 graph (UX fixes, complete)
-- [docs/tasks_phase13.md](tasks_phase13.md) — **planning** Phase 13 graph (multi-source, search recall)
-- [docs/tasks_phase14.md](tasks_phase14.md) — **planning** Phase 14 graph (write to Google Docs)
+- [docs/tasks_phase13.md](tasks_phase13.md) — historical Phase 13 graph (multi-source, search recall)
+- [docs/tasks_phase14.md](tasks_phase14.md) — historical Phase 14 graph (write to Google Docs)
+- [docs/tasks_phase15.md](tasks_phase15.md) — historical Phase 15 graph (write flow fixes, doc-name clarity)
+- [docs/tasks_phase16.md](tasks_phase16.md) — **planning** Phase 16 graph (search quality, hallucination, UX)
 
 ## 2. Planning Principle
 

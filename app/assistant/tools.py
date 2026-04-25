@@ -439,7 +439,10 @@ async def execute_tool(
 
     if tool_name == "trigger_sync":
         doc_id = str(tool_input.get("doc_id", "")).strip()
-        refs = await facade.trigger_sync(doc_id)
+        try:
+            refs = await facade.trigger_sync(doc_id)
+        except RuntimeError as exc:
+            return f"Sync unavailable: {exc}"
         if len(refs) == 1:
             ref = refs[0]
             return f"Sync job queued: {ref.job_id} (doc_id={ref.doc_id}, status={ref.status})"

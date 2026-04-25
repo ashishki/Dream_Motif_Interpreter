@@ -360,8 +360,9 @@ async def execute_tool(
             f"Dream saved: {created.id} | {created.title} | "
             f"date={created.date or 'unknown'} | source={created.source_doc_id}"
         ]
-        if getattr(created, "written_to_google_doc", False):
-            lines.append("Запись добавлена в Google Doc.")
+        if created.written_to_google_doc:
+            doc_label = created.written_to_doc_name or "Google Doc"
+            lines.append(f"Запись добавлена в Google Doc: {doc_label}.")
         else:
             lines.append(
                 "Запись сохранена в архиве. "
@@ -377,9 +378,10 @@ async def execute_tool(
                 dream_id = uuid.UUID(raw_id)
             except ValueError:
                 return f"Invalid dream_id: {raw_id!r}"
-        success = await facade.retry_write_to_google_doc(dream_id=dream_id)
+        success, doc_name = await facade.retry_write_to_google_doc(dream_id=dream_id)
         if success:
-            return "Запись добавлена в Google Doc."
+            doc_label = doc_name or "Google Doc"
+            return f"Запись добавлена в Google Doc: {doc_label}."
         return "Не удалось записать в Google Doc. Проверьте подключение к источнику."
 
     if tool_name == "get_dream":
@@ -478,15 +480,17 @@ async def execute_tool(
             except Exception as exc:
                 return f"Failed to create document: {exc}"
             doc_id = doc["id"]
-            updated = facade.add_archive_source(doc_id)
+            updated = facade.add_archive_source(doc_id, name=doc["name"])
+            from app.shared.config import get_doc_name as _gdn2
+
             lines = [
                 f"Created new Google Doc: {doc['name']}",
                 f"URL: {doc['url']}",
                 "Sync started. Connected sources:",
             ]
             for i, source in enumerate(updated, 1):
-                tag = " (primary)" if i == 1 else ""
-                lines.append(f"{i}. {source}{tag}")
+                tag = " ← куда пишем" if i == 1 else ""
+                lines.append(f"{i}. {_gdn2(source)} ({source}){tag}")
             try:
                 refs = await facade.trigger_sync(doc_id)
                 if refs:
@@ -514,12 +518,14 @@ async def execute_tool(
             if len(matches) == 1:
                 doc_id = matches[0]["id"]
                 doc_name = matches[0]["name"]
-                updated = facade.add_archive_source(doc_id)
+                updated = facade.add_archive_source(doc_id, name=doc_name)
                 lines = [f"Found and added: {doc_name} (id={doc_id}). Sync started."]
                 lines.append("Connected sources:")
                 for i, source in enumerate(updated, 1):
-                    tag = " (primary)" if i == 1 else ""
-                    lines.append(f"{i}. {source}{tag}")
+                    from app.shared.config import get_doc_name as _gdn
+
+                    tag = " ← куда пишем" if i == 1 else ""
+                    lines.append(f"{i}. {_gdn(source)} ({source}){tag}")
                 try:
                     refs = await facade.trigger_sync(doc_id)
                     if refs:
@@ -546,10 +552,14 @@ async def execute_tool(
             sources = facade.list_archive_sources()
             if not sources:
                 return "No archive sources configured."
+            from app.shared.config import get_doc_name
+
+            write_target = facade.get_archive_source()
             lines = ["Connected Google Docs:"]
             for i, source in enumerate(sources, 1):
-                tag = " (primary)" if i == 1 else ""
-                lines.append(f"{i}. {source}{tag}")
+                name = get_doc_name(source)
+                tag = " ← куда пишем" if source == write_target else ""
+                lines.append(f"{i}. {name} ({source}){tag}")
             return "\n".join(lines)
         if action == "add":
             raw = str(tool_input.get("doc_id", "")).strip()
@@ -557,10 +567,12 @@ async def execute_tool(
                 return "doc_id is required for action='add'."
             new_doc_id = extract_google_doc_id(raw)
             updated = facade.add_archive_source(new_doc_id)
+            from app.shared.config import get_doc_name as _gdn3
+
             lines = ["Archive source added. Sync started. Updated list:"]
             for i, source in enumerate(updated, 1):
-                tag = " (primary)" if i == 1 else ""
-                lines.append(f"{i}. {source}{tag}")
+                tag = " ← куда пишем" if i == 1 else ""
+                lines.append(f"{i}. {_gdn3(source)} ({source}){tag}")
             try:
                 refs = await facade.trigger_sync(new_doc_id)
                 if refs:
@@ -577,10 +589,13 @@ async def execute_tool(
                 updated = facade.remove_archive_source(doc_id_to_remove)
             except ValueError as exc:
                 return str(exc)
+            from app.shared.config import get_doc_name as _gdn4
+
+            write_target = facade.get_archive_source()
             lines = ["Archive source removed. Updated list:"]
             for i, source in enumerate(updated, 1):
-                tag = " (primary)" if i == 1 else ""
-                lines.append(f"{i}. {source}{tag}")
+                tag = " ← куда пишем" if source == write_target else ""
+                lines.append(f"{i}. {_gdn4(source)} ({source}){tag}")
             return "\n".join(lines)
         return f"Unknown action: {action!r}. Use 'list', 'add', 'remove', 'get', or 'set'."
 

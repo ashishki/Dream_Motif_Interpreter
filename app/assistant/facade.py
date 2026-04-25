@@ -88,6 +88,7 @@ class CreatedDreamItem:
     created_at: str
     created: bool
     written_to_google_doc: bool = False
+    written_to_doc_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -342,7 +343,7 @@ class AssistantFacade:
                     await self._motif_service.run(dream_entry, session)
                     await session.commit()
 
-        written = await self.write_dream_to_google_doc(dream_id=dream.id)
+        written, written_doc_name = await self.write_dream_to_google_doc(dream_id=dream.id)
 
         return CreatedDreamItem(
             id=dream.id,
@@ -353,15 +354,21 @@ class AssistantFacade:
             created_at=dream.created_at.isoformat(),
             created=True,
             written_to_google_doc=written,
+            written_to_doc_name=written_doc_name,
         )
 
     async def write_dream_to_google_doc(
         self, dream_id: uuid.UUID, doc_id: str | None = None
-    ) -> bool:
-        """Write a dream entry to Google Doc. Returns True on success, False on failure."""
-        from app.shared.config import get_effective_google_doc_id
+    ) -> tuple[bool, str]:
+        """Write a dream entry to Google Doc.
+
+        Returns (success, doc_name). doc_name is the human-readable name of the
+        target document, used so callers can tell the user exactly where the entry landed.
+        """
+        from app.shared.config import get_doc_name, get_effective_google_doc_id
 
         resolved_doc_id = doc_id or get_effective_google_doc_id()
+        doc_name = get_doc_name(resolved_doc_id)
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span("assistant.write_dream_to_google_doc"):
             try:
@@ -371,7 +378,7 @@ class AssistantFacade:
                     logger.warning(
                         "write_dream_to_google_doc: dream not found", dream_id=str(dream_id)
                     )
-                    return False
+                    return False, doc_name
 
                 date_str = dream.date.strftime("%d.%m.%y") if dream.date else "??.??.??"
                 title_str = (
@@ -386,7 +393,7 @@ class AssistantFacade:
                     dream_id=str(dream_id),
                     doc_id=resolved_doc_id,
                 )
-                return True
+                return True, doc_name
             except GDocsWriteError as exc:
                 logger.warning(
                     "Failed to write dream to Google Doc",
@@ -394,17 +401,22 @@ class AssistantFacade:
                     doc_id=resolved_doc_id,
                     error=str(exc),
                 )
-                return False
+                return False, doc_name
             except Exception as exc:
                 logger.error(
                     "Unexpected error writing dream to Google Doc",
                     dream_id=str(dream_id),
                     error=str(exc),
                 )
-                return False
+                return False, doc_name
 
-    async def retry_write_to_google_doc(self, dream_id: uuid.UUID | None = None) -> bool:
-        """Write a dream to Google Doc. If dream_id is None, uses the most recently created dream."""
+    async def retry_write_to_google_doc(
+        self, dream_id: uuid.UUID | None = None
+    ) -> tuple[bool, str]:
+        """Write a dream to Google Doc. If dream_id is None, uses the most recently created dream.
+
+        Returns (success, doc_name).
+        """
         if dream_id is None:
             async with self._session_factory() as session:
                 result = await session.execute(
@@ -412,7 +424,7 @@ class AssistantFacade:
                 )
                 entry = result.scalar_one_or_none()
                 if entry is None:
-                    return False
+                    return False, ""
                 dream_id = entry.id
         return await self.write_dream_to_google_doc(dream_id=dream_id)
 
@@ -484,9 +496,13 @@ class AssistantFacade:
 
     def create_archive_source_document(self, title: str) -> dict[str, str]:
         """Create a new Google Doc, share with owner if configured, return {id, name, url}."""
+        from app.shared.config import register_doc_name
+
         owner_email = get_settings().GOOGLE_OWNER_EMAIL.strip() or None
         client = GDocsClient()
-        return client.create_document(title, owner_email=owner_email)
+        doc = client.create_document(title, owner_email=owner_email)
+        register_doc_name(doc["id"], doc["name"])
+        return doc
 
     def search_archive_source_by_title(self, title: str) -> list[dict[str, str]]:
         """Search Google Drive for Docs matching *title*. Returns [{id, name}, ...]."""
@@ -497,6 +513,12 @@ class AssistantFacade:
         from app.shared.config import get_effective_google_doc_id
 
         return get_effective_google_doc_id()
+
+    def get_archive_source_name(self) -> str:
+        """Return the human-readable name of the active write target."""
+        from app.shared.config import get_doc_name, get_effective_google_doc_id
+
+        return get_doc_name(get_effective_google_doc_id())
 
     def set_archive_source(self, doc_id: str) -> str:
         from app.shared.config import set_google_doc_id_override
@@ -509,13 +531,16 @@ class AssistantFacade:
 
         return get_all_doc_ids()
 
-    def add_archive_source(self, doc_id: str) -> list[str]:
+    def add_archive_source(self, doc_id: str, *, name: str | None = None) -> list[str]:
         from app.shared.config import (
             get_all_doc_ids,
             get_settings,
+            register_doc_name,
             set_google_doc_ids_override,
         )
 
+        if name:
+            register_doc_name(doc_id, name)
         current_all = get_all_doc_ids()
         primary = current_all[0] if current_all else get_settings().GOOGLE_DOC_ID
         extras = [resolved_doc_id for resolved_doc_id in current_all if resolved_doc_id != primary]

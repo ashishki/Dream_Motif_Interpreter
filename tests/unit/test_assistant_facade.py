@@ -279,6 +279,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "create_archive_source_document",
         "search_archive_source_by_title",
         "get_archive_source",
+        "get_archive_source_name",
         "set_archive_source",
         "list_archive_sources",
         "add_archive_source",
@@ -424,7 +425,7 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
         index_dream_callable=index_dream_callable,
     )
 
-    with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=True)):
+    with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))):
         result = await facade.create_dream(
             "I was walking through a dark river valley.",
             title="River valley",
@@ -530,9 +531,9 @@ async def test_write_dream_to_google_doc_returns_true_on_success() -> None:
     )
 
     with patch("app.assistant.facade.GDocsClient.append_dream_entry", MagicMock()):
-        result = await facade.write_dream_to_google_doc(dream_id)
+        success, _doc_name = await facade.write_dream_to_google_doc(dream_id)
 
-    assert result is True
+    assert success is True
 
 
 @pytest.mark.asyncio
@@ -553,9 +554,9 @@ async def test_write_dream_to_google_doc_returns_false_on_write_error() -> None:
         "app.assistant.facade.GDocsClient.append_dream_entry",
         MagicMock(side_effect=GDocsWriteError("permission denied")),
     ):
-        result = await facade.write_dream_to_google_doc(dream_id)
+        success, _doc_name = await facade.write_dream_to_google_doc(dream_id)
 
-    assert result is False
+    assert success is False
 
 
 @pytest.mark.asyncio
@@ -570,10 +571,11 @@ async def test_create_dream_sets_written_to_google_doc_true_on_success() -> None
         index_dream_callable=index_dream_callable,
     )
 
-    with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=True)):
+    with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))):
         result = await facade.create_dream("Text", chat_id=1)
 
     assert result.written_to_google_doc is True
+    assert result.written_to_doc_name == "Сны"
 
 
 @pytest.mark.asyncio
@@ -588,7 +590,7 @@ async def test_create_dream_sets_written_to_google_doc_false_on_write_failure() 
         index_dream_callable=index_dream_callable,
     )
 
-    with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=False)):
+    with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(False, ""))):
         result = await facade.create_dream("Text", chat_id=1)
 
     assert result.written_to_google_doc is False

@@ -440,6 +440,8 @@ async def test_execute_tool_create_dream_accepts_extended_explicit_russian_phras
         title="23.04.26, без названия",
         word_count=4,
         source_doc_id="telegram:42",
+        written_to_google_doc=True,
+        written_to_doc_name="Сны Николая",
     )
 
     result = await tools_module.execute_tool(
@@ -604,6 +606,7 @@ async def test_execute_tool_manage_archive_source_set_updates_doc_id() -> None:
 async def test_execute_tool_manage_archive_source_list_formats_connected_docs() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     facade.list_archive_sources.return_value = ["doc-primary", "doc-extra"]
+    facade.get_archive_source.return_value = "doc-primary"
 
     result = await tools_module.execute_tool(
         "manage_archive_source",
@@ -611,7 +614,10 @@ async def test_execute_tool_manage_archive_source_list_formats_connected_docs() 
         facade,
     )
 
-    assert result == "Connected Google Docs:\n1. doc-primary (primary)\n2. doc-extra"
+    assert result.startswith("Connected Google Docs:")
+    assert "(doc-primary)" in result
+    assert "(doc-extra)" in result
+    assert "← куда пишем" in result
     facade.list_archive_sources.assert_called_once_with()
 
 
@@ -627,8 +633,8 @@ async def test_execute_tool_manage_archive_source_add_returns_updated_list() -> 
     )
 
     assert result.startswith("Archive source added. Sync started. Updated list:")
-    assert "1. doc-primary (primary)" in result
-    assert "2. doc-extra" in result
+    assert "(doc-primary)" in result
+    assert "(doc-extra)" in result
     facade.add_archive_source.assert_called_once_with("doc-extra")
 
 
@@ -643,7 +649,7 @@ async def test_execute_tool_manage_archive_source_remove_returns_updated_list() 
         facade,
     )
 
-    assert (
-        result == "Archive source removed. Updated list:\n1. doc-primary (primary)\n2. doc-extra-2"
-    )
+    assert result.startswith("Archive source removed. Updated list:")
+    assert "(doc-primary)" in result
+    assert "(doc-extra-2)" in result
     facade.remove_archive_source.assert_called_once_with("doc-extra-1")

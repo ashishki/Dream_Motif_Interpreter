@@ -1,10 +1,27 @@
+import json
+import logging
+import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+_logger = logging.getLogger(__name__)
+
+_GDOC_URL_RE = re.compile(r"docs\.google\.com/document/d/([a-zA-Z0-9_-]+)")
+_EXTRA_DOCS_FILE = Path(__file__).parent.parent.parent / "runtime_extra_docs.json"
+
+
+def extract_google_doc_id(value: str) -> str:
+    """Return the bare doc ID from either a full Google Docs URL or a plain ID."""
+    match = _GDOC_URL_RE.search(value)
+    if match:
+        return match.group(1)
+    return value.strip()
 
 
 class OperatorParserProfileAssignments(BaseModel):
@@ -100,15 +117,33 @@ def set_google_doc_id_override(doc_id: str) -> None:
 def set_google_doc_ids_override(doc_ids: list[str]) -> None:
     global _google_doc_ids_override
     _google_doc_ids_override = doc_ids
+    _save_extra_docs(doc_ids)
+
+
+def _save_extra_docs(doc_ids: list[str]) -> None:
+    try:
+        _EXTRA_DOCS_FILE.write_text(json.dumps(doc_ids), encoding="utf-8")
+    except Exception:
+        _logger.warning("Failed to persist extra doc IDs to %s", _EXTRA_DOCS_FILE)
+
+
+def _load_extra_docs() -> list[str]:
+    try:
+        if _EXTRA_DOCS_FILE.exists():
+            data = json.loads(_EXTRA_DOCS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [str(d) for d in data if d]
+    except Exception:
+        _logger.warning("Failed to load extra doc IDs from %s", _EXTRA_DOCS_FILE)
+    return []
 
 
 def get_all_doc_ids() -> list[str]:
     primary = get_effective_google_doc_id()
-    extras = (
-        _google_doc_ids_override
-        if _google_doc_ids_override is not None
-        else get_settings().GOOGLE_DOC_IDS
-    )
+    if _google_doc_ids_override is not None:
+        extras = _google_doc_ids_override
+    else:
+        extras = get_settings().GOOGLE_DOC_IDS or _load_extra_docs()
     seen: set[str] = {primary}
     result = [primary]
     for doc_id in extras:

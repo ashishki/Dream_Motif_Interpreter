@@ -626,7 +626,9 @@ async def test_execute_tool_manage_archive_source_add_returns_updated_list() -> 
         facade,
     )
 
-    assert result == "Archive source added. Updated list:\n1. doc-primary (primary)\n2. doc-extra"
+    assert result.startswith("Archive source added. Sync started. Updated list:")
+    assert "1. doc-primary (primary)" in result
+    assert "2. doc-extra" in result
     facade.add_archive_source.assert_called_once_with("doc-extra")
 
 

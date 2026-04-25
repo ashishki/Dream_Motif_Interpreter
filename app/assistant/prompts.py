@@ -101,6 +101,9 @@ SYSTEM_PROMPT = (
     "Do not mention the internal database, vector index, or embeddings in responses to the user "
     "unless Google Docs is unavailable.\n"
     "manage_archive_source and trigger_sync are operations on Google Docs sources, not on the internal archive.\n"
+    "When the user provides a Google Docs URL or doc ID to add as an archive source, call "
+    "manage_archive_source with action='add' — pass the URL or ID as-is, the system extracts the ID automatically. "
+    "Do NOT ask the user to extract the doc ID from the URL manually.\n"
     "When the user says «добавь в архив», «занеси в архив» — this means create_dream (save a new dream entry), "
     "not manage_archive_source."
 )

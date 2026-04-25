@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from app.assistant.facade import AssistantFacade
+from app.shared.config import extract_google_doc_id
 
 _BASE_TOOLS: list[dict[str, Any]] = [
     {
@@ -183,8 +184,11 @@ _BASE_TOOLS: list[dict[str, Any]] = [
         "description": (
             "Manage Google Docs connected as dream archive sources. "
             "Use action='list' to see all connected docs; action='add' with doc_id "
-            "to add a new source; action='remove' with doc_id to remove a source; "
-            "action='get' to see primary doc_id; action='set' with doc_id to replace primary."
+            "to add a new source (automatically triggers sync); action='remove' with doc_id "
+            "to remove a source; action='get' to see primary doc_id; "
+            "action='set' with doc_id to replace primary. "
+            "doc_id accepts either a bare Google Doc ID or a full Google Docs URL — "
+            "the ID is extracted automatically."
         ),
         "input_schema": {
             "type": "object",
@@ -195,12 +199,15 @@ _BASE_TOOLS: list[dict[str, Any]] = [
                     "description": (
                         "Action to perform: 'get' returns current primary doc_id, "
                         "'set' replaces it, 'list' returns all connected docs, "
-                        "'add' adds a source, 'remove' removes a non-primary source."
+                        "'add' adds a source and starts sync, 'remove' removes a non-primary source."
                     ),
                 },
                 "doc_id": {
                     "type": "string",
-                    "description": "Google Doc ID. Required for actions: set, add, remove.",
+                    "description": (
+                        "Google Doc ID or full Google Docs URL. "
+                        "Required for actions: set, add, remove."
+                    ),
                 },
             },
             "required": ["action"],
@@ -457,9 +464,10 @@ async def execute_tool(
             current = facade.get_archive_source()
             return f"Current primary archive source: {current}"
         if action == "set":
-            new_doc_id = str(tool_input.get("doc_id", "")).strip()
-            if not new_doc_id:
+            raw = str(tool_input.get("doc_id", "")).strip()
+            if not raw:
                 return "doc_id is required for action='set'."
+            new_doc_id = extract_google_doc_id(raw)
             facade.set_archive_source(new_doc_id)
             return f"Primary archive source updated to: {new_doc_id} (takes effect on next sync)"
         if action == "list":
@@ -472,19 +480,27 @@ async def execute_tool(
                 lines.append(f"{i}. {source}{tag}")
             return "\n".join(lines)
         if action == "add":
-            new_doc_id = str(tool_input.get("doc_id", "")).strip()
-            if not new_doc_id:
+            raw = str(tool_input.get("doc_id", "")).strip()
+            if not raw:
                 return "doc_id is required for action='add'."
+            new_doc_id = extract_google_doc_id(raw)
             updated = facade.add_archive_source(new_doc_id)
-            lines = ["Archive source added. Updated list:"]
+            lines = ["Archive source added. Sync started. Updated list:"]
             for i, source in enumerate(updated, 1):
                 tag = " (primary)" if i == 1 else ""
                 lines.append(f"{i}. {source}{tag}")
+            try:
+                refs = await facade.trigger_sync(new_doc_id)
+                if refs:
+                    lines.append(f"Sync job queued: {refs[0].job_id}")
+            except RuntimeError:
+                lines.append("Note: sync could not be started automatically.")
             return "\n".join(lines)
         if action == "remove":
-            doc_id_to_remove = str(tool_input.get("doc_id", "")).strip()
-            if not doc_id_to_remove:
+            raw = str(tool_input.get("doc_id", "")).strip()
+            if not raw:
                 return "doc_id is required for action='remove'."
+            doc_id_to_remove = extract_google_doc_id(raw)
             try:
                 updated = facade.remove_archive_source(doc_id_to_remove)
             except ValueError as exc:

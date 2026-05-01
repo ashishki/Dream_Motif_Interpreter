@@ -102,6 +102,38 @@ async def test_transcribe_and_reply_routes_through_handle_chat() -> None:
     )
 
 
+@pytest.mark.asyncio
+async def test_transcribe_and_reply_routes_natural_dream_transcript_through_chat() -> None:
+    event_id = uuid.uuid4()
+    transcript = "сегодня мне приснилось, что я летел над морем"
+    facade = _make_facade()
+    session_factory = _make_session_factory()
+
+    with (
+        patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
+        patch(
+            "app.workers.transcribe.handle_chat", new=AsyncMock(return_value="saved")
+        ) as mock_chat,
+        patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
+    ):
+        await transcribe_and_reply(
+            event_id=event_id,
+            local_path="/tmp/f.ogg",
+            chat_id=5,
+            telegram_bot_token="TOK",
+            session_factory=session_factory,
+            facade=facade,
+        )
+
+    mock_chat.assert_awaited_once_with(
+        transcript,
+        facade,
+        session_factory=session_factory,
+        chat_id=5,
+    )
+
+
 # ---------------------------------------------------------------------------
 # AC-3: Provider failure is recoverable and observable
 # ---------------------------------------------------------------------------

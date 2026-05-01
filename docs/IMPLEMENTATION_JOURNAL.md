@@ -23,6 +23,24 @@ Status: append-only
 
 ## Entries
 
+### 2026-05-01 — WS-17.1 — Deterministic Dream Intake Classifier
+
+- Scope: `app/assistant/tools.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_transcription_worker.py`, `docs/CODEX_PROMPT.md`, `docs/tasks_phase17.md`
+- Why this work happened: Phase 17 D1/P0 — natural Russian dream narration such as "сегодня мне приснилось" was being rejected unless the user used exact save-command wording.
+- Decisions applied: D-015 — dream recording reliability moves from prompt-only behavior to deterministic intake and state.
+- Evidence collected: targeted tests passed: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_transcription_worker.py -q --tb=short` -> 60 passed; `ruff check app/ tests/` -> clean; `ruff format --check app/ tests/` -> clean.
+- Follow-ups: WS-17.2 pending dream draft state is next; full suite should be re-run on the working/live test instance because local non-live run failed on missing PostgreSQL at `127.0.0.1:5433` and `tests/unit/test_ci.py::test_ruff_check_passes` expects `ruff` on PATH.
+- Notes for next agent: classifier accepts natural openings only when at least two narrative words follow the opening; short mentions like "мне приснилось?" are still rejected.
+
+### 2026-05-01 — DOC-WORKFLOW-HARDENING — Local AI Development Workflow
+
+- Scope: `docs/prompts/ORCHESTRATOR.md`, `docs/CODEX_PROMPT.md`, `docs/DECISION_LOG.md`
+- Why this work happened: user requested an explicit, strict AI development workflow covering role ownership, separate prompt construction through a shell variable, mandatory review/light review, documentation updates, and ruff/format checks.
+- Decisions applied: D-016 — local orchestrator workflow is mandatory and task completion requires prompt-file dispatch, review gate, docs gate, and quality checks.
+- Evidence collected: documentation inspection showed `CODEX_PROMPT.md` had checks but stale task references and `docs/prompts/ORCHESTRATOR.md` was only a placeholder; no tests run because this is a docs-only workflow hardening change.
+- Follow-ups: future orchestrator runs should start by reading `docs/prompts/ORCHESTRATOR.md`; implementation prompts must be written to `/tmp/orchestrator_codex_prompt.txt` and passed via `PROMPT=$(cat ...)`.
+- Notes for next agent: `docs/IMPLEMENTATION_CONTRACT.md` remains unchanged because it is immutable; workflow hardening lives in the local orchestrator prompt and session handoff.
+
 ### 2026-05-01 — DOC-PHASE17-20 — User Feedback Task Graphs
 
 - Scope: `docs/tasks_phase17.md`, `docs/tasks_phase18.md`, `docs/tasks_phase19.md`, `docs/tasks_phase20.md`, `docs/CODEX_PROMPT.md`, `docs/DECISION_LOG.md`

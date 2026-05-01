@@ -456,6 +456,71 @@ async def test_execute_tool_create_dream_accepts_extended_explicit_russian_phras
     facade.create_dream.assert_awaited_once()
 
 
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "сегодня мне приснилось, что я летел над морем",
+        "мне приснилось, будто я открыл дверь в сад",
+        "мне снилось, что поезд остановился у реки",
+        "приснился сон про лестницу и светлую комнату",
+        "приснилось, что я снова оказался в школе",
+    ],
+)
+@pytest.mark.asyncio
+async def test_execute_tool_create_dream_accepts_natural_russian_dream_openings(
+    request_text: str,
+) -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=True,
+        date="2026-05-01",
+        title="01.05.26, без названия",
+        word_count=7,
+        source_doc_id="telegram:42",
+        written_to_google_doc=True,
+        written_to_doc_name="Сны Николая",
+    )
+
+    result = await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": request_text},
+        facade,
+        chat_id=42,
+        request_text=request_text,
+    )
+
+    assert "Dream saved:" in result
+    facade.create_dream.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "мне приснилось?",
+        "сегодня мне приснилось",
+        "мне снилось",
+        "приснился сон?",
+    ],
+)
+@pytest.mark.asyncio
+async def test_execute_tool_create_dream_rejects_short_natural_mentions(
+    request_text: str,
+) -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+
+    result = await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": request_text},
+        facade,
+        chat_id=42,
+        request_text=request_text,
+    )
+
+    assert "explicit user request" in result.lower()
+    facade.create_dream.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_execute_tool_list_recent_dreams_includes_preview_and_themes() -> None:
     dream_id = uuid.uuid4()

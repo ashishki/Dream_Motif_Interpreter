@@ -76,6 +76,7 @@ Phase:      17
 Type:       telegram + assistant tool guard
 Priority:   P0
 Depends-On: none
+Status:     Implemented locally — 2026-05-01
 
 Objective:
   Detect likely dream-recording messages before the LLM tool guard rejects them.
@@ -100,6 +101,18 @@ Context-Refs:
   - `app/assistant/tools.py::_is_explicit_create_request`
   - `app/workers/transcribe.py::transcribe_and_reply`
   - `docs/tasks_phase17.md §2-3`
+
+Implementation Notes:
+  - `_is_explicit_create_request` accepts the listed natural Russian dream openings only when
+    at least two narrative words follow the opening.
+  - Short mentions such as "мне приснилось?" remain rejected by the tool guard.
+  - Voice transcripts are unchanged at the worker layer and continue to route through
+    `handle_chat`, so they use the same assistant tool guard as text.
+  - Verification on the local non-live machine:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_transcription_worker.py -q --tb=short`
+    -> 60 passed.
+  - Full local suite requires the live/test infrastructure: PostgreSQL was unavailable at
+    `127.0.0.1:5433`, and `tests/unit/test_ci.py::test_ruff_check_passes` expects `ruff` on PATH.
 
 ---
 

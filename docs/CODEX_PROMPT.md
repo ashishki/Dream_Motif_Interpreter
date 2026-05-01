@@ -1,27 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.44
+Version: 1.46
 Date: 2026-05-01
-Phase: Phase 17 planning — deterministic dream recording stabilization (Тест 5)
+Phase: Phase 17 implementation — deterministic dream recording stabilization (Тест 5)
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 17 planned (WS-17.1–17.6)
-- **Baseline:** 306 unit tests passing, 0 failed (last recorded; not re-run during 2026-05-01 doc planning update)
-- **Ruff:** clean (0 violations)
+- **Phase:** Phase 17 in progress (WS-17.1 implemented locally; WS-17.2 next)
+- **Baseline:** Targeted WS-17.1 tests: 60 passed. Full local suite on non-live machine: 333 passed, 9 skipped, 55 infrastructure errors, 1 PATH/tooling failure.
+- **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-01 (Phases 17–20 task graphs added from Тест 5 feedback)
+- **Last updated:** 2026-05-01 (WS-17.1 deterministic dream intake classifier implemented)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 17 planned — deterministic dream recording stabilization; see `docs/tasks_phase17.md`
-- **Latest completed implementation task:** Phase 16 — search grounding prompt hardening, processing UX, sync notification, dream notes, raw emoji reaction capture.
-- **Current baseline:** 306 unit tests passing (last recorded in Phase 16 handoff)
+- **Current planning state:** Phase 17 in progress — deterministic dream recording stabilization; see `docs/tasks_phase17.md`
+- **Latest completed implementation task:** WS-17.1 — deterministic dream intake classifier.
+- **Current baseline:** WS-17.1 targeted tests pass (`tests/unit/test_assistant_chat.py`, `tests/unit/test_transcription_worker.py`); full local suite needs live PostgreSQL on `127.0.0.1:5433` and `ruff` on PATH.
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -31,6 +31,7 @@ Phase: Phase 17 planning — deterministic dream recording stabilization (Тес
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
+- **Mandatory local workflow:** `docs/prompts/ORCHESTRATOR.md`
 - **Active task graph:** `docs/tasks_phase17.md` (Phase 17: deterministic dream recording stabilization)
 - **Upcoming task graph:** `docs/tasks_phase18.md` (search quality and hallucination suppression)
 - **Upcoming task graph:** `docs/tasks_phase19.md` (direct title search)
@@ -54,27 +55,25 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-**Start Phase 17 with WS-17.1.**
+**Continue Phase 17 with WS-17.2.**
 
-WS-17.1: Deterministic Dream Intake Classifier.
-Baseline: 306 unit tests passing (last recorded; run targeted tests before implementation close).
+WS-17.2: Pending Dream Draft State for Confirmation.
+Baseline: WS-17.1 targeted tests passed locally; full suite requires live PostgreSQL/test service setup.
 Goal:
-  Natural dream narration such as "сегодня мне приснилось" must count as dream intake
-  without requiring exact "запиши сон" wording.
+  If the assistant asks whether to record a dream, the candidate dream must be stored as a
+  typed pending draft. A later "да" must create that exact dream, not infer from history.
 
 Context refs:
-- `docs/tasks_phase17.md` — active task graph (read §1-4 and WS-17.1 before coding)
-- `app/assistant/tools.py::_is_explicit_create_request`
-- `app/workers/transcribe.py::transcribe_and_reply`
-- `tests/unit/test_assistant_chat.py`
-- `tests/unit/test_transcription_worker.py`
+- `docs/tasks_phase17.md` — active task graph (read §1-4 and WS-17.2 before coding)
+- `app/telegram/handlers.py::text_message_handler`
+- `app/assistant/prompts.py §Archive Mutation Rules`
+- ADR-006 (`docs/adr/ADR-006-persisted-bot-session-state.md`)
 
-Recommended phase order after WS-17.1:
-  1. WS-17.2 pending dream draft state.
-  2. WS-17.3 deterministic relative date and auto-title resolution.
-  3. WS-17.4 write outbox and honest success messages.
-  4. WS-17.5 reply-to-voice "запиши сон".
-  5. WS-17.6 regression suite and user docs.
+Recommended phase order after WS-17.2:
+  1. WS-17.3 deterministic relative date and auto-title resolution.
+  2. WS-17.4 write outbox and honest success messages.
+  3. WS-17.5 reply-to-voice "запиши сон".
+  4. WS-17.6 regression suite and user docs.
 
 ---
 
@@ -182,7 +181,7 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (58 Closed, 
 | CODE-15 | P2 | DB calls in `analysis.py` and `taxonomy.py` not individually spanned (OBS-1 drift). Add per-call child spans for `session.get`, `session.execute`, `session.commit`. Resolve at T13. | `app/services/analysis.py:33–125`, `app/services/taxonomy.py:80–121` | **Closed** — T13 applied 2026-04-13; per-call DB child spans added for query and commit boundaries |
 | CODE-16 | P3 | `003_seed_categories.py` inserts with `status='active'` with no governance exception comment. Add inline: "Bootstrap exception: migration-time seed bypasses approval gate; single-user system; AnnotationVersion records written." | `alembic/versions/003_seed_categories.py:46` | **Closed** — FIX-C9 applied 2026-04-14; governance exception comment added above the bootstrap seed insert |
 | CODE-17 | P2 | `docs/CODEX_PROMPT.md` baseline and Next Task stale (was: 32 pass, 4 skip / T10 next). Updated to 35 pass, 6 skip by Cycle 3 consolidation. | `docs/CODEX_PROMPT.md` | **Closed** — baseline updated to 35 pass, 6 skip; Next Task updated; version bumped to v1.4 by Cycle 3 consolidation |
-| CODE-18 | P2 | `docs/retrieval_eval.md §Evaluation Dataset` uses placeholder rows (Q01–Q03, Q-NA-01 with `{{query}}`). T12-AC-1 requires at least 10 real queries covering all four query types. | `docs/retrieval_eval.md` | **Closed** — T12 applied 2026-04-13; dataset now covers simple, multi-doc, multi-hop, and no-answer |
+| CODE-18 | P2 | `docs/retrieval_eval.md §Evaluation Dataset` uses placeholder rows (Q01–Q03, Q-NA-01 with `<query>`). T12-AC-1 requires at least 10 real queries covering all four query types. | `docs/retrieval_eval.md` | **Closed** — T12 applied 2026-04-13; dataset now covers simple, multi-doc, multi-hop, and no-answer |
 | CODE-19 | P1 | `OpenAIEmbeddingClient.embed()` has no HTTP error handling — uncaught `urllib.error.HTTPError` propagates to caller. No typed `EmbeddingServiceError`. No 429/500 tests. | `app/retrieval/ingestion.py:58–66` | **Closed** — FIX-C3-1 applied 2026-04-13; `EmbeddingServiceError` defined; 429/500 tests passing |
 | CODE-20 | P1 | `_token_count()` uses `len(text.split())` (word count) instead of tiktoken token count. 512-token boundary contract violated; chunks can exceed context window by ~33%. | `app/retrieval/ingestion.py:238–239` | **Closed** — FIX-C3-2 applied 2026-04-13; tiktoken cl100k_base encoder; tests passing |
 | CODE-21 | P2 | `EMBEDDING_MODEL = "text-embedding-ada-002"` contradicts ARCHITECTURE.md §Index Strategy (`text-embedding-3-small`). Must be fixed before any corpus embeddings are generated. | `app/retrieval/ingestion.py:19` | **Closed** — FIX-C3 applied 2026-04-13; model changed to `text-embedding-3-small` |
@@ -327,6 +326,7 @@ none
 
 ## Completed Tasks
 
+- **WS-17.1** — Deterministic Dream Intake Classifier — 2026-05-01 — targeted tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_transcription_worker.py`: 60 passed) — `_is_explicit_create_request` now accepts natural Russian dream openings with a minimum-content guard; voice transcripts continue through the same `handle_chat` classifier path; full local suite on non-live machine blocked by missing PostgreSQL on `127.0.0.1:5433` and `ruff` not being on PATH for `tests/unit/test_ci.py`
 - **WS-11.3** — GET /feedback API Route — 2026-04-17 — 225 tests passing — GET /feedback endpoint implemented in app/api/feedback.py; pagination (limit/offset); protected by global X-API-Key middleware; not in PUBLIC_PATHS; OTel span present; WS-11.3 AC-1 through AC-5 met; unit tests in tests/unit/test_feedback_api.py
 - **WS-11.2** — Telegram Digit-Reply Capture — 2026-04-17 — 225 tests passing — digit-reply detection in app/telegram/handlers.py; FeedbackService.record() in app/services/feedback_service.py; "Rate this response: reply with 1–5." appended after substantive responses; "Thanks, noted." on capture; context JSONB stores message_id, response_summary, tool_calls_made (no raw dream text); WS-11.2 AC-1 through AC-6 met
 - **WS-11.1** — DB Migration and ORM Model — 2026-04-17 — 225 tests passing — 011_add_feedback.py migration creates assistant_feedback table; AssistantFeedback ORM model in app/models/feedback.py; exported from app/models/__init__.py; score CHECK constraint in DDL; assistant_feedback excluded from RAG ingestion pipeline; WS-11.1 AC-1 through AC-5 met
@@ -395,15 +395,30 @@ Compact when EITHER condition is true:
 
 Read these instructions every time you pick up a task. Do not skip steps.
 
+The orchestrator must follow `docs/prompts/ORCHESTRATOR.md`. That file is the mandatory local
+workflow for role ownership, prompt construction, review gates, documentation gates, and checks.
+
 ### Pre-Task Protocol (mandatory — do not skip)
 
 1. **Read `docs/IMPLEMENTATION_CONTRACT.md`** — before anything else. Know the rules before touching code.
-2. **Read the full active task in `docs/tasks_phase16.md`** — including all acceptance criteria, file lists, and notes. For historical reference use `docs/tasks_phase15.md` (Phase 15) or earlier phase files.
+2. **Read the full active task in the active task graph named above** — currently `docs/tasks_phase17.md`; include all acceptance criteria, file lists, dependencies, and notes.
 3. **Read all Depends-On tasks** — understand the interface contracts your task must satisfy.
 4. **Read task `Context-Refs` and continuity artifacts as needed** — required when the task resolves a finding, changes a risky boundary, or depends on prior decisions / evidence.
 5. **Run `pytest -q`** — capture the current baseline. Record: `N passing, M failed`. If M > 0, stop and report: you cannot add failures to an already-failing baseline.
 6. **Run `ruff check`** — must exit 0. If not, fix ruff issues first. Commit the ruff fix separately with message `chore(lint): resolve ruff issues`. Then re-run the pre-task protocol.
 7. **Write tests before or alongside implementation.** Every acceptance criterion has exactly one corresponding test (or more, never zero).
+
+### Orchestrator Dispatch Rule
+
+The orchestrator must write every implementation/fixer prompt into `/tmp/orchestrator_codex_prompt.txt` first, then pass it through a shell variable:
+
+```bash
+export CURRENT_TASK="[task-id]"
+PROMPT=$(cat /tmp/orchestrator_codex_prompt.txt)
+codex exec -s workspace-write "$PROMPT"
+```
+
+Do not inline long prompts directly into the command. The prompt file is the reviewable dispatch artifact.
 
 ### During Implementation
 
@@ -430,6 +445,20 @@ Read these instructions every time you pick up a task. Do not skip steps.
    - Add any new open findings discovered during this task
 6. Commit with format: `type(scope): description` — one logical change per commit.
 7. If the task produced multiple logical changes (migration + service + tests), use multiple commits.
+
+### Review Gate
+
+- Light review is mandatory after every implementation task or fixer task.
+- Deep review is mandatory at every phase boundary and for security-critical, retrieval-semantics, tool-safety, runtime-tier, or architecture-boundary changes.
+- A task is not complete until the required review tier passes.
+- Review failures go back through a focused fixer prompt, also written to `/tmp/orchestrator_codex_prompt.txt` and passed via `PROMPT=$(cat ...)`.
+
+### Documentation Gate
+
+Update docs in the same task when behavior, state, runbooks, user guide, decisions, or retrieval evals change.
+At minimum, keep `docs/CODEX_PROMPT.md` and the active `docs/tasks_phase*.md` current. Update
+`docs/IMPLEMENTATION_JOURNAL.md`, `docs/DECISION_LOG.md`, `docs/EVIDENCE_INDEX.md`, and
+`docs/retrieval_eval.md` when their domain changes.
 
 ### Return Format
 

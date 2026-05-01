@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import re
 import uuid
 from typing import Any
 
@@ -710,7 +711,7 @@ def _is_explicit_create_request(request_text: str | None) -> bool:
         return False
 
     text = request_text.casefold()
-    phrases = (
+    explicit_phrases = (
         "save this dream",
         "record this dream",
         "add this dream",
@@ -733,4 +734,33 @@ def _is_explicit_create_request(request_text: str | None) -> bool:
         "занести в архив",
         "занеси в архив",
     )
-    return any(phrase in text for phrase in phrases)
+    if any(phrase in text for phrase in explicit_phrases):
+        return True
+
+    return _has_natural_dream_opening(text)
+
+
+_WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
+_NATURAL_DREAM_OPENINGS = (
+    "сегодня мне приснилось",
+    "мне приснилось",
+    "мне снилось",
+    "приснился сон",
+    "приснилось, что",
+)
+
+
+def _has_natural_dream_opening(text: str) -> bool:
+    words = _WORD_RE.findall(text)
+    if len(words) < 4:
+        return False
+
+    for opening in _NATURAL_DREAM_OPENINGS:
+        index = text.find(opening)
+        if index < 0:
+            continue
+        tail = text[index + len(opening) :]
+        if len(_WORD_RE.findall(tail)) >= 2:
+            return True
+
+    return False

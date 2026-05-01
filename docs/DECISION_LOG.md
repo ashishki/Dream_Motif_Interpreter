@@ -1,7 +1,7 @@
 # Decision Log — Dream Motif Interpreter
 
-Version: 2.2
-Last updated: 2026-05-01 (Phase 17-20 task graphs added)
+Version: 2.3
+Last updated: 2026-05-01 (local AI workflow hardening added)
 
 ## Rules
 
@@ -28,8 +28,9 @@ Last updated: 2026-05-01 (Phase 17-20 task graphs added)
 | D-013 | 2026-04-17 | Active | ResearchRetriever uses a provider-agnostic design (configurable base_url + api_key from settings); Tavily is the reference external search provider but the implementation does not hard-code it | `docs/tasks_phase10.md §WS-10.2 Notes`, ADR-009 |
 | D-014 | 2026-04-18 | Active | WS-11.4 (optional comment capture after digit rating) deferred; rating-only feedback sufficient for current quality signal; comment capture may be added in a future phase | `docs/tasks_phase11.md §WS-11.4`, `docs/FEEDBACK_LOOP.md §2` |
 | D-015 | 2026-05-01 | Planned | Dream recording reliability must move from prompt-only behavior to deterministic intake, pending-draft state, write status tracking, and honest success/failure responses | `docs/tasks_phase17.md` |
+| D-016 | 2026-05-01 | Active | Local AI development workflow requires explicit role ownership, prompt-file dispatch via `PROMPT=$(cat ...)`, mandatory light/deep review gates, documentation updates, and ruff/format checks before completion | `docs/prompts/ORCHESTRATOR.md`, `docs/CODEX_PROMPT.md §Instructions for Codex` |
 
 ## Notes
 
-- Decisions through D-014 are Active; D-015 is planned and becomes Active when Phase 17 lands.
+- Decisions through D-014 and D-016 are Active; D-015 is planned and becomes Active when Phase 17 lands.
 - The presence of a decision in this log implies the corresponding implementation exists unless explicitly marked otherwise.

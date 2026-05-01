@@ -123,6 +123,7 @@ Phase:      17
 Type:       session state + Telegram UX
 Priority:   P0
 Depends-On: WS-17.1
+Status:     Implemented locally — 2026-05-01
 
 Objective:
   If the assistant asks whether to record a dream, the candidate dream must be stored as a
@@ -159,6 +160,19 @@ Context-Refs:
   - `app/assistant/prompts.py §Archive Mutation Rules`
   - ADR-006 (`docs/adr/ADR-006-persisted-bot-session-state.md`)
 
+Implementation Notes:
+  - Pending drafts are stored outside LLM history in TTL-bounded in-memory state keyed by
+    `chat_id`, with typed fields for raw text, source kind, message id, and timestamp.
+  - Telegram `да` calls `AssistantFacade.create_dream()` with the exact pending draft text;
+    `нет` clears the pending state without creating a dream.
+  - Voice transcripts can seed the same pending draft state, so confirmation after a
+    transcribed voice note does not need to infer content from chat history.
+  - Verification on the local non-live machine:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py -q --tb=short`
+    -> 86 passed.
+  - `ruff check app/ tests/` -> clean via `.venv/bin/ruff`
+  - `ruff format --check app/ tests/` -> clean via `.venv/bin/ruff`
+
 ---
 
 ## WS-17.3: Deterministic Relative Date and Auto-Title Resolution
@@ -168,6 +182,7 @@ Phase:      17
 Type:       assistant facade
 Priority:   P1
 Depends-On: WS-17.1
+Status:     Implemented locally — 2026-05-01
 
 Objective:
   Resolve "сегодня", "вчера", "позавчера" outside the LLM, and generate a useful title when
@@ -195,6 +210,22 @@ Context-Refs:
   - `app/assistant/chat.py` date header injection
   - `app/services/gdocs_client.py::append_dream_entry`
 
+Implementation Notes:
+  - `create_dream` resolves `сегодня`, `вчера`, and `позавчера` deterministically from
+    application date before persistence.
+  - Application date uses `APP_TIMEZONE` when set and defaults to `Asia/Tbilisi`.
+  - Missing dream dates default to the recording date; missing titles use a lightweight
+    heuristic title of the form `о <2-3 темы>` when enough content words are present.
+  - Provided titles still have duplicate leading date prefixes stripped before Google Doc
+    heading creation.
+  - `app/assistant/chat.py` now uses the same application date helper for the system prompt
+    `Сегодня:` header.
+  - Verification on the local non-live machine:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py -q --tb=short`
+    -> 139 passed.
+  - `ruff check app/ tests/` -> clean via `.venv/bin/ruff`
+  - `ruff format --check app/ tests/` -> clean via `.venv/bin/ruff`
+
 ---
 
 ## WS-17.4: Write Outbox and Honest Success Messages
@@ -204,6 +235,7 @@ Phase:      17
 Type:       data model + tool behavior
 Priority:   P0
 Depends-On: WS-17.1
+Status:     Implemented locally — 2026-05-01
 
 Objective:
   Track Google Doc write attempts per dream and make retry target a failed write record.
@@ -245,6 +277,22 @@ Context-Refs:
   - `app/assistant/facade.py::retry_write_to_google_doc`
   - `app/assistant/tools.py::execute_tool`
 
+Implementation Notes:
+  - Added `dream_write_statuses` via Alembic revision `015_add_dream_write_statuses`.
+  - `write_dream_to_google_doc` records a pending write attempt and marks it `succeeded`
+    or `failed` with sanitized error metadata.
+  - `retry_write_to_google_doc(dream_id=None, chat_id=...)` now retries the latest failed
+    write scoped to `telegram:<chat_id>` instead of the latest dream globally.
+  - Retry tool output distinguishes success, failed retry, and "nothing to retry"; failure
+    wording explicitly says the dream was not added to the Google Doc.
+  - Verification on the local non-live machine:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py -q --tb=short`
+    -> 143 passed.
+  - `.venv/bin/python -m pytest tests/integration/test_migrations.py -q --tb=short`
+    -> 12 passed.
+  - `ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py` -> clean via `.venv/bin/ruff`
+  - `ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py` -> clean via `.venv/bin/ruff`
+
 ---
 
 ## WS-17.5: Reply-to-Voice "запиши сон"
@@ -254,6 +302,7 @@ Phase:      17
 Type:       telegram + voice media
 Priority:   P1
 Depends-On: WS-17.1, WS-17.4
+Status:     Implemented locally — 2026-05-01
 
 Objective:
   Allow the user to reply to an existing Telegram voice message with "запиши сон"; the bot
@@ -282,6 +331,20 @@ Context-Refs:
   - `app/telegram/handlers.py::text_message_handler`
   - `app/workers/transcribe.py::transcribe_and_reply`
 
+Implementation Notes:
+  - Added nullable `voice_media_events.transcript_text` via Alembic revision
+    `016_add_voice_transcript_text`.
+  - Transcription worker stores transcript text before routing it through the assistant.
+  - Text handler detects replies to Telegram voice messages with explicit save commands
+    and saves the stored transcript directly through `AssistantFacade.create_dream`.
+  - If transcript is still processing, the bot asks the user to retry after completion.
+  - If transcript failed or is unavailable, the bot refuses the save without claiming success.
+  - Verification on the local non-live machine:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/integration/test_migrations.py -q --tb=short`
+    -> 167 passed.
+  - `ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean via `.venv/bin/ruff`
+  - `ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean via `.venv/bin/ruff`
+
 ---
 
 ## WS-17.6: Recording Regression Suite and Manual Test Script
@@ -291,6 +354,7 @@ Phase:      17
 Type:       tests + docs
 Priority:   P0
 Depends-On: WS-17.1, WS-17.2, WS-17.3, WS-17.4, WS-17.5
+Status:     Implemented locally — 2026-05-01
 
 Objective:
   Freeze the user-reported recording scenarios as regression tests and a manual Telegram
@@ -310,16 +374,30 @@ Files:
   - `docs/RUNBOOK_TELEGRAM_BOT.md`
   - `docs/USER_GUIDE_RU.md`
 
+Implementation Notes:
+  - Regression coverage now spans natural dream openings, pending confirmation, relative
+    dates/title generation, duplicate/write failure behavior, failed-write retry targeting,
+    and reply-to-voice save behavior.
+  - `docs/RUNBOOK_TELEGRAM_BOT.md` includes a recording smoke-test checklist for deployment
+    verification.
+  - `docs/USER_GUIDE_RU.md` documents the new "just tell the dream" behavior, confirmation
+    replies, honest Google Doc failure messaging, retry, and reply-to-voice save flow.
+  - Verification on the local non-live machine:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/integration/test_migrations.py -q --tb=short`
+    -> 169 passed after Cycle 13 audit follow-up regressions were added.
+  - `ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean via `.venv/bin/ruff`
+  - `ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean via `.venv/bin/ruff`
+
 ## 5. Phase Gate
 
-- [ ] Natural dream narration creates a dream without exact "запиши сон" wording.
-- [ ] Confirmation "да" saves the exact pending dream candidate.
-- [ ] Today/yesterday/day-before dates resolve without user clarification.
-- [ ] Missing title becomes a useful 2-3-topic title, not only `без названия`.
-- [ ] Failed Google Doc writes are not reported as success.
-- [ ] Retry targets a failed write, not the latest dream globally.
-- [ ] Reply-to-voice "запиши сон" works or fails honestly.
-- [ ] User docs and runbook updated.
+- [x] Natural dream narration creates a dream without exact "запиши сон" wording.
+- [x] Confirmation "да" saves the exact pending dream candidate.
+- [x] Today/yesterday/day-before dates resolve without user clarification.
+- [x] Missing title becomes a useful 2-3-topic title, not only `без названия`.
+- [x] Failed Google Doc writes are not reported as success.
+- [x] Retry targets a failed write, not the latest dream globally.
+- [x] Reply-to-voice "запиши сон" works or fails honestly.
+- [x] User docs and runbook updated.
 
 ## 6. Not In Scope
 

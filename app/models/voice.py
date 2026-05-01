@@ -37,6 +37,7 @@ class VoiceMediaEvent(Base):
     telegram_file_id: Mapped[str] = mapped_column(String(512), nullable=False)
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     local_path: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    transcript_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,

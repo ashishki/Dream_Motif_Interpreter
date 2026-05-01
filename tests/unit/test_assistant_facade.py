@@ -18,9 +18,11 @@ from app.assistant.facade import (
     SyncJobRef,
     _exact_result_item,
     _extract_quote,
+    _resolve_relative_dream_date,
     _resolve_dream_title,
 )
 from app.services.gdocs_client import GDocsWriteError
+from app.models.write_status import DreamWriteStatus
 from app.retrieval.query import EvidenceBlock, FragmentMatch, InsufficientEvidence
 
 
@@ -49,8 +51,9 @@ class _FakeResult:
 
 
 class _FakeSession:
-    def __init__(self, *, get_result=None, execute_results=None):
+    def __init__(self, *, get_result=None, get_results=None, execute_results=None):
         self._get_result = get_result
+        self._get_results = list(get_results or [])
         self._execute_results = list(execute_results or [])
         self.executed_statements = []
         self.add = MagicMock()
@@ -59,6 +62,8 @@ class _FakeSession:
 
     async def get(self, model, identity):
         del model, identity
+        if self._get_results:
+            return self._get_results.pop(0)
         return self._get_result
 
     async def execute(self, statement):
@@ -531,6 +536,34 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_dream_defaults_date_and_title_deterministically() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 5, 1)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        result = await facade.create_dream(
+            "вчера мне приснилось море мост башня",
+            chat_id=42,
+        )
+
+    assert result.date == "2026-04-30"
+    assert result.title == "о море мост башня"
+    added = session.add.call_args[0][0]
+    assert added.date == date(2026, 4, 30)
+    assert added.title == "о море мост башня"
+
+
+@pytest.mark.asyncio
 async def test_add_dream_note_returns_true_on_success() -> None:
     dream_id = uuid4()
     created_at = datetime(2026, 4, 21, tzinfo=timezone.utc)
@@ -561,11 +594,14 @@ async def test_add_dream_note_returns_true_on_success() -> None:
     mock_client_cls.return_value.append_text.assert_called_once()
 
 
-def test_resolve_dream_title_without_title_returns_unnamed() -> None:
-    assert _resolve_dream_title("raw text", title=None) == "без названия"
+def test_resolve_dream_title_without_title_generates_topic_title() -> None:
+    assert (
+        _resolve_dream_title("сегодня мне приснилось море мост башня", title=None)
+        == "о море мост башня"
+    )
 
 
-def test_resolve_dream_title_without_title_ignores_dream_date() -> None:
+def test_resolve_dream_title_without_enough_content_returns_unnamed() -> None:
     assert (
         _resolve_dream_title("raw text", title=None, dream_date=date(2026, 4, 21)) == "без названия"
     )
@@ -584,6 +620,27 @@ def test_resolve_dream_title_with_title_and_dream_date_returns_clean_title() -> 
 
 def test_resolve_dream_title_with_title_and_no_dream_date_returns_title_as_is() -> None:
     assert _resolve_dream_title("raw text", title="River valley") == "River valley"
+
+
+def test_resolve_dream_title_strips_date_prefix_from_provided_title() -> None:
+    assert (
+        _resolve_dream_title(
+            "raw text",
+            title="21.04.26 - River valley",
+            dream_date=date(2026, 4, 21),
+        )
+        == "River valley"
+    )
+
+
+def test_resolve_relative_dream_date_from_russian_markers() -> None:
+    today = date(2026, 5, 1)
+
+    assert _resolve_relative_dream_date("сегодня мне приснился мост", today=today) == date(
+        2026, 5, 1
+    )
+    assert _resolve_relative_dream_date("вчера снилось море", today=today) == date(2026, 4, 30)
+    assert _resolve_relative_dream_date("позавчера снилась башня", today=today) == date(2026, 4, 29)
 
 
 @pytest.mark.asyncio
@@ -634,8 +691,9 @@ async def test_write_dream_to_google_doc_returns_true_on_success() -> None:
         title="Мост",
         raw_text="Я шёл по мосту.",
     )
+    session = _FakeSession(get_result=dream)
     facade = AssistantFacade(
-        session_factory=_FakeSessionFactory(_FakeSession(get_result=dream)),
+        session_factory=_FakeSessionFactory(session),
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
     )
 
@@ -643,6 +701,13 @@ async def test_write_dream_to_google_doc_returns_true_on_success() -> None:
         success, _doc_name = await facade.write_dream_to_google_doc(dream_id)
 
     assert success is True
+    write_statuses = [
+        call.args[0]
+        for call in session.add.call_args_list
+        if isinstance(call.args[0], DreamWriteStatus)
+    ]
+    assert write_statuses[-1].status == "succeeded"
+    assert write_statuses[-1].attempt_count == 1
 
 
 @pytest.mark.asyncio
@@ -654,8 +719,9 @@ async def test_write_dream_to_google_doc_returns_false_on_write_error() -> None:
         title="Мост",
         raw_text="Я шёл по мосту.",
     )
+    session = _FakeSession(get_result=dream)
     facade = AssistantFacade(
-        session_factory=_FakeSessionFactory(_FakeSession(get_result=dream)),
+        session_factory=_FakeSessionFactory(session),
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
     )
 
@@ -666,6 +732,99 @@ async def test_write_dream_to_google_doc_returns_false_on_write_error() -> None:
         success, _doc_name = await facade.write_dream_to_google_doc(dream_id)
 
     assert success is False
+    write_statuses = [
+        call.args[0]
+        for call in session.add.call_args_list
+        if isinstance(call.args[0], DreamWriteStatus)
+    ]
+    assert write_statuses[-1].status == "failed"
+    assert write_statuses[-1].last_error == "permission denied"
+
+
+@pytest.mark.asyncio
+async def test_write_dream_to_google_doc_reuses_existing_failed_status_on_retry() -> None:
+    dream_id = uuid4()
+    status_id = uuid4()
+    dream = SimpleNamespace(
+        id=dream_id,
+        date=date(2026, 4, 24),
+        title="Мост",
+        raw_text="Я шёл по мосту.",
+    )
+    failed_status = DreamWriteStatus(
+        id=status_id,
+        dream_id=dream_id,
+        target_doc_id="doc",
+        status="failed",
+        attempt_count=1,
+        last_error="permission denied",
+        updated_at=datetime.now(timezone.utc),
+    )
+    session = _FakeSession(get_results=[dream, failed_status])
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with patch("app.assistant.facade.GDocsClient.append_dream_entry", MagicMock()):
+        success, _doc_name = await facade.write_dream_to_google_doc(
+            dream_id,
+            write_status_id=status_id,
+        )
+
+    assert success is True
+    assert failed_status.status == "succeeded"
+    assert failed_status.attempt_count == 2
+    assert failed_status.last_error is None
+    assert all(call.args[0] is failed_status for call in session.add.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_retry_write_to_google_doc_uses_latest_failed_status_for_chat() -> None:
+    dream_id = uuid4()
+    status_id = uuid4()
+    failed_status = SimpleNamespace(id=status_id, dream_id=dream_id)
+    dream = SimpleNamespace(
+        id=dream_id,
+        date=date(2026, 4, 24),
+        title="Мост",
+        raw_text="Я шёл по мосту.",
+    )
+    session = _FakeSession(
+        get_result=dream,
+        execute_results=[_FakeResult(scalar=failed_status)],
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with patch.object(
+        facade,
+        "write_dream_to_google_doc",
+        AsyncMock(return_value=(True, "Сны")),
+    ) as mock_write:
+        success, doc_name, reason = await facade.retry_write_to_google_doc(chat_id=42)
+
+    assert success is True
+    assert doc_name == "Сны"
+    assert reason == "retried"
+    mock_write.assert_awaited_once_with(dream_id=dream_id, write_status_id=status_id)
+
+
+@pytest.mark.asyncio
+async def test_retry_write_to_google_doc_returns_nothing_to_retry() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    success, doc_name, reason = await facade.retry_write_to_google_doc(chat_id=42)
+
+    assert success is False
+    assert doc_name == ""
+    assert reason == "nothing_to_retry"
 
 
 @pytest.mark.asyncio

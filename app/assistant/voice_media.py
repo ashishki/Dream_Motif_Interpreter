@@ -9,9 +9,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.voice import VoiceMediaEvent
+from app.shared.tracing import get_tracer
 
 
 async def create_voice_media_event(
@@ -39,10 +41,11 @@ async def create_voice_media_event(
         updated_at=now,
     )
     async with session_factory() as session:
-        session.add(event)
-        await session.flush()
-        event_id = event.id
-        await session.commit()
+        with get_tracer(__name__).start_as_current_span("db.voice_media_event.create"):
+            session.add(event)
+            await session.flush()
+            event_id = event.id
+            await session.commit()
     return event_id
 
 
@@ -54,8 +57,48 @@ async def update_voice_media_event_status(
     """Update the status of an existing VoiceMediaEvent."""
     now = datetime.now(tz=timezone.utc)
     async with session_factory() as session:
-        event = await session.get(VoiceMediaEvent, event_id)
-        if event is not None:
-            event.status = status
-            event.updated_at = now
-            await session.commit()
+        with get_tracer(__name__).start_as_current_span("db.voice_media_event.update"):
+            event = await session.get(VoiceMediaEvent, event_id)
+            if event is not None:
+                event.status = status
+                event.updated_at = now
+                await session.commit()
+
+
+async def store_voice_transcript(
+    session_factory: async_sessionmaker[AsyncSession],
+    event_id: uuid.UUID,
+    transcript: str,
+) -> None:
+    """Persist the transcript text for later reply-to-voice actions."""
+    now = datetime.now(tz=timezone.utc)
+    async with session_factory() as session:
+        with get_tracer(__name__).start_as_current_span("db.voice_transcript.store"):
+            event = await session.get(VoiceMediaEvent, event_id)
+            if event is not None:
+                event.transcript_text = transcript
+                event.status = "transcribed"
+                event.updated_at = now
+                await session.commit()
+
+
+async def get_voice_transcript_for_message(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    chat_id: int,
+    telegram_message_id: int,
+) -> tuple[str | None, str | None]:
+    """Return (status, transcript_text) for a Telegram voice message."""
+    async with session_factory() as session:
+        with get_tracer(__name__).start_as_current_span("db.voice_transcript.lookup"):
+            result = await session.execute(
+                select(VoiceMediaEvent)
+                .where(VoiceMediaEvent.chat_id == chat_id)
+                .where(VoiceMediaEvent.telegram_message_id == telegram_message_id)
+                .order_by(VoiceMediaEvent.updated_at.desc())
+                .limit(1)
+            )
+            event = result.scalar_one_or_none()
+            if event is None:
+                return None, None
+            return event.status, event.transcript_text

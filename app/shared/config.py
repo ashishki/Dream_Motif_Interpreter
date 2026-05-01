@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     TELEGRAM_ALLOWED_CHAT_ID: int = 0
     VOICE_MEDIA_DIR: str = "/tmp/dream_voice"
     VOICE_RETENTION_SECONDS: int = 3600
+    APP_TIMEZONE: str = "Asia/Tbilisi"
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     RETRIEVAL_THRESHOLD: float = 0.20

@@ -1,6 +1,6 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-04-15 (P8-T01 update — added voice, session, and transcription diagnostics)
+Last updated: 2026-05-01 (Phase 17 recording smoke checks)
 
 ## 1. Purpose
 
@@ -23,6 +23,8 @@ Operate the Telegram bot runtime for Dream Motif Interpreter (Phase 6+ implement
 - `DATABASE_URL` reachable and migrations applied:
   - `007_add_bot_sessions` — chat session persistence
   - `008_add_voice_media_events` — voice media tracking
+  - `015_add_dream_write_statuses` — Google Doc write attempt tracking
+  - `016_add_voice_transcript_text` — stored voice transcript for reply-to-voice saves
 - `REDIS_URL` reachable
 - `VOICE_MEDIA_DIR` is a writable directory (default: `/tmp/dream_voice`)
 
@@ -46,9 +48,29 @@ Optional tuning:
 ASSISTANT_MODEL=claude-haiku-4-5-20251001   # default; override for a different model tier
 VOICE_MEDIA_DIR=/tmp/dream_voice            # default
 VOICE_RETENTION_SECONDS=3600               # default: 1 hour
+APP_TIMEZONE=Asia/Tbilisi                  # default; resolves "сегодня/вчера/позавчера"
 ```
 
-## 4. Common Failure Modes
+## 4. Recording Smoke Test
+
+Run this after deployment or after changing Telegram, voice, assistant, or Google Docs write code.
+
+1. Send a natural dream opening, for example: `Сегодня мне приснилось, что я шёл по мосту над морем`.
+2. If the bot asks whether to record it, reply `да`; verify the saved text is the same candidate.
+3. Verify the Google Doc gets one heading in the form `дд.мм.гг - <title>` and the title does not duplicate the date.
+4. Send a duplicate of the same dream text; verify it does not create a duplicate Google Doc entry.
+5. Temporarily break Google Docs write credentials or use a test failure stub; verify the bot says the dream was not added to Google Doc.
+6. Restore write access and send `повтори запись в Google Doc`; verify it retries the failed write, not the latest unrelated dream.
+7. Send a voice message, wait for transcription, then reply to that voice message with `запиши сон`; verify the stored transcript is saved.
+8. Repeat the reply-to-voice save while transcription is still processing or after a failed transcription; verify the bot does not claim success.
+
+Automated regression slice:
+
+```bash
+.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/integration/test_migrations.py -q --tb=short
+```
+
+## 5. Common Failure Modes
 
 ### Bot starts but receives nothing
 
@@ -85,7 +107,7 @@ Check:
 - `ASSISTANT_MODEL` is a valid model ID
 - bounded tool-use loop hit MAX_TOOL_ROUNDS=5 without an end_turn response (log will show this)
 
-## 5. Voice Failure Diagnostics
+## 6. Voice Failure Diagnostics
 
 Voice messages go through a two-stage pipeline: the handler persists + downloads, then a background task transcribes and replies.
 
@@ -124,7 +146,7 @@ Log pattern: `Voice download failed for message_id=... event_id=...`
 
 Check disk space and `VOICE_MEDIA_DIR` permissions. User will have already received "Could not download your voice message."
 
-## 6. Session State Diagnostics
+## 7. Session State Diagnostics
 
 Chat history is persisted in the `bot_sessions` table (one row per `chat_id`).
 
@@ -154,11 +176,11 @@ UPDATE bot_sessions SET history_json = '[]', updated_at = now()
 WHERE chat_id = <chat_id>;
 ```
 
-## 7. Safety Rule
+## 8. Safety Rule
 
 If chat-driven mutation tools are not in the approved phase scope, disable or omit them entirely.
 
-## 8. Logging Rules
+## 9. Logging Rules
 
 Use identifiers and statuses.
 Do not log raw dream text, transcript text, or secrets.

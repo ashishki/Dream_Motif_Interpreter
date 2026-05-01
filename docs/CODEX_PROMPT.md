@@ -1,27 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.46
+Version: 1.51
 Date: 2026-05-01
-Phase: Phase 17 implementation — deterministic dream recording stabilization (Тест 5)
+Phase: Phase 18 planning — search quality and hallucination suppression
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 17 in progress (WS-17.1 implemented locally; WS-17.2 next)
-- **Baseline:** Targeted WS-17.1 tests: 60 passed. Full local suite on non-live machine: 333 passed, 9 skipped, 55 infrastructure errors, 1 PATH/tooling failure.
+- **Phase:** Phase 17 implemented locally; Phase 18 next
+- **Baseline:** Combined Phase 17 unit + migration slice: 169 passed. Full local suite on non-live machine still requires broader live service coverage.
 - **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-01 (WS-17.1 deterministic dream intake classifier implemented)
+- **Last updated:** 2026-05-01 (WS-17.6 regression/docs gate implemented; Phase 17 gate complete locally)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 17 in progress — deterministic dream recording stabilization; see `docs/tasks_phase17.md`
-- **Latest completed implementation task:** WS-17.1 — deterministic dream intake classifier.
-- **Current baseline:** WS-17.1 targeted tests pass (`tests/unit/test_assistant_chat.py`, `tests/unit/test_transcription_worker.py`); full local suite needs live PostgreSQL on `127.0.0.1:5433` and `ruff` on PATH.
+- **Current planning state:** Phase 18 next — search quality and hallucination suppression; see `docs/tasks_phase18.md`
+- **Latest completed implementation task:** WS-17.6 — recording regression suite and manual test script.
+- **Current baseline:** Combined Phase 17 slice passes (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py` -> 169 passed); `ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` and `ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` pass from `.venv/bin/ruff`.
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -55,25 +55,20 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-**Continue Phase 17 with WS-17.2.**
+**Start Phase 18 with WS-18.1.**
 
-WS-17.2: Pending Dream Draft State for Confirmation.
-Baseline: WS-17.1 targeted tests passed locally; full suite requires live PostgreSQL/test service setup.
+WS-18.1: User Search Regression Dataset.
+Baseline: Combined Phase 17 unit + migration slice passed locally (169 passed).
 Goal:
-  If the assistant asks whether to record a dream, the candidate dream must be stored as a
-  typed pending draft. A later "да" must create that exact dream, not infer from history.
+  Add a focused retrieval evaluation slice from user-reported search failures around
+  "молитва", religious scenes, Christmas hymnody, church/icon/prayer evidence, and
+  false-positive suppression.
 
 Context refs:
-- `docs/tasks_phase17.md` — active task graph (read §1-4 and WS-17.2 before coding)
-- `app/telegram/handlers.py::text_message_handler`
-- `app/assistant/prompts.py §Archive Mutation Rules`
-- ADR-006 (`docs/adr/ADR-006-persisted-bot-session-state.md`)
-
-Recommended phase order after WS-17.2:
-  1. WS-17.3 deterministic relative date and auto-title resolution.
-  2. WS-17.4 write outbox and honest success messages.
-  3. WS-17.5 reply-to-voice "запиши сон".
-  4. WS-17.6 regression suite and user docs.
+- `docs/tasks_phase18.md` — active task graph (read §1-3 and WS-18.1 before coding)
+- `docs/retrieval_eval.md`
+- `tests/unit/test_retrieval_eval.py`
+- user feedback from Тест 4-5 summarized in `docs/tasks_phase18.md`
 
 ---
 
@@ -105,6 +100,19 @@ Recommended phase order after WS-17.2:
   CODE-10 [P3] — IMPLEMENTATION_JOURNAL.md has no Phase 11 entry
     File: docs/IMPLEMENTATION_JOURNAL.md · Change: append Phase 11 entry covering WS-11.1–11.3 scope, D-014 deferral of WS-11.4, and test baseline 225
 
+─── Closed Fix Queue items (Cycle 13) ────────────────────────────────
+
+✅ FIX-13 [P2] — Retry write status lifecycle leaves stale failed rows retryable
+  Files: app/assistant/facade.py, tests/unit/test_assistant_facade.py · Change: retry lookup passes the selected failed DreamWriteStatus row into write_dream_to_google_doc(); retry prepares that existing row, increments attempt_count, clears last_error, and marks the same row succeeded/failed instead of creating an unrelated stale row · Test: targeted assistant facade/session/voice slice passed (68 passed); combined Phase 17 slice passed (169 passed)
+✅ FIX-14 [P2] — Phase 17 DB persistence paths missing explicit spans (OBS-1)
+  Files: app/assistant/facade.py, app/assistant/voice_media.py · Change: added sanitized child spans for write-status prepare/update, retry lookup, voice media create/update, voice transcript store, and voice transcript lookup · Test: targeted assistant facade/session/voice slice passed (68 passed); combined Phase 17 slice passed (169 passed)
+✅ FIX-15 [P3] — Pending dream drafts dict has TTL-only access eviction and no max-size cap
+  Files: app/assistant/session.py, tests/unit/test_assistant_session.py · Change: added MAX_PENDING_DREAM_DRAFTS cap with oldest-first eviction and regression coverage · Test: targeted assistant facade/session/voice slice passed (68 passed); combined Phase 17 slice passed (169 passed)
+✅ FIX-16 [P3] — APP_TIMEZONE is not typed/documented operator config
+  Files: app/shared/config.py, app/assistant/facade.py, docs/RUNBOOK_TELEGRAM_BOT.md · Change: APP_TIMEZONE is now a typed Settings field with default Asia/Tbilisi and documented Telegram runbook tuning knob · Test: ruff check/format clean
+✅ FIX-17 [P3] — ARCHITECTURE.md storage inventory stale for Phase 17
+  File: docs/ARCHITECTURE.md · Change: documented dream_write_statuses, app/models/write_status.py, and voice_media_events.transcript_text operational persistence · Test: doc review
+
 ─── Closed Fix Queue items (Cycle 10 → Cycle 11) ──────────────────────
 
 ✅ FIX-7 [P2] — ResearchRetriever external HTTP call missing OTel span and counter
@@ -126,6 +134,16 @@ Recommended phase order after WS-17.2:
 ✅ FIX-6 [P2] — CLOSED — No module-level `TOOLS` constant; `build_tools()` is the sole entry point (confirmed Cycle 10)
 
 ## Open Findings
+
+_Cycle 13 — 2026-05-01 · Phase 17 deep audit: P0: 0, P1: 0, P2: 2, P3: 3; Stop-Ship: No; FIX-13 through FIX-17 resolved in this pass._
+
+| ID | Sev | Description | Files | Status |
+|----|-----|-------------|-------|--------|
+| CODE-11 | P2 | Successful retry does not retire the original failed write-status row; stale failed rows remain eligible and can cause duplicate Google Doc appends on later retry. | `app/assistant/facade.py:402-424`, `app/assistant/facade.py:502-542` | **Resolved** — FIX-13 applied 2026-05-01 |
+| CODE-12 | P2 | Phase 17 DB persistence paths lack explicit child spans for write-status update, retry lookup, voice transcript store, and transcript lookup. | `app/assistant/facade.py:403-424`, `app/assistant/facade.py:488-542`, `app/assistant/voice_media.py:43-104` | **Resolved** — FIX-14 applied 2026-05-01 |
+| CODE-13 | P3 | Pending dream drafts dict is process-local with access-triggered TTL eviction and no max-size cap. | `app/assistant/session.py:26`, `app/assistant/session.py:149-158` | **Resolved** — FIX-15 applied 2026-05-01 |
+| CODE-14 | P3 | `APP_TIMEZONE` is read directly from `os.environ` and is not typed/documented operator config. | `app/shared/config.py:53`, `app/assistant/facade.py:935-944`, `docs/RUNBOOK_TELEGRAM_BOT.md:47-52` | **Resolved** — FIX-16 applied 2026-05-01 |
+| CODE-15 | P3 | `ARCHITECTURE.md` storage inventory is stale for Phase 17 write-status and transcript persistence. | `docs/ARCHITECTURE.md:388-414` | **Resolved** — FIX-17 applied 2026-05-01 |
 
 _Cycle 12 — 2026-04-18 · 10 new findings: P0: 0, P1: 0, P2: 3, P3: 7 (CODE-8 resolved in this cycle; 9 Open); Cycle 11 findings: CODE-1/CODE-2/CODE-3/CODE-4/ARCH-1/ARCH-2/ARCH-4 all Closed (FIX-7/FIX-8/FIX-9 applied 2026-04-17); DOC-1 carry-forward resolved in this CODEX_PROMPT patch_
 
@@ -326,6 +344,11 @@ none
 
 ## Completed Tasks
 
+- **WS-17.6** — Recording Regression Suite and Manual Test Script — 2026-05-01 — combined Phase 17 unit + migration slice passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py`: 167 passed) — Phase 17 regression coverage and manual smoke-test checklist now cover natural narration, pending confirmation, relative dates, fallback titles, failed-write honesty, failed-write retry targeting, reply-to-voice save behavior, and updated Russian user guidance
+- **WS-17.5** — Reply-to-Voice "запиши сон" — 2026-05-01 — combined Phase 17 unit + migration slice passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py`: 167 passed) — added `voice_media_events.transcript_text` migration and model field; transcription worker persists transcript text; text handler detects replies to Telegram voice messages with explicit save commands and saves the stored transcript, reports still-processing transcripts, and refuses unavailable transcripts without claiming success
+- **WS-17.4** — Write Outbox and Honest Success Messages — 2026-05-01 — extended targeted tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_transcription_worker.py`: 143 passed); migration integration suite passing (`tests/integration/test_migrations.py`: 12 passed) — added `dream_write_statuses` migration and ORM model; Google Doc writes now record `pending` then `succeeded`/`failed` with sanitized error text; retry without `dream_id` targets the latest failed write scoped by Telegram chat source; retry tool returns explicit "nothing to retry" and failure text that cannot honestly be read as success
+- **WS-17.3** — Deterministic Relative Date and Auto-Title Resolution — 2026-05-01 — extended targeted tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_transcription_worker.py`: 139 passed) — `create_dream` now resolves `сегодня`/`вчера`/`позавчера` from application date (`APP_TIMEZONE`, default `Asia/Tbilisi`), defaults missing dates to recording date, generates fallback titles as `о <2-3 темы>`, and shares the same application-date header with the chat system prompt; Google Doc heading tests cover duplicate-date stripping
+- **WS-17.2** — Pending Dream Draft State for Confirmation — 2026-05-01 — targeted tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_transcription_worker.py`: 86 passed) — pending dream drafts now persist outside LLM history with TTL-bounded in-memory state keyed by `chat_id`; Telegram `да` saves the exact pending text, `нет` clears it, and voice transcripts can also seed the same pending confirmation flow; `ruff check app/ tests/` and `ruff format --check app/ tests/` pass via `.venv/bin/ruff`
 - **WS-17.1** — Deterministic Dream Intake Classifier — 2026-05-01 — targeted tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_transcription_worker.py`: 60 passed) — `_is_explicit_create_request` now accepts natural Russian dream openings with a minimum-content guard; voice transcripts continue through the same `handle_chat` classifier path; full local suite on non-live machine blocked by missing PostgreSQL on `127.0.0.1:5433` and `ruff` not being on PATH for `tests/unit/test_ci.py`
 - **WS-11.3** — GET /feedback API Route — 2026-04-17 — 225 tests passing — GET /feedback endpoint implemented in app/api/feedback.py; pagination (limit/offset); protected by global X-API-Key middleware; not in PUBLIC_PATHS; OTel span present; WS-11.3 AC-1 through AC-5 met; unit tests in tests/unit/test_feedback_api.py
 - **WS-11.2** — Telegram Digit-Reply Capture — 2026-04-17 — 225 tests passing — digit-reply detection in app/telegram/handlers.py; FeedbackService.record() in app/services/feedback_service.py; "Rate this response: reply with 1–5." appended after substantive responses; "Thanks, noted." on capture; context JSONB stores message_id, response_summary, tool_calls_made (no raw dream text); WS-11.2 AC-1 through AC-6 met

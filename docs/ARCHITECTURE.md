@@ -385,11 +385,13 @@ This is a quality signal for human review only. It does not feed into automated 
 
 See [FEEDBACK_LOOP.md](FEEDBACK_LOOP.md).
 
-## 20. Planned Storage Model (Phase 9–11 additions)
+## 20. Planned Storage Model (Phase 9–17 additions)
 
 Current tables (implemented):
 
-- `dream_entries`, `dream_chunks`, `dream_themes`, `theme_categories`, `annotation_versions`, `bot_sessions`, `voice_media_events`, `motif_inductions`, `assistant_feedback`
+- `dream_entries`, `dream_chunks`, `dream_themes`, `theme_categories`, `annotation_versions`, `bot_sessions`, `voice_media_events`, `dream_write_statuses`, `motif_inductions`, `assistant_feedback`
+
+Phase 17 extends `voice_media_events` with nullable `transcript_text` for operational reply-to-voice saves. This transcript field is not archive truth; confirmed dreams are still stored in `dream_entries`.
 
 Planned additions:
 
@@ -406,6 +408,10 @@ Planned additions:
 | `app/models/feedback.py` | SQLAlchemy ORM model for `assistant_feedback` table |
 | `alembic/versions/011_add_feedback.py` | Migration adding the `assistant_feedback` table |
 | `assistant_feedback` table | Stores user rating scores; quality signal only |
+| `app/models/write_status.py` | SQLAlchemy ORM model for Google Doc write attempt state |
+| `alembic/versions/015_add_dream_write_statuses.py` | Migration adding `dream_write_statuses` for pending/succeeded/failed write attempts |
+| `alembic/versions/016_add_voice_transcript_text.py` | Migration adding operational transcript storage to `voice_media_events` |
+| `dream_write_statuses` table | Tracks Google Doc write attempts and retry eligibility |
 
 ## 21. ADR Coverage
 

@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.assistant.session import MAX_HISTORY_MESSAGES, load_history, save_history
+from app.assistant.session import (
+    MAX_HISTORY_MESSAGES,
+    PendingDreamDraft,
+    clear_pending_dream_draft,
+    load_history,
+    load_pending_dream_draft,
+    pop_pending_dream_draft,
+    save_history,
+    save_pending_dream_draft,
+)
 
 
 def _make_session_factory(row: object) -> MagicMock:
@@ -25,6 +34,17 @@ def _make_session_factory(row: object) -> MagicMock:
     factory = MagicMock()
     factory.return_value = ctx
     return factory, session
+
+
+@pytest.fixture(autouse=True)
+def _clear_pending_drafts() -> None:
+    clear_pending_dream_draft(7)
+    clear_pending_dream_draft(11)
+    clear_pending_dream_draft(42)
+    yield
+    clear_pending_dream_draft(7)
+    clear_pending_dream_draft(11)
+    clear_pending_dream_draft(42)
 
 
 # ---------------------------------------------------------------------------
@@ -168,3 +188,66 @@ async def test_handle_chat_loads_and_saves_session_history() -> None:
     assert saved_history[-2] == {"role": "user", "content": "new question"}
     assert saved_history[-1] == {"role": "assistant", "content": "Response with history."}
     assert saved_history[0] == prior_history[0]
+
+
+def test_save_and_load_pending_dream_draft() -> None:
+    draft = save_pending_dream_draft(
+        42,
+        raw_text="мне приснилось, что я лечу над морем",
+        source_message_id=123,
+        source_kind="text",
+    )
+
+    loaded = load_pending_dream_draft(42)
+
+    assert loaded == draft
+    assert loaded is not None
+    assert loaded.raw_text == "мне приснилось, что я лечу над морем"
+    assert loaded.source_message_id == 123
+    assert loaded.source_kind == "text"
+
+
+def test_pop_pending_dream_draft_removes_it() -> None:
+    save_pending_dream_draft(7, raw_text="draft text", source_kind="voice_transcript")
+
+    popped = pop_pending_dream_draft(7)
+
+    assert popped is not None
+    assert popped.raw_text == "draft text"
+    assert load_pending_dream_draft(7) is None
+
+
+def test_load_pending_dream_draft_ignores_expired_entries() -> None:
+    stale = PendingDreamDraft(
+        raw_text="stale",
+        title=None,
+        dream_date=None,
+        source_message_id=None,
+        source_kind="text",
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=31),
+    )
+    save_pending_dream_draft(11, raw_text="fresh", source_kind="text")
+
+    from app.assistant import session as session_module
+
+    session_module._pending_dream_drafts[11] = stale
+
+    assert load_pending_dream_draft(11) is None
+
+
+def test_pending_dream_drafts_evict_oldest_when_over_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.assistant import session as session_module
+
+    monkeypatch.setattr(session_module, "MAX_PENDING_DREAM_DRAFTS", 2)
+    try:
+        save_pending_dream_draft(1, raw_text="oldest", source_kind="text")
+        save_pending_dream_draft(2, raw_text="middle", source_kind="text")
+        save_pending_dream_draft(3, raw_text="newest", source_kind="text")
+
+        assert load_pending_dream_draft(1) is None
+        assert load_pending_dream_draft(2) is not None
+        assert load_pending_dream_draft(3) is not None
+    finally:
+        clear_pending_dream_draft(1)
+        clear_pending_dream_draft(2)
+        clear_pending_dream_draft(3)

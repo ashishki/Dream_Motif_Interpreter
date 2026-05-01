@@ -92,6 +92,7 @@ async def test_handle_chat_with_metadata_uses_built_system_prompt() -> None:
             new=AsyncMock(return_value=feedback_rows),
         ),
         patch("app.assistant.chat.get_settings", return_value=settings),
+        patch("app.assistant.chat._application_today", return_value=datetime(2026, 5, 1).date()),
     ):
         client = AsyncMock()
         client.messages.create = AsyncMock(return_value=final_response)
@@ -105,4 +106,7 @@ async def test_handle_chat_with_metadata_uses_built_system_prompt() -> None:
         )
 
     assert result.text == "Answer"
+    assert client.messages.create.await_args.kwargs["system"].startswith(
+        "Сегодня: 01.05.26 (2026-05-01)."
+    )
     assert client.messages.create.await_args.kwargs["system"].endswith(expected_prompt)

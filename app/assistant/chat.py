@@ -11,6 +11,7 @@ from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.assistant.facade import AssistantFacade
+from app.assistant.facade import _application_today
 from app.assistant.prompts import SYSTEM_PROMPT, build_system_prompt
 from app.assistant.session import load_history, save_history
 from app.assistant.tools import build_tools, execute_tool
@@ -87,9 +88,7 @@ async def handle_chat_with_metadata(
         except Exception:
             LOGGER.warning("Failed to load feedback context", exc_info=True)
 
-    from datetime import date as _date
-
-    today = _date.today()
+    today = _application_today()
     date_header = f"Сегодня: {today.strftime('%d.%m.%y')} ({today.isoformat()}).\n\n"
     system_prompt = date_header + (
         build_system_prompt(feedback_rows) if feedback_rows else SYSTEM_PROMPT

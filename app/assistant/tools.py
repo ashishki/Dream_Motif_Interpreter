@@ -6,6 +6,7 @@ import uuid
 from typing import Any
 
 from app.assistant.facade import AssistantFacade
+from app.assistant.facade import _resolve_relative_dream_date
 from app.shared.config import extract_google_doc_id, get_doc_name
 
 _BASE_TOOLS: list[dict[str, Any]] = [
@@ -379,9 +380,9 @@ async def execute_tool(
         dream_date = None
         if raw_date:
             try:
-                dream_date = date.fromisoformat(raw_date)
+                dream_date = _resolve_relative_dream_date(raw_date) or date.fromisoformat(raw_date)
             except ValueError:
-                return f"Invalid date: {raw_date!r}. Expected YYYY-MM-DD."
+                return f"Invalid date: {raw_date!r}. Expected YYYY-MM-DD or Russian relative date."
 
         created = await facade.create_dream(
             raw_text,
@@ -434,11 +435,19 @@ async def execute_tool(
                 dream_id = uuid.UUID(raw_id)
             except ValueError:
                 return f"Invalid dream_id: {raw_id!r}"
-        success, doc_name = await facade.retry_write_to_google_doc(dream_id=dream_id)
+        success, doc_name, reason = await facade.retry_write_to_google_doc(
+            dream_id=dream_id,
+            chat_id=chat_id,
+        )
         if success:
             doc_label = doc_name or "Google Doc"
             return f"Запись добавлена в Google Doc: {doc_label}."
-        return "Не удалось записать в Google Doc. Проверьте подключение к источнику."
+        if reason == "nothing_to_retry":
+            return "Нет неудачной записи в Google Doc для повтора."
+        return (
+            "Не удалось записать в Google Doc. "
+            "Сон не был добавлен в документ; можно повторить попытку позже."
+        )
 
     if tool_name == "get_dream":
         raw_id = str(tool_input.get("dream_id", "")).strip()

@@ -1,79 +1,69 @@
 ---
-# META_ANALYSIS — Cycle 11
-_Date: 2026-04-17 · Type: full_
+# META_ANALYSIS — Cycle 13
+_Date: 2026-05-01 · Type: full · Scope: Phase 17 WS-17.2–WS-17.6_
 
 ## Project State
 
-Phase 10 (WS-10.1–WS-10.5) complete. Phase 11 (Feedback Loop) in progress: WS-11.1 (DB migration + ORM model), WS-11.2 (Telegram digit-reply capture), and WS-11.3 (GET /feedback API route) are implemented. WS-11.4 (optional comment capture) is not yet implemented.
-Next: WS-11.4 — Light Polish (optional), then Phase 11 gate verification and CODEX_PROMPT.md baseline update.
+Phase 17 was implemented locally after `git pull --ff-only`: text-confirmation dream intake, deterministic relative date/title resolution, Google Doc write status tracking, reply-to-voice save, and user-facing docs/prompt updates are present.
 
-Baseline: 225 unit tests passing (measured 2026-04-17; up from 216 at Cycle 10 close). CODEX_PROMPT.md §Current State still reads 216 — stale; requires update to 225.
+Baseline verified before this review:
 
-Change vs Cycle 10: all Cycle 10 Fix Queue items (FIX-7/FIX-8/FIX-9) confirmed applied and closed. Three new Phase 11 source files added (`app/telegram/handlers.py`, `app/services/feedback_service.py`, `app/api/feedback.py`), three new model/migration files (`app/models/feedback.py`, `alembic/versions/011_add_feedback.py`, `app/models/__init__.py` updated), and two new test files (`tests/unit/test_feedback_capture.py`, `tests/unit/test_feedback_api.py`).
+- `pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/integration/test_migrations.py -q --tb=short` -> 167 passed, 2 warnings
+- `ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean
+- `ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean
 
----
+Cycle type: full. The reviewed surface includes assistant facade/tool execution, Telegram text/voice handlers, pending dream session state, voice transcript persistence, migrations `015`/`016`, docs, and the Phase 17 task graph.
 
-## Open Findings
+## Findings Summary
+
+| Sev | Count | IDs |
+|-----|-------|-----|
+| P0 | 0 | — |
+| P1 | 0 | — |
+| P2 | 2 | CODE-11, CODE-12 |
+| P3 | 3 | CODE-13, CODE-14, CODE-15 |
+
+Stop-Ship: No. There are no P0/P1 issues. The initial P2/P3 findings were fixed in the follow-up pass; see `docs/audit/REVIEW_REPORT.md` and `docs/CODEX_PROMPT.md`.
+
+## New Open Findings
 
 | ID | Sev | Description | Files | Status |
 |----|-----|-------------|-------|--------|
-| CODE-5 | P3 | `RESEARCH_API_KEY` defaults to `""` with no `model_validator` at startup when `RESEARCH_AUGMENTATION_ENABLED=True`. ADR-010 acknowledges deferral, but a fail-fast validator would catch misconfiguration early. No FIX assignment exists; risk remains accepted without explicit closure. | `app/shared/config.py:31` | Open — Cycle 10 carry-forward; no FIX entry assigned |
-| DOC-1 | P3 | `docs/CODEX_PROMPT.md §Current State` baseline field reads 216; actual unit test count is 225 after Phase 11 WS-11.1–11.3 additions. | `docs/CODEX_PROMPT.md` | Open — new Cycle 11 |
-| WS11-1 | P2 | `AssistantFeedback` ORM model has no SQLAlchemy-level `CheckConstraint` on the `score` column. The CHECK constraint exists in the migration DDL (`ck_assistant_feedback_score_range`), but the ORM model definition omits it. `FeedbackService.record()` provides a Python-level guard (score < 1 or score > 5 raises ValueError), but direct ORM usage bypassing the service has no model-level protection. | `app/models/feedback.py:22`, `app/services/feedback_service.py:16–17` | Open — new Cycle 11 |
-| WS11-2 | P3 | `GET /feedback` route opens a `db.query.feedback.list` OTel child span but emits no meter counter. All other API read routes emit a labeled counter per OBS-2. | `app/api/feedback.py:26–45` | Open — new Cycle 11 |
-| WS11-3 | P3 | In-memory `_feedback_pending_by_chat` dict in `handlers.py` (stored in `context.bot_data`) is unbounded. Long-running bots with many distinct `chat_id` values, or chats where the user never sends a digit reply, will accumulate stale entries indefinitely. No TTL eviction or max-size cap. | `app/telegram/handlers.py:44, 74–79` | Open — new Cycle 11 |
-| WS11-4 | P3 | `handlers.py` calls `session.commit()` immediately after `FeedbackService.record()` with no try/except. A transient DB failure during commit propagates as an unhandled exception and suppresses the `FEEDBACK_ACK` reply to the user. | `app/telegram/handlers.py:55–58` | Open — new Cycle 11 |
+| CODE-11 | P2 | Successful retry does not retire the original failed write-status row. `retry_write_to_google_doc()` selects the latest `failed` row, but `write_dream_to_google_doc()` always inserts a fresh `pending` row and marks that new row `succeeded`/`failed`. The originally selected `failed` row remains failed, so the next retry without `dream_id` can retry the same already-successfully-written dream again instead of returning `nothing_to_retry`. | `app/assistant/facade.py:402-424`, `app/assistant/facade.py:502-542` | Resolved — FIX-13 applied 2026-05-01 |
+| CODE-12 | P2 | New DB persistence paths added in Phase 17 are not consistently wrapped in explicit child spans. The top-level Google Doc write span exists, but `_mark_dream_write_status()` performs DB commit work without its own DB span, `retry_write_to_google_doc()` performs the failed-status lookup without a DB span, and voice transcript persistence/lookups also perform DB calls without spans. This weakens OBS-1 coverage for new external/DB calls. | `app/assistant/facade.py:403-424`, `app/assistant/facade.py:488-542`, `app/assistant/voice_media.py:43-104` | Resolved — FIX-14 applied 2026-05-01 |
+| CODE-13 | P3 | Pending dream drafts use a process-local dict with TTL eviction only on access and no max-size cap. A long-running bot receiving many distinct chat IDs can accumulate stale entries until another draft operation happens; restart also drops pending state. | `app/assistant/session.py:26`, `app/assistant/session.py:149-158` | Resolved — FIX-15 applied 2026-05-01 |
+| CODE-14 | P3 | `APP_TIMEZONE` is read directly from `os.environ` inside facade code, not via typed settings or documented operator config. Runtime behavior exists, but the configuration contract is discoverable only from task notes. | `app/shared/config.py:53`, `app/assistant/facade.py:935-944`, `docs/RUNBOOK_TELEGRAM_BOT.md:47-52` | Resolved — FIX-16 applied 2026-05-01 |
+| CODE-15 | P3 | `ARCHITECTURE.md` storage/component inventory is stale for Phase 17. It lists `voice_media_events` but not the new `transcript_text` operational field and omits the implemented `dream_write_statuses` table/model. | `docs/ARCHITECTURE.md:388-414` | Resolved — FIX-17 applied 2026-05-01 |
 
-### Closed findings confirmed at Cycle 11 (FIX-7/FIX-8/FIX-9 applied 2026-04-17)
+## Carry-Forward Findings
 
-| ID | Sev | Description | Status |
-|----|-----|-------------|--------|
-| CODE-1 (C10) | P2 | `ResearchRetriever.retrieve()` external HTTP call had no OTel span or counter | **Closed** — FIX-7 applied; span at `retriever.py:36`, counter at `retriever.py:30` |
-| CODE-2 (C10) | P2 | `ResearchSynthesizer.synthesize()` LLM call had no OTel span or counter | **Closed** — FIX-8 applied; span at `synthesizer.py:40`, counter at `synthesizer.py:32` |
-| CODE-3 (C10) | P2 | `docs/retrieval_eval.md` missing Cycle 10 advisory row | **Closed** — FIX-9 applied; Cycle 10 advisory row present |
-| CODE-4 (C10) | P3 | `docs/IMPLEMENTATION_JOURNAL.md` had no Phase 10 entry | **Closed** — FIX-9 applied; Phase 10 entry present |
-| ARCH-1 (C10) | P3 | `app/research/` and `ResearchService` absent from `ARCHITECTURE.md §9` | **Closed** — `app/research/` row present at `ARCHITECTURE.md:188` |
-| ARCH-2 (C10) | P3 | Duplicate `## 18` section number in `ARCHITECTURE.md` | **Closed** — formerly conflicting section now correctly numbered `## 22` |
-| ARCH-4 (C10) | P3 | `ARCHITECTURE.md §18` header read `(Planned — Phase 10)` | **Closed** — header now reads `## 18. Research Augmentation Layer` without status qualifier |
+The Cycle 12 P2 items are resolved in current code/docs: `FIX-10`, `FIX-11`, and `FIX-12` are marked closed in `docs/CODEX_PROMPT.md`. Cycle 12 P3 carry-forward items remain present unless explicitly addressed elsewhere:
 
----
+- CODE-4 [P3] feedback commit still lacks explicit error handling in `app/telegram/handlers.py`.
+- CODE-5 [P3] `RESEARCH_API_KEY` empty-string startup validation remains deferred.
+- CODE-6 [P3] feedback pending state remains an unbounded in-memory dict.
+- CODE-7 [P3] DECISION_LOG D-014 is still absent.
+- CODE-9 [P3] older Phase 11 architecture wording may still need full cleanup.
+- CODE-10 [P3] Phase 11 journal coverage should remain checked before closing governance debt.
 
-## PROMPT_1 Scope (architecture)
+## Prompt Scope For ARCH Review
 
-- feedback table isolation: verify `assistant_feedback` has no FK to `dream_entries`, `dream_themes`, or `dream_chunks`; confirm the table is excluded from all RAG ingestion pipeline code paths
-- Telegram handler state model: in-memory `_feedback_pending_by_chat` per-chat dict lives in `context.bot_data`; assess whether this is consistent with bot session restart semantics and multi-instance deployment; compare with `bot_sessions` table for persistent state precedent
-- GET /feedback auth coverage: route is covered by the global `require_authentication` middleware (not in `PUBLIC_PATHS`); confirm no accidental bypass path exists for this route
-- context JSONB privacy: WS-11.2 AC-3 requires no raw dream text in the `context` field; confirm `response_summary` and `tool_calls_made` fields in the handler do not capture raw dream text
-- WS-11.4 deferral decision: if WS-11.4 (optional comment capture) is deferred, assess whether this should be recorded in `docs/DECISION_LOG.md` following the WS-9.7 deferral pattern (D-012)
+Architecture review should focus on write-status lifecycle, DB observability coverage, pending dream draft state durability/boundedness, typed config/documentation for `APP_TIMEZONE`, and Phase 17 storage model reflection in `ARCHITECTURE.md`.
 
----
+## Prompt Scope For CODE Review
 
-## PROMPT_2 Scope (code, priority order)
+1. `app/assistant/facade.py` — write status lifecycle, retry query, relative date config
+2. `app/assistant/voice_media.py` — transcript persistence and lookup
+3. `app/assistant/session.py` — pending dream draft lifecycle
+4. `app/telegram/handlers.py` — text confirmation and reply-to-voice save path
+5. `app/workers/transcribe.py` — transcript storage integration
+6. `app/assistant/tools.py` and `app/assistant/chat.py` — retry tool behavior and user-facing truthfulness
+7. `alembic/versions/015_add_dream_write_statuses.py` and `016_add_voice_transcript_text.py`
+8. `tests/unit/test_assistant_facade.py`, `test_assistant_session.py`, `test_telegram_voice.py`, `test_transcription_worker.py`
 
-1. `app/telegram/handlers.py` (new — Phase 11 digit-reply detection, substantive-response classification, feedback state management)
-2. `app/services/feedback_service.py` (new — feedback persistence service; session ownership and validation logic)
-3. `app/api/feedback.py` (new — GET /feedback paginated read endpoint; auth and OTel coverage)
-4. `app/models/feedback.py` (new — AssistantFeedback ORM model; CHECK constraint presence)
-5. `alembic/versions/011_add_feedback.py` (new — migration with score CHECK constraint and all required columns per WS-11.1 AC-1)
-6. `app/models/__init__.py` (changed — exports AssistantFeedback per WS-11.1 AC-5)
-7. `app/main.py` (changed — feedback router registered; auth middleware applies)
-8. `tests/unit/test_feedback_capture.py` (new — digit-reply and substantive-response unit tests; WS-11.2 AC-6)
-9. `tests/unit/test_feedback_api.py` (new — GET /feedback unit tests; WS-11.3 AC-4)
-10. `app/shared/config.py` (regression check — CODE-5 carry-forward: `RESEARCH_API_KEY` still has no startup validator)
+## Notes For Consolidation
 
----
-
-## Cycle Type
-
-Full — Phase 11 implementation is in progress with three of four workstreams (WS-11.1–WS-11.3) implemented and the optional WS-11.4 not yet started. All Cycle 10 Fix Queue items are confirmed closed. This cycle reviews the complete new feedback loop surface for the first time. No P0 or P1 findings; the system is safe to complete Phase 11 and close the gate.
-
----
-
-## Notes for PROMPT_3
-
-- Primary consolidation focus: update `docs/CODEX_PROMPT.md` baseline from 216 to 225 and move WS-11.1, WS-11.2, WS-11.3 to Completed Tasks; confirm Phase 11 gate criteria (WS-11.1–WS-11.3 required, WS-11.4 optional).
-- CODE-5 (`RESEARCH_API_KEY` startup validation) has been carried forward since Cycle 10 with no FIX assignment. Either assign FIX-10 or formally document acceptance in ADR-010 §Consequences and close the finding with a decision reference.
-- WS11-1 (ORM-level score CHECK constraint absence) should be assigned a FIX entry if the project intends to use `AssistantFeedback` directly in any context outside `FeedbackService.record()`. Low risk today; medium risk as the codebase grows.
-- If WS-11.4 is deferred, record the decision in `docs/DECISION_LOG.md` consistent with the WS-9.7 deferral pattern (D-012). Do not silently omit it.
-- Cycle 11 advisory row must be added to `docs/retrieval_eval.md` Evaluation History confirming the RAG layer is unchanged in Phase 11 (per RET-7 mandatory-each-cycle rule).
+- No `.py` fix should be applied during this review pass.
+- CODEX_PROMPT should carry forward new P2/P3 findings and assign a P2 fix queue before Phase 18 operational work relies on retry semantics.
+- Add a targeted regression test for “failed row is retired after successful retry; next retry returns `nothing_to_retry`”.
 ---

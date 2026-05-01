@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -14,6 +16,7 @@ from app.models.dream import DreamEntry
 from app.models.motif import MotifInduction
 from app.models.note import DreamNote
 from app.models.theme import DreamTheme, ThemeCategory
+from app.models.write_status import DreamWriteStatus
 from app.retrieval.query import EvidenceBlock, InsufficientEvidence, RagQueryService
 from app.services.analysis import AnalysisService
 from app.services.gdocs_client import GDocsClient, GDocsWriteError
@@ -303,10 +306,13 @@ class AssistantFacade:
         if not normalized_text:
             raise ValueError("Dream text must not be empty")
 
+        resolved_dream_date = (
+            dream_date or _resolve_relative_dream_date(normalized_text) or _application_today()
+        )
         resolved_title = _resolve_dream_title(
             normalized_text,
             title=title,
-            dream_date=dream_date,
+            dream_date=resolved_dream_date,
         )
         source_doc_id = f"telegram:{chat_id}" if chat_id is not None else "telegram:manual"
         content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
@@ -332,7 +338,7 @@ class AssistantFacade:
             dream = DreamEntry(
                 id=uuid.uuid4(),
                 source_doc_id=source_doc_id,
-                date=dream_date,
+                date=resolved_dream_date,
                 title=resolved_title,
                 raw_text=normalized_text,
                 word_count=len(normalized_text.split()),
@@ -374,7 +380,11 @@ class AssistantFacade:
         )
 
     async def write_dream_to_google_doc(
-        self, dream_id: uuid.UUID, doc_id: str | None = None
+        self,
+        dream_id: uuid.UUID,
+        doc_id: str | None = None,
+        *,
+        write_status_id: uuid.UUID | None = None,
     ) -> tuple[bool, str]:
         """Write a dream entry to Google Doc.
 
@@ -387,9 +397,31 @@ class AssistantFacade:
         doc_name = get_doc_name(resolved_doc_id)
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span("assistant.write_dream_to_google_doc"):
+            write_status: DreamWriteStatus | None = None
             try:
                 async with self._session_factory() as session:
-                    dream = await session.get(DreamEntry, dream_id)
+                    with tracer.start_as_current_span("db.dream_write_status.prepare"):
+                        dream = await session.get(DreamEntry, dream_id)
+                        if dream is not None:
+                            if write_status_id is not None:
+                                write_status = await session.get(DreamWriteStatus, write_status_id)
+                            if write_status is None:
+                                write_status = DreamWriteStatus(
+                                    dream_id=dream_id,
+                                    target_doc_id=resolved_doc_id,
+                                    status="pending",
+                                    attempt_count=1,
+                                    last_error=None,
+                                    updated_at=datetime.now(timezone.utc),
+                                )
+                            else:
+                                write_status.target_doc_id = resolved_doc_id
+                                write_status.status = "pending"
+                                write_status.attempt_count = (write_status.attempt_count or 0) + 1
+                                write_status.last_error = None
+                                write_status.updated_at = datetime.now(timezone.utc)
+                            session.add(write_status)
+                            await session.commit()
                 if dream is None:
                     logger.warning(
                         "write_dream_to_google_doc: dream not found", dream_id=str(dream_id)
@@ -409,8 +441,18 @@ class AssistantFacade:
                     dream_id=str(dream_id),
                     doc_id=resolved_doc_id,
                 )
+                await self._mark_dream_write_status(
+                    write_status,
+                    status="succeeded",
+                    last_error=None,
+                )
                 return True, doc_name
             except GDocsWriteError as exc:
+                await self._mark_dream_write_status(
+                    write_status,
+                    status="failed",
+                    last_error=_sanitize_write_error(str(exc)),
+                )
                 logger.warning(
                     "Failed to write dream to Google Doc",
                     dream_id=str(dream_id),
@@ -419,6 +461,11 @@ class AssistantFacade:
                 )
                 return False, doc_name
             except Exception as exc:
+                await self._mark_dream_write_status(
+                    write_status,
+                    status="failed",
+                    last_error=_sanitize_write_error(str(exc)),
+                )
                 logger.error(
                     "Unexpected error writing dream to Google Doc",
                     dream_id=str(dream_id),
@@ -426,23 +473,77 @@ class AssistantFacade:
                 )
                 return False, doc_name
 
-    async def retry_write_to_google_doc(
-        self, dream_id: uuid.UUID | None = None
-    ) -> tuple[bool, str]:
-        """Write a dream to Google Doc. If dream_id is None, uses the most recently created dream.
+    async def _mark_dream_write_status(
+        self,
+        write_status: DreamWriteStatus | None,
+        *,
+        status: str,
+        last_error: str | None,
+    ) -> None:
+        if write_status is None:
+            return
+        write_status.status = status
+        write_status.last_error = last_error
+        write_status.updated_at = datetime.now(timezone.utc)
+        async with self._session_factory() as session:
+            with get_tracer(__name__).start_as_current_span("db.dream_write_status.update"):
+                session.add(write_status)
+                await session.commit()
 
-        Returns (success, doc_name).
+    async def retry_write_to_google_doc(
+        self, dream_id: uuid.UUID | None = None, *, chat_id: int | None = None
+    ) -> tuple[bool, str, str]:
+        """Retry a failed Google Doc write.
+
+        If dream_id is omitted, retry the latest failed write scoped to the current
+        Telegram chat source when chat_id is available.
+        Returns (success, doc_name, reason).
         """
-        if dream_id is None:
+        if dream_id is not None:
+            write_status_id: uuid.UUID | None = None
             async with self._session_factory() as session:
-                result = await session.execute(
-                    select(DreamEntry).order_by(DreamEntry.created_at.desc()).limit(1)
+                with get_tracer(__name__).start_as_current_span(
+                    "db.dream_write_status.retry_lookup"
+                ):
+                    result = await session.execute(
+                        select(DreamWriteStatus)
+                        .where(DreamWriteStatus.dream_id == dream_id)
+                        .where(DreamWriteStatus.status == "failed")
+                        .order_by(DreamWriteStatus.updated_at.desc())
+                        .limit(1)
+                    )
+                    write_status = result.scalar_one_or_none()
+                    if write_status is not None:
+                        write_status_id = write_status.id
+            success, doc_name = await self.write_dream_to_google_doc(
+                dream_id=dream_id,
+                write_status_id=write_status_id,
+            )
+            return success, doc_name, "retried"
+
+        async with self._session_factory() as session:
+            with get_tracer(__name__).start_as_current_span("db.dream_write_status.retry_lookup"):
+                stmt = (
+                    select(DreamWriteStatus)
+                    .join(DreamEntry, DreamEntry.id == DreamWriteStatus.dream_id)
+                    .where(DreamWriteStatus.status == "failed")
+                    .order_by(DreamWriteStatus.updated_at.desc())
+                    .limit(1)
                 )
-                entry = result.scalar_one_or_none()
-                if entry is None:
-                    return False, ""
-                dream_id = entry.id
-        return await self.write_dream_to_google_doc(dream_id=dream_id)
+                if chat_id is not None:
+                    stmt = stmt.where(DreamEntry.source_doc_id == f"telegram:{chat_id}")
+                result = await session.execute(stmt)
+                write_status = result.scalar_one_or_none()
+                if write_status is None:
+                    return False, "", "nothing_to_retry"
+                dream_id = write_status.dream_id
+                write_status_id = write_status.id
+
+        success, doc_name = await self.write_dream_to_google_doc(
+            dream_id=dream_id,
+            write_status_id=write_status_id,
+        )
+        return success, doc_name, "retried"
 
     async def add_dream_note(
         self,
@@ -778,20 +879,103 @@ def _dream_summary_item(dream: DreamEntry, *, theme_names: list[str] | None = No
     )
 
 
-_DATE_PREFIX_RE = __import__("re").compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")
+_DATE_PREFIX_RE = re.compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")
+_WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
+_DEFAULT_APPLICATION_TIMEZONE = "Asia/Tbilisi"
+_TITLE_STOPWORDS = {
+    "today",
+    "dream",
+    "dreamed",
+    "dreamt",
+    "there",
+    "with",
+    "that",
+    "through",
+    "сегодня",
+    "вчера",
+    "позавчера",
+    "сон",
+    "сна",
+    "сне",
+    "приснилось",
+    "приснился",
+    "приснилась",
+    "приснились",
+    "снилось",
+    "мне",
+    "что",
+    "как",
+    "был",
+    "была",
+    "были",
+    "это",
+    "там",
+    "через",
+    "который",
+    "которая",
+    "которые",
+}
+_RELATIVE_DATE_OFFSETS = (
+    ("позавчера", 2),
+    ("сегодня", 0),
+    ("вчера", 1),
+)
 
 
 def _strip_date_prefix(s: str) -> str:
     return _DATE_PREFIX_RE.sub("", s).strip()
 
 
+def _application_today() -> date:
+    timezone_name = get_settings().APP_TIMEZONE.strip()
+    if not timezone_name:
+        timezone_name = _DEFAULT_APPLICATION_TIMEZONE
+    try:
+        tz = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        logger.warning("Invalid APP_TIMEZONE, falling back to default", timezone=timezone_name)
+        tz = ZoneInfo(_DEFAULT_APPLICATION_TIMEZONE)
+    return datetime.now(tz=tz).date()
+
+
+def _resolve_relative_dream_date(text: str, *, today: date | None = None) -> date | None:
+    normalized = text.casefold()
+    current = today or _application_today()
+    for marker, days_back in _RELATIVE_DATE_OFFSETS:
+        if marker in normalized:
+            return date.fromordinal(current.toordinal() - days_back)
+    return None
+
+
+def _sanitize_write_error(error: str) -> str:
+    sanitized = re.sub(r"[\r\n\t]+", " ", error).strip()
+    sanitized = re.sub(r"(token|secret|key)=\S+", r"\1=<redacted>", sanitized, flags=re.IGNORECASE)
+    return sanitized[:300]
+
+
 def _resolve_dream_title(
     raw_text: str, *, title: str | None, dream_date: date | None = None
 ) -> str:
-    del raw_text, dream_date
     if title is not None and title.strip():
         return _strip_date_prefix(title.strip())
-    return "без названия"
+    return _generate_dream_title(raw_text, dream_date=dream_date)
+
+
+def _generate_dream_title(raw_text: str, *, dream_date: date | None = None) -> str:
+    del dream_date
+    words: list[str] = []
+    seen: set[str] = set()
+    for raw_word in _WORD_RE.findall(raw_text.casefold()):
+        word = raw_word.strip()
+        if len(word) < 4 or word.isdigit() or word in _TITLE_STOPWORDS or word in seen:
+            continue
+        seen.add(word)
+        words.append(word)
+        if len(words) == 3:
+            break
+    if len(words) < 2:
+        return "без названия"
+    return f"о {' '.join(words)}"
 
 
 def _recurring_pattern_item(pattern: RecurringPattern) -> RecurringPatternItem:

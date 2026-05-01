@@ -10,6 +10,7 @@ from telegram.constants import ChatAction
 from telegram.ext import ApplicationHandlerStop
 
 from app.assistant.chat import ChatResult
+from app.assistant.session import clear_pending_dream_draft, load_pending_dream_draft
 from app.assistant.facade import AssistantFacade
 from app.telegram.bot import handle_message_reaction
 from app.telegram.handlers import (
@@ -45,6 +46,7 @@ async def test_chat_guard_allows_authorized_chat_id() -> None:
 def _make_text_message_update(text: str, chat_id: int = 100) -> tuple[MagicMock, MagicMock]:
     message = AsyncMock()
     message.text = text
+    message.reply_to_message = None
     message.reply_text = AsyncMock()
 
     chat = MagicMock()
@@ -61,6 +63,19 @@ def _make_text_context(facade: AssistantFacade, chat_id: int) -> SimpleNamespace
         bot_data={"facade": facade, "session_factory": None, "allowed_chat_id": chat_id},
         bot=SimpleNamespace(send_chat_action=AsyncMock()),
     )
+
+
+@pytest.fixture(autouse=True)
+def _clear_pending_drafts() -> None:
+    clear_pending_dream_draft(42)
+    clear_pending_dream_draft(55)
+    clear_pending_dream_draft(77)
+    clear_pending_dream_draft(100)
+    yield
+    clear_pending_dream_draft(42)
+    clear_pending_dream_draft(55)
+    clear_pending_dream_draft(77)
+    clear_pending_dream_draft(100)
 
 
 @pytest.mark.asyncio
@@ -165,6 +180,86 @@ async def test_text_message_handler_sends_typing_before_handle_chat() -> None:
 
     mock_chat.assert_awaited_once()
     message.reply_text.assert_awaited_once_with(f"pong\n\n{FEEDBACK_PROMPT}")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_stores_pending_dream_after_confirmation_prompt() -> None:
+    update, _ = _make_text_message_update(
+        "сегодня мне приснилось, что я иду по мосту над морем",
+        chat_id=42,
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(return_value=ChatResult("Записать этот сон в архив?", [])),
+    ):
+        await text_message_handler(update, context)
+
+    draft = load_pending_dream_draft(42)
+    assert draft is not None
+    assert draft.raw_text == "сегодня мне приснилось, что я иду по мосту над морем"
+    assert draft.source_kind == "text"
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_yes_saves_pending_dream() -> None:
+    initial_update, _ = _make_text_message_update(
+        "сегодня мне приснилось, что я иду по мосту над морем",
+        chat_id=42,
+    )
+    confirm_update, confirm_message = _make_text_message_update("да", chat_id=42)
+    created = SimpleNamespace(
+        created=True,
+        written_to_google_doc=True,
+        written_to_doc_name="Dream Archive",
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream = AsyncMock(return_value=created)
+    context = _make_text_context(facade, 42)
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(return_value=ChatResult("Записать этот сон в архив?", [])),
+    ):
+        await text_message_handler(initial_update, context)
+
+    await text_message_handler(confirm_update, context)
+
+    facade.create_dream.assert_awaited_once_with(
+        "сегодня мне приснилось, что я иду по мосту над морем",
+        title=None,
+        dream_date=None,
+        chat_id=42,
+    )
+    confirm_message.reply_text.assert_awaited_once_with(
+        "Сон сохранён и добавлен в документ Dream Archive."
+    )
+    assert load_pending_dream_draft(42) is None
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_no_clears_pending_dream() -> None:
+    initial_update, _ = _make_text_message_update(
+        "сегодня мне приснилось, что я иду по мосту над морем",
+        chat_id=42,
+    )
+    decline_update, decline_message = _make_text_message_update("нет", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(return_value=ChatResult("Записать этот сон в архив?", [])),
+    ):
+        await text_message_handler(initial_update, context)
+
+    await text_message_handler(decline_update, context)
+
+    facade.create_dream.assert_not_awaited()
+    decline_message.reply_text.assert_awaited_once_with("Хорошо, не сохраняю.")
+    assert load_pending_dream_draft(42) is None
 
 
 class _ReactionSession:

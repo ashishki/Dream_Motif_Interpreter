@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -21,6 +22,21 @@ LOGGER = logging.getLogger(__name__)
 
 MAX_HISTORY_MESSAGES = 20
 HISTORY_TTL_DAYS = 7
+PENDING_DREAM_TTL_MINUTES = 30
+MAX_PENDING_DREAM_DRAFTS = 10_000
+
+
+@dataclass(slots=True)
+class PendingDreamDraft:
+    raw_text: str
+    title: str | None
+    dream_date: str | None
+    source_message_id: int | None
+    source_kind: Literal["text", "voice_transcript"]
+    created_at: datetime
+
+
+_pending_dream_drafts: dict[int, PendingDreamDraft] = {}
 
 
 async def load_history(
@@ -75,3 +91,68 @@ async def save_history(
         )
         await session.execute(stmt)
         await session.commit()
+
+
+def save_pending_dream_draft(
+    chat_id: int,
+    *,
+    raw_text: str,
+    title: str | None = None,
+    dream_date: str | None = None,
+    source_message_id: int | None = None,
+    source_kind: Literal["text", "voice_transcript"] = "text",
+) -> PendingDreamDraft:
+    """Store an ephemeral pending dream draft for later yes/no confirmation."""
+    _evict_expired_pending_dream_drafts()
+    draft = PendingDreamDraft(
+        raw_text=raw_text.strip(),
+        title=title,
+        dream_date=dream_date,
+        source_message_id=source_message_id,
+        source_kind=source_kind,
+        created_at=datetime.now(tz=timezone.utc),
+    )
+    _pending_dream_drafts[chat_id] = draft
+    _evict_excess_pending_dream_drafts()
+    return draft
+
+
+def load_pending_dream_draft(chat_id: int) -> PendingDreamDraft | None:
+    """Return the current pending dream draft for chat_id, if still fresh."""
+    _evict_expired_pending_dream_drafts()
+    return _pending_dream_drafts.get(chat_id)
+
+
+def pop_pending_dream_draft(chat_id: int) -> PendingDreamDraft | None:
+    """Return and remove the current pending dream draft for chat_id."""
+    _evict_expired_pending_dream_drafts()
+    return _pending_dream_drafts.pop(chat_id, None)
+
+
+def clear_pending_dream_draft(chat_id: int) -> None:
+    """Remove any pending dream draft for chat_id."""
+    _pending_dream_drafts.pop(chat_id, None)
+
+
+def _evict_expired_pending_dream_drafts(*, now: datetime | None = None) -> None:
+    current = now or datetime.now(tz=timezone.utc)
+    ttl = timedelta(minutes=PENDING_DREAM_TTL_MINUTES)
+    expired_chat_ids = [
+        chat_id
+        for chat_id, draft in _pending_dream_drafts.items()
+        if current - draft.created_at > ttl
+    ]
+    for chat_id in expired_chat_ids:
+        _pending_dream_drafts.pop(chat_id, None)
+
+
+def _evict_excess_pending_dream_drafts() -> None:
+    excess = len(_pending_dream_drafts) - MAX_PENDING_DREAM_DRAFTS
+    if excess <= 0:
+        return
+    oldest_chat_ids = sorted(
+        _pending_dream_drafts,
+        key=lambda chat_id: _pending_dream_drafts[chat_id].created_at,
+    )[:excess]
+    for chat_id in oldest_chat_ids:
+        _pending_dream_drafts.pop(chat_id, None)

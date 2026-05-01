@@ -18,9 +18,10 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.assistant.chat import handle_chat
+from app.assistant.chat import handle_chat_with_metadata
 from app.assistant.facade import AssistantFacade
-from app.assistant.voice_media import update_voice_media_event_status
+from app.assistant.voice_media import store_voice_transcript, update_voice_media_event_status
+from app.telegram.handlers import _maybe_store_pending_dream
 from app.workers.cleanup import delete_local_voice_file
 
 LOGGER = logging.getLogger(__name__)
@@ -61,10 +62,10 @@ async def transcribe_and_reply(
         return
 
     LOGGER.info("Transcription succeeded event_id=%s chars=%s", event_id, len(transcript))
-    await update_voice_media_event_status(session_factory, event_id, "transcribed")
+    await store_voice_transcript(session_factory, event_id, transcript)
 
     try:
-        reply = await handle_chat(
+        result = await handle_chat_with_metadata(
             transcript,
             facade,
             session_factory=session_factory,
@@ -76,9 +77,16 @@ async def transcribe_and_reply(
         await _send_telegram_message(telegram_bot_token, chat_id, _TRANSCRIPTION_FAILED_MESSAGE)
         return
 
+    _maybe_store_pending_dream(
+        result,
+        transcript,
+        chat_id=chat_id,
+        source_message_id=None,
+        source_kind="voice_transcript",
+    )
     await update_voice_media_event_status(session_factory, event_id, "done")
     delete_local_voice_file(local_path)
-    await _send_telegram_message(telegram_bot_token, chat_id, reply)
+    await _send_telegram_message(telegram_bot_token, chat_id, result.text)
 
 
 async def _transcribe_file(local_path: str) -> str:

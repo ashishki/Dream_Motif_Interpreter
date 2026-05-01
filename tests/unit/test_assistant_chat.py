@@ -494,6 +494,67 @@ async def test_execute_tool_create_dream_accepts_natural_russian_dream_openings(
     facade.create_dream.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_execute_tool_create_dream_accepts_russian_relative_date_argument() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=True,
+        date="2026-04-30",
+        title="о море мост",
+        word_count=7,
+        source_doc_id="telegram:42",
+        written_to_google_doc=True,
+        written_to_doc_name="Сны Николая",
+    )
+
+    with patch("app.assistant.facade._application_today", return_value=date(2026, 5, 1)):
+        result = await tools_module.execute_tool(
+            "create_dream",
+            {"raw_text": "вчера мне приснилось море и мост", "date": "вчера"},
+            facade,
+            chat_id=42,
+            request_text="запиши сон",
+        )
+
+    assert "Dream saved:" in result
+    facade.create_dream.assert_awaited_once()
+    assert facade.create_dream.await_args.kwargs["dream_date"] == date(2026, 4, 30)
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_retry_write_reports_nothing_to_retry() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.retry_write_to_google_doc.return_value = (False, "", "nothing_to_retry")
+
+    result = await tools_module.execute_tool(
+        "retry_write_to_google_doc",
+        {},
+        facade,
+        chat_id=42,
+        request_text="повтори запись в Google Doc",
+    )
+
+    assert result == "Нет неудачной записи в Google Doc для повтора."
+    facade.retry_write_to_google_doc.assert_awaited_once_with(dream_id=None, chat_id=42)
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_retry_write_failure_is_explicit() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.retry_write_to_google_doc.return_value = (False, "Сны", "retried")
+
+    result = await tools_module.execute_tool(
+        "retry_write_to_google_doc",
+        {},
+        facade,
+        chat_id=42,
+        request_text="повтори запись в Google Doc",
+    )
+
+    assert "Сон не был добавлен в документ" in result
+
+
 @pytest.mark.parametrize(
     "request_text",
     [

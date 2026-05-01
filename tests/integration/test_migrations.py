@@ -188,6 +188,8 @@ async def test_migrations_apply_cleanly(migrated_engine: AsyncEngine) -> None:
     assert "theme_categories" in table_names
     assert "dream_themes" in table_names
     assert "annotation_versions" in table_names
+    assert "voice_media_events" in table_names
+    assert "dream_write_statuses" in table_names
 
 
 @pytest.mark.anyio
@@ -369,3 +371,36 @@ async def test_annotation_versions_schema(migrated_engine: AsyncEngine) -> None:
 
     assert columns == {"id", "entity_type", "entity_id", "snapshot", "changed_by", "created_at"}
     assert column_types["snapshot"] == "jsonb"
+
+
+@pytest.mark.anyio
+async def test_dream_write_statuses_schema(migrated_engine: AsyncEngine) -> None:
+    columns = {column["name"] for column in await _columns(migrated_engine, "dream_write_statuses")}
+    foreign_keys = await _foreign_keys(migrated_engine, "dream_write_statuses")
+    indexes = await _index_definitions(migrated_engine, "dream_write_statuses")
+
+    assert columns == {
+        "id",
+        "dream_id",
+        "target_doc_id",
+        "status",
+        "attempt_count",
+        "last_error",
+        "created_at",
+        "updated_at",
+    }
+    assert foreign_keys[0]["referred_table"] == "dream_entries"
+    assert foreign_keys[0]["options"]["ondelete"] == "CASCADE"
+    assert any(index["indexname"] == "ix_dream_write_statuses_dream_id" for index in indexes)
+    assert any(
+        index["indexname"] == "ix_dream_write_statuses_status_updated_at" for index in indexes
+    )
+
+
+@pytest.mark.anyio
+async def test_voice_media_events_schema_includes_transcript_text(
+    migrated_engine: AsyncEngine,
+) -> None:
+    columns = {column["name"] for column in await _columns(migrated_engine, "voice_media_events")}
+
+    assert "transcript_text" in columns

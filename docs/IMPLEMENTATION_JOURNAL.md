@@ -23,6 +23,15 @@ Status: append-only
 
 ## Entries
 
+### 2026-05-01 — FIX-13..FIX-17 — Phase 17 Audit Follow-ups
+
+- Scope: `app/assistant/facade.py`, `app/assistant/voice_media.py`, `app/assistant/session.py`, `app/shared/config.py`, `docs/RUNBOOK_TELEGRAM_BOT.md`, `docs/ARCHITECTURE.md`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_session.py`, `docs/CODEX_PROMPT.md`, `docs/audit/*`
+- Why this work happened: Cycle 13 deep audit found stale failed write-status rows after retry, missing Phase 17 DB spans, unbounded pending dream draft state, undocumented `APP_TIMEZONE`, and stale architecture storage inventory.
+- Decisions applied: D-015 — dream recording reliability requires deterministic write state and honest retry behavior.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_facade.py tests/unit/test_assistant_session.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py -q --tb=short` -> 68 passed; `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/integration/test_migrations.py -q --tb=short` -> 169 passed; `.venv/bin/ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean; `.venv/bin/ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean.
+- Follow-ups: none for Cycle 13 findings; live Telegram smoke checklist still remains a deployment/manual verification step.
+- Notes for next agent: retry now passes the selected failed `DreamWriteStatus` row into the write path and updates that row in place; `APP_TIMEZONE` is a typed settings field with default `Asia/Tbilisi`.
+
 ### 2026-05-01 — WS-17.1 — Deterministic Dream Intake Classifier
 
 - Scope: `app/assistant/tools.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_transcription_worker.py`, `docs/CODEX_PROMPT.md`, `docs/tasks_phase17.md`
@@ -31,6 +40,51 @@ Status: append-only
 - Evidence collected: targeted tests passed: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_transcription_worker.py -q --tb=short` -> 60 passed; `ruff check app/ tests/` -> clean; `ruff format --check app/ tests/` -> clean.
 - Follow-ups: WS-17.2 pending dream draft state is next; full suite should be re-run on the working/live test instance because local non-live run failed on missing PostgreSQL at `127.0.0.1:5433` and `tests/unit/test_ci.py::test_ruff_check_passes` expects `ruff` on PATH.
 - Notes for next agent: classifier accepts natural openings only when at least two narrative words follow the opening; short mentions like "мне приснилось?" are still rejected.
+
+### 2026-05-01 — WS-17.2 — Pending Dream Draft State for Confirmation
+
+- Scope: `app/assistant/session.py`, `app/telegram/handlers.py`, `app/workers/transcribe.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_transcription_worker.py`, `docs/CODEX_PROMPT.md`, `docs/tasks_phase17.md`
+- Why this work happened: Phase 17 D2/P0 — after "записать?" the bot had no typed pending candidate, so a later "да" had to infer from chat history and could save the wrong text or nothing at all.
+- Decisions applied: D-015 — dream recording reliability moves from prompt-only behavior to deterministic intake and state; ADR-006 consulted, but this WS uses the smaller TTL-bounded in-memory implementation first rather than introducing schema work mid-phase.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py -q --tb=short` -> 86 passed; `.venv/bin/ruff check app/ tests/` -> clean; `.venv/bin/ruff format --check app/ tests/` -> clean.
+- Follow-ups: WS-17.3 deterministic relative date and auto-title resolution is next; Phase 17 still needs honest Google Doc write status and reply-to-voice explicit-save handling before the phase can close.
+- Notes for next agent: pending drafts are keyed by `chat_id`, include `source_kind` (`text` / `voice_transcript`), expire after 30 minutes, and are consumed only on explicit confirmation/decline rather than by rereading LLM history.
+
+### 2026-05-01 — WS-17.3 — Deterministic Relative Date and Auto-Title Resolution
+
+- Scope: `app/assistant/facade.py`, `app/assistant/tools.py`, `app/assistant/chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `docs/CODEX_PROMPT.md`, `docs/tasks_phase17.md`
+- Why this work happened: Phase 17 D5/P1 — dream date and fallback title handling was mostly prompt-driven; missing dates stayed null and missing titles became generic `без названия`.
+- Decisions applied: D-015 — dream recording reliability moves from prompt-only behavior to deterministic intake and state.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py -q --tb=short` -> 139 passed; `.venv/bin/ruff check app/ tests/` -> clean; `.venv/bin/ruff format --check app/ tests/` -> clean.
+- Follow-ups: WS-17.4 write outbox and honest success messages is next; retry still needs to target a failed write record rather than a loosely inferred latest dream.
+- Notes for next agent: application date is resolved through `APP_TIMEZONE` with default `Asia/Tbilisi`; relative marker precedence matters because `позавчера` contains `вчера`.
+
+### 2026-05-01 — WS-17.4 — Write Outbox and Honest Success Messages
+
+- Scope: `app/models/write_status.py`, `app/models/__init__.py`, `alembic/versions/015_add_dream_write_statuses.py`, `app/assistant/facade.py`, `app/assistant/tools.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py`, `tests/integration/test_migrations.py`, `docs/CODEX_PROMPT.md`, `docs/tasks_phase17.md`
+- Why this work happened: Phase 17 D3/D4/P0 — Google Doc write attempts were not tracked, retry without `dream_id` used the latest dream globally, and failure output was too easy for the final assistant message to misstate as success.
+- Decisions applied: D-015 — dream recording reliability moves from prompt-only behavior to deterministic intake and state.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py -q --tb=short` -> 143 passed; `.venv/bin/python -m pytest tests/integration/test_migrations.py -q --tb=short` -> 12 passed; `.venv/bin/ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py` -> clean; `.venv/bin/ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py` -> clean.
+- Follow-ups: WS-17.5 reply-to-voice explicit save is next; Phase 17 still needs final regression/user-doc pass after WS-17.5.
+- Notes for next agent: retry is scoped by `DreamEntry.source_doc_id == telegram:<chat_id>` when `chat_id` is available; failed write errors are sanitized and truncated before persistence.
+
+### 2026-05-01 — WS-17.5 — Reply-to-Voice "запиши сон"
+
+- Scope: `app/models/voice.py`, `app/assistant/voice_media.py`, `app/telegram/handlers.py`, `app/workers/transcribe.py`, `alembic/versions/016_add_voice_transcript_text.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py`, `docs/CODEX_PROMPT.md`, `docs/tasks_phase17.md`
+- Why this work happened: Phase 17 D6/P1 — text replies like "запиши сон" to a previous voice message could not resolve the replied-to transcript and therefore could not save the intended dream.
+- Decisions applied: D-015 — dream recording reliability moves from prompt-only behavior to deterministic intake and state.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/integration/test_migrations.py -q --tb=short` -> 167 passed; `.venv/bin/ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean; `.venv/bin/ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean.
+- Follow-ups: WS-17.6 regression suite and manual Telegram checklist is next; after that Phase 17 needs final review/doc gate.
+- Notes for next agent: transcript text is stored on `voice_media_events` only for operational reply-to-voice behavior; unavailable or failed transcripts produce refusal text and do not call `create_dream`.
+
+### 2026-05-01 — WS-17.6 — Recording Regression Suite and Manual Test Script
+
+- Scope: `docs/RUNBOOK_TELEGRAM_BOT.md`, `docs/USER_GUIDE_RU.md`, `docs/tasks_phase17.md`, `docs/CODEX_PROMPT.md`, `docs/IMPLEMENTATION_JOURNAL.md`
+- Why this work happened: Phase 17 needed a final regression and manual verification gate for the user-reported recording failures before moving to Phase 18 search quality work.
+- Decisions applied: D-015 — dream recording reliability moves from prompt-only behavior to deterministic intake and state.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/integration/test_migrations.py -q --tb=short` -> 167 passed; `.venv/bin/ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean; `.venv/bin/ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` -> clean.
+- Follow-ups: Phase 18 starts with WS-18.1 user search regression dataset.
+- Notes for next agent: Phase 17 gate is complete locally; run the manual Telegram recording smoke checklist in `docs/RUNBOOK_TELEGRAM_BOT.md` on the deployed bot before treating live behavior as verified.
 
 ### 2026-05-01 — DOC-WORKFLOW-HARDENING — Local AI Development Workflow
 

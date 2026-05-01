@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import MutableMapping
+from datetime import date
 from typing import Any
 
 from telegram import Update
@@ -13,7 +14,15 @@ from telegram.ext import ApplicationHandlerStop, ContextTypes
 
 from app.assistant.chat import ChatResult, handle_chat_with_metadata
 from app.assistant.facade import AssistantFacade
+from app.assistant.session import (
+    clear_pending_dream_draft,
+    load_pending_dream_draft,
+    pop_pending_dream_draft,
+    save_pending_dream_draft,
+)
+from app.assistant.tools import _has_natural_dream_opening, _is_explicit_create_request
 from app.assistant.voice_media import create_voice_media_event
+from app.assistant.voice_media import get_voice_transcript_for_message
 from app.services.feedback_service import FeedbackService
 from app.telegram.voice import download_voice_file
 
@@ -22,6 +31,12 @@ GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
 VOICE_PROCESSING_ACK = "Обрабатываю голосовое сообщение..."
 FEEDBACK_PROMPT = "Оцените ответ от 1 до 5 или добавьте комментарий после цифры."
 FEEDBACK_ACK = "Thanks, noted."
+VOICE_TRANSCRIPT_PROCESSING = (
+    "Расшифровка голосового сообщения ещё выполняется. Повторите команду после завершения."
+)
+VOICE_TRANSCRIPT_UNAVAILABLE = (
+    "Расшифровка этого голосового сообщения недоступна, поэтому я не могу сохранить сон."
+)
 _FEEDBACK_STATE_KEY = "_feedback_pending_by_chat"
 _BOT_MESSAGE_IDS_KEY = "_bot_message_ids_by_chat"
 
@@ -49,6 +64,18 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     stripped_text = message.text.strip()
     reply_to_msg_id = getattr(getattr(message, "reply_to_message", None), "message_id", None)
     session_factory = context.bot_data.get("session_factory")
+
+    if chat_id is not None and await _handle_reply_to_voice_save(
+        message,
+        stripped_text,
+        chat_id=chat_id,
+        session_factory=session_factory,
+        facade=_get_facade(context),
+    ):
+        if chat_key is not None:
+            pending_feedback.pop(chat_key, None)
+            bot_msg_ids.pop(chat_key, None)
+        return
 
     if (
         chat_key is not None
@@ -97,6 +124,17 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await message.reply_text(FEEDBACK_ACK)
         return
 
+    if chat_id is not None and await _handle_pending_dream_confirmation(
+        message,
+        stripped_text,
+        chat_id=chat_id,
+        facade=_get_facade(context),
+    ):
+        if chat_key is not None:
+            pending_feedback.pop(chat_key, None)
+            bot_msg_ids.pop(chat_key, None)
+        return
+
     if chat_key is not None:
         pending_feedback.pop(chat_key, None)
         bot_msg_ids.pop(chat_key, None)
@@ -120,6 +158,15 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 await typing_task
     reply_text = _format_reply_text(result)
     sent_message = await message.reply_text(reply_text)
+
+    if chat_id is not None:
+        _maybe_store_pending_dream(
+            result,
+            message.text,
+            chat_id=chat_id,
+            source_message_id=getattr(message, "message_id", None),
+            source_kind="text",
+        )
 
     if chat_key is not None and _is_substantive_response(result.text):
         pending_feedback[chat_key] = {
@@ -293,6 +340,140 @@ def _format_reply_text(result: ChatResult) -> str:
     if not _is_substantive_response(result.text):
         return result.text
     return f"{result.text}\n\n{FEEDBACK_PROMPT}"
+
+
+async def _handle_pending_dream_confirmation(
+    message: Any,
+    text: str,
+    *,
+    chat_id: int,
+    facade: AssistantFacade,
+) -> bool:
+    normalized = _normalize_confirmation_text(text)
+    if not normalized:
+        return False
+
+    if _is_negative_confirmation(normalized):
+        if load_pending_dream_draft(chat_id) is None:
+            return False
+        clear_pending_dream_draft(chat_id)
+        await message.reply_text("Хорошо, не сохраняю.")
+        return True
+
+    if not _is_positive_confirmation(normalized):
+        return False
+
+    draft = pop_pending_dream_draft(chat_id)
+    if draft is None:
+        return False
+
+    dream_date = date.fromisoformat(draft.dream_date) if draft.dream_date else None
+    created = await facade.create_dream(
+        draft.raw_text,
+        title=draft.title,
+        dream_date=dream_date,
+        chat_id=chat_id,
+    )
+    await message.reply_text(_format_create_dream_reply(created))
+    return True
+
+
+async def _handle_reply_to_voice_save(
+    message: Any,
+    text: str,
+    *,
+    chat_id: int,
+    session_factory: Any,
+    facade: AssistantFacade,
+) -> bool:
+    reply_to = getattr(message, "reply_to_message", None)
+    if reply_to is None or getattr(reply_to, "voice", None) is None:
+        return False
+    if not _is_explicit_create_request(text):
+        return False
+    if session_factory is None:
+        await message.reply_text(VOICE_TRANSCRIPT_UNAVAILABLE)
+        return True
+
+    status, transcript = await get_voice_transcript_for_message(
+        session_factory,
+        chat_id=chat_id,
+        telegram_message_id=int(getattr(reply_to, "message_id", 0)),
+    )
+    if status in {"received", "processing", "transcribed"} and not transcript:
+        await message.reply_text(VOICE_TRANSCRIPT_PROCESSING)
+        return True
+    if not transcript:
+        await message.reply_text(VOICE_TRANSCRIPT_UNAVAILABLE)
+        return True
+
+    created = await facade.create_dream(transcript, chat_id=chat_id)
+    await message.reply_text(_format_create_dream_reply(created))
+    clear_pending_dream_draft(chat_id)
+    return True
+
+
+def _maybe_store_pending_dream(
+    result: ChatResult,
+    raw_text: str,
+    *,
+    chat_id: int,
+    source_message_id: int | None,
+    source_kind: str,
+) -> None:
+    if "create_dream" in result.tool_calls_made:
+        clear_pending_dream_draft(chat_id)
+        return
+    if not _has_natural_dream_opening(raw_text.casefold()):
+        return
+    if not _is_pending_dream_confirmation_reply(result.text):
+        return
+
+    save_pending_dream_draft(
+        chat_id,
+        raw_text=raw_text,
+        title=None,
+        dream_date=None,
+        source_message_id=source_message_id,
+        source_kind=source_kind,
+    )
+
+
+def _is_pending_dream_confirmation_reply(text: str) -> bool:
+    lowered = text.casefold()
+    return "?" in lowered and any(
+        phrase in lowered
+        for phrase in (
+            "записать",
+            "сохранить",
+            "добавить в архив",
+            "занести в архив",
+        )
+    )
+
+
+def _normalize_confirmation_text(text: str) -> str:
+    return text.strip().casefold().strip("!?. ,")
+
+
+def _is_positive_confirmation(text: str) -> bool:
+    return text in {"да", "ага", "ok", "okay", "yes"}
+
+
+def _is_negative_confirmation(text: str) -> bool:
+    return text in {"нет", "не надо", "не нужно"}
+
+
+def _format_create_dream_reply(created: Any) -> str:
+    if not getattr(created, "created", False):
+        return "Эта запись уже есть в архиве. В Google Doc повторно не записываю."
+    if getattr(created, "written_to_google_doc", False):
+        doc_label = getattr(created, "written_to_doc_name", "") or "Google Doc"
+        return f"Сон сохранён и добавлен в документ {doc_label}."
+    return (
+        "Сон сохранён в архиве. "
+        "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
+    )
 
 
 async def _send_typing_action_loop(

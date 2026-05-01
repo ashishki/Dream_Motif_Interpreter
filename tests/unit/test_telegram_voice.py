@@ -8,7 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.telegram.handlers import voice_message_handler
+from app.assistant.facade import AssistantFacade
+from app.telegram.handlers import (
+    VOICE_TRANSCRIPT_PROCESSING,
+    VOICE_TRANSCRIPT_UNAVAILABLE,
+    text_message_handler,
+    voice_message_handler,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -41,15 +47,39 @@ def _make_voice_update(
 
 
 def _make_context(
-    session_factory: object = None, voice_media_dir: str = "/tmp/test_voice"
+    session_factory: object = None,
+    voice_media_dir: str = "/tmp/test_voice",
+    facade: object = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         bot_data={
+            "facade": facade or AsyncMock(spec=AssistantFacade),
             "session_factory": session_factory,
             "voice_media_dir": voice_media_dir,
         },
         bot=AsyncMock(),
     )
+
+
+def _make_reply_to_voice_update(
+    text: str = "запиши сон",
+    *,
+    chat_id: int = 42,
+    reply_message_id: int = 10,
+) -> tuple[MagicMock, AsyncMock]:
+    reply_to = SimpleNamespace(message_id=reply_message_id, voice=MagicMock())
+    message = AsyncMock()
+    message.text = text
+    message.reply_to_message = reply_to
+    message.reply_text = AsyncMock()
+
+    chat = MagicMock()
+    chat.id = chat_id
+
+    update = MagicMock()
+    update.effective_message = message
+    update.effective_chat = chat
+    return update, message
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +246,67 @@ async def test_voice_handler_sends_error_reply_when_download_fails() -> None:
     message.reply_text.assert_awaited_once()
     call_text = message.reply_text.call_args[0][0]
     assert "download" in call_text.lower() or "voice" in call_text.lower()
+
+
+@pytest.mark.asyncio
+async def test_text_handler_reply_to_voice_save_uses_stored_transcript() -> None:
+    update, message = _make_reply_to_voice_update()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        created=True,
+        written_to_google_doc=True,
+        written_to_doc_name="Сны",
+    )
+    context = _make_context(session_factory=MagicMock(), facade=facade)
+
+    with patch(
+        "app.telegram.handlers.get_voice_transcript_for_message",
+        new=AsyncMock(return_value=("done", "сегодня мне приснилось море и мост")),
+    ) as mock_lookup:
+        await text_message_handler(update, context)
+
+    mock_lookup.assert_awaited_once_with(
+        context.bot_data["session_factory"],
+        chat_id=42,
+        telegram_message_id=10,
+    )
+    facade.create_dream.assert_awaited_once_with(
+        "сегодня мне приснилось море и мост",
+        chat_id=42,
+    )
+    message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ Сны.")
+
+
+@pytest.mark.asyncio
+async def test_text_handler_reply_to_voice_reports_processing_transcript() -> None:
+    update, message = _make_reply_to_voice_update()
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_context(session_factory=MagicMock(), facade=facade)
+
+    with patch(
+        "app.telegram.handlers.get_voice_transcript_for_message",
+        new=AsyncMock(return_value=("received", None)),
+    ):
+        await text_message_handler(update, context)
+
+    facade.create_dream.assert_not_awaited()
+    message.reply_text.assert_awaited_once_with(VOICE_TRANSCRIPT_PROCESSING)
+
+
+@pytest.mark.asyncio
+async def test_text_handler_reply_to_voice_reports_unavailable_transcript() -> None:
+    update, message = _make_reply_to_voice_update()
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_context(session_factory=MagicMock(), facade=facade)
+
+    with patch(
+        "app.telegram.handlers.get_voice_transcript_for_message",
+        new=AsyncMock(return_value=("failed", None)),
+    ):
+        await text_message_handler(update, context)
+
+    facade.create_dream.assert_not_awaited()
+    message.reply_text.assert_awaited_once_with(VOICE_TRANSCRIPT_UNAVAILABLE)
 
 
 @pytest.mark.asyncio

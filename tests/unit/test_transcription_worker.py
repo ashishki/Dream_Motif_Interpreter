@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.assistant.chat import ChatResult
+from app.assistant.session import clear_pending_dream_draft, load_pending_dream_draft
 from app.workers.transcribe import (
     _TRANSCRIPTION_FAILED_MESSAGE,
     transcribe_and_reply,
@@ -24,6 +26,15 @@ def _make_facade() -> MagicMock:
     return AsyncMock(spec=AssistantFacade)
 
 
+@pytest.fixture(autouse=True)
+def _clear_pending_drafts() -> None:
+    clear_pending_dream_draft(5)
+    clear_pending_dream_draft(42)
+    yield
+    clear_pending_dream_draft(5)
+    clear_pending_dream_draft(42)
+
+
 # ---------------------------------------------------------------------------
 # AC-1: Transcription job is processed asynchronously
 # ---------------------------------------------------------------------------
@@ -36,15 +47,18 @@ async def test_transcribe_and_reply_calls_whisper_and_sends_reply() -> None:
     chat_id = 42
     transcript = "I was flying over the ocean."
     reply_text = "The archive shows flying dreams on several occasions."
+    session_factory = _make_session_factory()
 
     with (
         patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
         patch(
-            "app.workers.transcribe.handle_chat", new=AsyncMock(return_value=reply_text)
+            "app.workers.transcribe.handle_chat_with_metadata",
+            new=AsyncMock(return_value=ChatResult(reply_text, [])),
         ) as mock_chat,
         patch(
             "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
         ) as mock_update,
+        patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()) as mock_store,
         patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as mock_send,
     ):
         await transcribe_and_reply(
@@ -52,7 +66,7 @@ async def test_transcribe_and_reply_calls_whisper_and_sends_reply() -> None:
             local_path="/tmp/voice.ogg",
             chat_id=chat_id,
             telegram_bot_token="TOKEN",
-            session_factory=_make_session_factory(),
+            session_factory=session_factory,
             facade=_make_facade(),
         )
 
@@ -61,6 +75,7 @@ async def test_transcribe_and_reply_calls_whisper_and_sends_reply() -> None:
     assert call_text == transcript
 
     mock_send.assert_awaited_once_with("TOKEN", chat_id, reply_text)
+    mock_store.assert_awaited_once_with(session_factory, event_id, transcript)
     mock_update.assert_awaited()
 
 
@@ -80,8 +95,10 @@ async def test_transcribe_and_reply_routes_through_handle_chat() -> None:
     with (
         patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
         patch(
-            "app.workers.transcribe.handle_chat", new=AsyncMock(return_value="Some reply")
+            "app.workers.transcribe.handle_chat_with_metadata",
+            new=AsyncMock(return_value=ChatResult("Some reply", [])),
         ) as mock_chat,
+        patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()),
         patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
         patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
     ):
@@ -112,8 +129,10 @@ async def test_transcribe_and_reply_routes_natural_dream_transcript_through_chat
     with (
         patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
         patch(
-            "app.workers.transcribe.handle_chat", new=AsyncMock(return_value="saved")
+            "app.workers.transcribe.handle_chat_with_metadata",
+            new=AsyncMock(return_value=ChatResult("saved", [])),
         ) as mock_chat,
+        patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()),
         patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
         patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
     ):
@@ -149,7 +168,7 @@ async def test_transcribe_and_reply_sends_error_on_transcription_failure() -> No
             "app.workers.transcribe._transcribe_file",
             new=AsyncMock(side_effect=RuntimeError("API error")),
         ),
-        patch("app.workers.transcribe.handle_chat", new=AsyncMock()) as mock_chat,
+        patch("app.workers.transcribe.handle_chat_with_metadata", new=AsyncMock()) as mock_chat,
         patch(
             "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
         ) as mock_update,
@@ -179,9 +198,10 @@ async def test_transcribe_and_reply_sends_error_when_handle_chat_fails() -> None
     with (
         patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="transcript")),
         patch(
-            "app.workers.transcribe.handle_chat",
+            "app.workers.transcribe.handle_chat_with_metadata",
             new=AsyncMock(side_effect=RuntimeError("LLM down")),
         ),
+        patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()),
         patch(
             "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
         ) as mock_update,
@@ -205,7 +225,11 @@ async def test_transcribe_and_reply_sends_error_when_handle_chat_fails() -> None
 async def test_transcribe_and_reply_updates_status_to_done_on_success() -> None:
     with (
         patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="text")),
-        patch("app.workers.transcribe.handle_chat", new=AsyncMock(return_value="ok")),
+        patch(
+            "app.workers.transcribe.handle_chat_with_metadata",
+            new=AsyncMock(return_value=ChatResult("ok", [])),
+        ),
+        patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()) as mock_store,
         patch(
             "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
         ) as mock_update,
@@ -220,7 +244,36 @@ async def test_transcribe_and_reply_updates_status_to_done_on_success() -> None:
             facade=_make_facade(),
         )
 
+    mock_store.assert_awaited_once()
     statuses = [call[0][2] for call in mock_update.call_args_list]
-    assert "transcribed" in statuses
     assert "done" in statuses
-    assert statuses.index("transcribed") < statuses.index("done")
+
+
+@pytest.mark.asyncio
+async def test_transcribe_and_reply_stores_pending_dream_for_confirmation_prompt() -> None:
+    event_id = uuid.uuid4()
+    transcript = "сегодня мне приснилось, что я лечу над морем"
+
+    with (
+        patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
+        patch(
+            "app.workers.transcribe.handle_chat_with_metadata",
+            new=AsyncMock(return_value=ChatResult("Записать этот сон в архив?", [])),
+        ),
+        patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()),
+        patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
+    ):
+        await transcribe_and_reply(
+            event_id=event_id,
+            local_path="/tmp/f.ogg",
+            chat_id=5,
+            telegram_bot_token="TOK",
+            session_factory=_make_session_factory(),
+            facade=_make_facade(),
+        )
+
+    draft = load_pending_dream_draft(5)
+    assert draft is not None
+    assert draft.raw_text == transcript
+    assert draft.source_kind == "voice_transcript"

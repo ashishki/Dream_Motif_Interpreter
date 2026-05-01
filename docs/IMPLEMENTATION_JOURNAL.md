@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.1
-Last updated: 2026-04-21
+Version: 1.2
+Last updated: 2026-05-01
 Status: append-only
 
 ---
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-01 — DOC-PHASE17-20 — User Feedback Task Graphs
+
+- Scope: `docs/tasks_phase17.md`, `docs/tasks_phase18.md`, `docs/tasks_phase19.md`, `docs/tasks_phase20.md`, `docs/CODEX_PROMPT.md`, `docs/DECISION_LOG.md`
+- Why this work happened: Тест 5 (26.04.26) showed that Phase 14-16 fixes improved write/search UX but left critical product gaps: natural dream narration not recorded, confirmation flow lacks pending state, retry can target the wrong dream, search remains prompt-dependent, and direct title lookup is absent.
+- Decisions applied: D-015 — dream recording reliability must be implemented as deterministic intake/write state, not prompt-only behavior.
+- Evidence collected: code inspection of `app/assistant/tools.py`, `app/assistant/facade.py`, `app/assistant/chat.py`, `app/telegram/handlers.py`, `app/workers/transcribe.py`, `app/retrieval/query.py`, `app/services/gdocs_client.py`; no tests run in this doc-only planning update.
+- Follow-ups: start orchestrator at `docs/tasks_phase17.md` WS-17.1; after Phase 17, continue with Phase 18 search quality, Phase 19 title search, Phase 20 feedback/notes polish.
+- Notes for next agent: `docs/tasks.md` remains historical; new active work lives in phase-specific task graphs. Do not close Phase 17 with prompt changes only — the main requirement is deterministic state and honest write status.
 
 ### 2026-04-21 — tasks.md Phase 6 (T21–T25) — Universal Source Intake Pipeline
 

@@ -1,27 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.43
-Date: 2026-04-25
-Phase: Phase 16 planning — search quality, hallucination prevention, UX (Тест 4)
+Version: 1.44
+Date: 2026-05-01
+Phase: Phase 17 planning — deterministic dream recording stabilization (Тест 5)
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 16 planning (WS-16.1–16.6)
-- **Baseline:** 300 unit tests passing, 0 failed
+- **Phase:** Phase 17 planned (WS-17.1–17.6)
+- **Baseline:** 306 unit tests passing, 0 failed (last recorded; not re-run during 2026-05-01 doc planning update)
 - **Ruff:** clean (0 violations)
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-04-25 (Phases 13–15 complete — multi-source docs, write flow, doc-name clarity)
+- **Last updated:** 2026-05-01 (Phases 17–20 task graphs added from Тест 5 feedback)
 
 ---
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 15 complete
-- **Current planning state:** Phase 16 planning — search quality, hallucination prevention, sync notification, dream notes; see `docs/tasks_phase16.md`
-- **Latest completed implementation task:** Phase 15 — doc-name clarity across all write paths (write_dream_to_google_doc → tuple[bool, str], CreatedDreamItem.written_to_doc_name, manage_archive_source list shows human-readable names)
-- **Current baseline:** 300 unit tests passing
+- **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
+- **Current planning state:** Phase 17 planned — deterministic dream recording stabilization; see `docs/tasks_phase17.md`
+- **Latest completed implementation task:** Phase 16 — search grounding prompt hardening, processing UX, sync notification, dream notes, raw emoji reaction capture.
+- **Current baseline:** 306 unit tests passing (last recorded in Phase 16 handoff)
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -31,7 +31,11 @@ Phase: Phase 16 planning — search quality, hallucination prevention, UX (Те�
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
-- **Active task graph:** `docs/tasks_phase16.md` (Phase 16: WS-16.1–16.6)
+- **Active task graph:** `docs/tasks_phase17.md` (Phase 17: deterministic dream recording stabilization)
+- **Upcoming task graph:** `docs/tasks_phase18.md` (search quality and hallucination suppression)
+- **Upcoming task graph:** `docs/tasks_phase19.md` (direct title search)
+- **Upcoming task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
+- **Previous task graph (Phase 16):** `docs/tasks_phase16.md` (implemented/planning source from Тест 4)
 - **Previous task graph (Phase 15):** `docs/tasks_phase15.md` (complete)
 - **Previous task graph (Phase 14):** `docs/tasks_phase14.md` (complete)
 - **Previous task graph (Phase 13):** `docs/tasks_phase13.md` (complete)
@@ -50,19 +54,27 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-**WS-16.1 + WS-16.2 + WS-16.3 + WS-16.4 + WS-16.7 complete (2026-04-25). Next: WS-16.5.**
+**Start Phase 17 with WS-17.1.**
 
-WS-16.5: Sync completion notification.
-Baseline: 306 unit tests passing.
-Design:
-  1. trigger_sync → save in Redis sync_notify:{job_id} = chat_id, TTL 1h.
-  2. app/workers/ingest.py after completion → read Redis, if chat_id → Bot API sendMessage.
+WS-17.1: Deterministic Dream Intake Classifier.
+Baseline: 306 unit tests passing (last recorded; run targeted tests before implementation close).
+Goal:
+  Natural dream narration such as "сегодня мне приснилось" must count as dream intake
+  without requiring exact "запиши сон" wording.
 
 Context refs:
-- `docs/tasks_phase16.md` — Phase 16 task graph (WS-16.5–16.6 open)
-- `app/assistant/tools.py` — trigger_sync tool
-- `app/assistant/facade.py` — facade layer
-- `app/workers/ingest.py` — ingest worker
+- `docs/tasks_phase17.md` — active task graph (read §1-4 and WS-17.1 before coding)
+- `app/assistant/tools.py::_is_explicit_create_request`
+- `app/workers/transcribe.py::transcribe_and_reply`
+- `tests/unit/test_assistant_chat.py`
+- `tests/unit/test_transcription_worker.py`
+
+Recommended phase order after WS-17.1:
+  1. WS-17.2 pending dream draft state.
+  2. WS-17.3 deterministic relative date and auto-title resolution.
+  3. WS-17.4 write outbox and honest success messages.
+  4. WS-17.5 reply-to-voice "запиши сон".
+  5. WS-17.6 regression suite and user docs.
 
 ---
 

@@ -1,7 +1,7 @@
 # Decision Log — Dream Motif Interpreter
 
-Version: 2.1
-Last updated: 2026-04-16 (Phase 9 complete — D-012 added)
+Version: 2.2
+Last updated: 2026-05-01 (Phase 17-20 task graphs added)
 
 ## Rules
 
@@ -27,8 +27,9 @@ Last updated: 2026-04-16 (Phase 9 complete — D-012 added)
 | D-012 | 2026-04-16 | Active | WS-9.7 (Pattern Queries Extension) deferred to Phase 9.1 / Phase 10; pattern analysis over inducted motifs is only meaningful after a confirmed motif accumulation period that has not yet occurred | `docs/tasks_phase9.md §WS-9.7`, `docs/ARCHITECTURE.md §17` |
 | D-013 | 2026-04-17 | Active | ResearchRetriever uses a provider-agnostic design (configurable base_url + api_key from settings); Tavily is the reference external search provider but the implementation does not hard-code it | `docs/tasks_phase10.md §WS-10.2 Notes`, ADR-009 |
 | D-014 | 2026-04-18 | Active | WS-11.4 (optional comment capture after digit rating) deferred; rating-only feedback sufficient for current quality signal; comment capture may be added in a future phase | `docs/tasks_phase11.md §WS-11.4`, `docs/FEEDBACK_LOOP.md §2` |
+| D-015 | 2026-05-01 | Planned | Dream recording reliability must move from prompt-only behavior to deterministic intake, pending-draft state, write status tracking, and honest success/failure responses | `docs/tasks_phase17.md` |
 
 ## Notes
 
-- All decisions through D-012 are Active — confirmed and implemented through Phase 9.
+- Decisions through D-014 are Active; D-015 is planned and becomes Active when Phase 17 lands.
 - The presence of a decision in this log implies the corresponding implementation exists unless explicitly marked otherwise.

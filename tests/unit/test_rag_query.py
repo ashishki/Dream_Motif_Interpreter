@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import ast
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
+from uuid import uuid4
 
 import pytest
 
@@ -108,4 +110,64 @@ def test_coerce_fragments_returns_fragment_matches() -> None:
             match_type="semantic",
             char_offset=0,
         )
+    ]
+
+
+def test_broad_religious_query_builds_multiple_retrieval_probes() -> None:
+    probes = query._build_retrieval_probes(
+        "религиозные сюжеты",
+        "религиозные сюжеты молитва церковь",
+    )
+
+    assert probes == [
+        "религиозные сюжеты молитва церковь",
+        "религиозные сюжеты церковь храм богослужение",
+        "религиозные сюжеты молитва песнопение Рождество",
+        "религиозные сюжеты икона Христос Бог",
+    ]
+
+
+def test_merge_probe_rows_dedupes_by_dream_id_and_preserves_evidence() -> None:
+    dream_id = uuid4()
+    other_dream_id = uuid4()
+
+    rows = query._merge_probe_rows(
+        [
+            {
+                "dream_id": dream_id,
+                "date": date(2026, 4, 15),
+                "title": "Church dream",
+                "chunk_text": "Я вошел в церковь.",
+                "relevance_score": 0.52,
+                "matched_fragments": [
+                    {"text": "церковь", "match_type": "semantic", "char_offset": 8}
+                ],
+            },
+            {
+                "dream_id": dream_id,
+                "date": date(2026, 4, 15),
+                "title": "Church dream",
+                "chunk_text": "На стене была икона.",
+                "relevance_score": 0.91,
+                "matched_fragments": [
+                    {"text": "икона", "match_type": "semantic", "char_offset": 15}
+                ],
+            },
+            {
+                "dream_id": other_dream_id,
+                "date": date(2026, 4, 12),
+                "title": "Song dream",
+                "chunk_text": "Звучало рождественское песнопение.",
+                "relevance_score": 0.75,
+                "matched_fragments": [],
+            },
+        ]
+    )
+
+    assert [row["dream_id"] for row in rows] == [dream_id, other_dream_id]
+    assert rows[0]["relevance_score"] == 0.91
+    assert rows[0]["chunk_text"] == "Я вошел в церковь.\n---\nНа стене была икона."
+    assert rows[0]["matched_fragments"] == [
+        {"text": "церковь", "match_type": "semantic", "char_offset": 8},
+        {"text": "икона", "match_type": "semantic", "char_offset": 15},
     ]

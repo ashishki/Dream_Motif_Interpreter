@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -28,6 +29,35 @@ QUERY_EXPANSION_MODEL = "claude-haiku-4-5-20251001"
 QUERY_EXPANSION_SYSTEM_PROMPT = (
     "Expand the following dream search query with related symbolic and thematic synonyms. "
     "Return only the expanded query, no explanation."
+)
+RELIGIOUS_QUERY_EXPANSION_TERMS = (
+    "молитва",
+    "песнопение",
+    "богослужение",
+    "церковь",
+    "храм",
+    "икона",
+    "Христос",
+    "Бог",
+    "Рождество",
+)
+RELIGIOUS_QUERY_MARKERS = (
+    "молитв",
+    "песноп",
+    "богослуж",
+    "церков",
+    "религиоз",
+    "храм",
+    "икон",
+    "христ",
+    "рождествен",
+)
+DIVINE_NAME_RE = re.compile(r"\bбог(?:а|у|ом|е)?\b", re.IGNORECASE)
+BROAD_QUERY_MARKERS = ("сюжет", "мотив", "тема", "образ")
+RELIGIOUS_MULTI_QUERY_PROBES = (
+    "церковь храм богослужение",
+    "молитва песнопение Рождество",
+    "икона Христос Бог",
 )
 
 
@@ -106,8 +136,9 @@ class RagQueryService:
             span.set_attribute("relevance_threshold", self._relevance_threshold)
 
             expanded_query = await self._expand_query_terms(cleaned_query)
-            query_embedding = await self._embed_query(expanded_query)
-            rows = await self._search(cleaned_query, query_embedding)
+            probes = _build_retrieval_probes(cleaned_query, expanded_query)
+            rows = await self._search_probes(probes)
+            span.set_attribute("probe_count", len(probes))
             elapsed_ms = int((time.monotonic() - start) * 1000)
             span.set_attribute("retrieval_ms", elapsed_ms)
 
@@ -153,6 +184,7 @@ class RagQueryService:
 
     async def _expand_query_terms(self, query: str) -> str:
         tracer = get_tracer(__name__)
+        deterministic_query = _apply_deterministic_query_profiles(query)
 
         try:
             with tracer.start_as_current_span("rag_query.expand_query") as span:
@@ -163,14 +195,14 @@ class RagQueryService:
                         model=QUERY_EXPANSION_MODEL,
                         max_tokens=200,
                         system=QUERY_EXPANSION_SYSTEM_PROMPT,
-                        messages=[{"role": "user", "content": query}],
+                        messages=[{"role": "user", "content": deterministic_query}],
                     )
         except Exception as exc:
             logger.warning(
                 "query_expansion_failed",
                 extra={"query_length": len(query), "error_type": type(exc).__name__},
             )
-            return query
+            return deterministic_query
 
         content = getattr(response, "content", [])
         text_blocks = [
@@ -179,7 +211,9 @@ class RagQueryService:
             if getattr(block, "type", None) == "text" and getattr(block, "text", None)
         ]
         expanded_query = "\n".join(text_blocks).strip()
-        return expanded_query or query
+        if not expanded_query:
+            return deterministic_query
+        return _merge_query_terms(deterministic_query, expanded_query)
 
     async def _embed_query(self, query: str) -> list[float]:
         tracer = get_tracer(__name__)
@@ -192,6 +226,13 @@ class RagQueryService:
             raise ValueError("Embedding client returned no embeddings for query")
 
         return embeddings[0]
+
+    async def _search_probes(self, probes: list[str]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for probe in probes:
+            query_embedding = await self._embed_query(probe)
+            rows.extend(await self._search(probe, query_embedding))
+        return _merge_probe_rows(rows)
 
     async def _search(self, query: str, query_embedding: list[float]) -> list[dict[str, Any]]:
         tracer = get_tracer(__name__)
@@ -355,6 +396,132 @@ def _coerce_fragments(value: Any) -> list[FragmentMatch]:
 
 def _embedding_to_vector_literal(embedding: list[float]) -> str:
     return "[" + ",".join(f"{value:.8f}" for value in embedding) + "]"
+
+
+def _apply_deterministic_query_profiles(query: str) -> str:
+    if not _matches_religious_query_profile(query):
+        return query
+    return _merge_query_terms(query, " ".join(RELIGIOUS_QUERY_EXPANSION_TERMS))
+
+
+def _build_retrieval_probes(original_query: str, expanded_query: str) -> list[str]:
+    probes = [expanded_query]
+    if _matches_broad_religious_query(original_query):
+        probes.extend(
+            _merge_query_terms(original_query, probe) for probe in RELIGIOUS_MULTI_QUERY_PROBES
+        )
+    return _dedupe_strings(probes)
+
+
+def _matches_religious_query_profile(query: str) -> bool:
+    normalized = query.casefold()
+    return any(marker in normalized for marker in RELIGIOUS_QUERY_MARKERS) or bool(
+        DIVINE_NAME_RE.search(query)
+    )
+
+
+def _matches_broad_religious_query(query: str) -> bool:
+    normalized = query.casefold()
+    return _matches_religious_query_profile(query) and any(
+        marker in normalized for marker in BROAD_QUERY_MARKERS
+    )
+
+
+def _merge_probe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[uuid.UUID, dict[str, Any]] = {}
+    order: list[uuid.UUID] = []
+
+    for row in rows:
+        dream_id = row["dream_id"]
+        if dream_id not in grouped:
+            grouped[dream_id] = dict(row)
+            grouped[dream_id]["matched_fragments"] = _dedupe_fragment_dicts(
+                _fragment_dicts(row.get("matched_fragments"))
+            )
+            order.append(dream_id)
+            continue
+
+        existing = grouped[dream_id]
+        existing_score = float(existing.get("relevance_score") or 0.0)
+        row_score = float(row.get("relevance_score") or 0.0)
+        if row_score > existing_score:
+            existing["date"] = row["date"]
+            existing["title"] = row["title"]
+            existing["relevance_score"] = row_score
+
+        existing["chunk_text"] = _merge_chunk_texts(
+            str(existing.get("chunk_text") or ""),
+            str(row.get("chunk_text") or ""),
+        )
+        existing["matched_fragments"] = _dedupe_fragment_dicts(
+            _fragment_dicts(existing.get("matched_fragments"))
+            + _fragment_dicts(row.get("matched_fragments"))
+        )
+
+    return sorted(
+        (grouped[dream_id] for dream_id in order),
+        key=lambda item: float(item.get("relevance_score") or 0.0),
+        reverse=True,
+    )
+
+
+def _merge_chunk_texts(existing: str, new: str) -> str:
+    if not new or new == existing:
+        return existing
+    chunks = existing.split("\n---\n") if existing else []
+    if new not in chunks:
+        chunks.append(new)
+    return "\n---\n".join(chunks)
+
+
+def _fragment_dicts(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [fragment for fragment in value if isinstance(fragment, dict)]
+
+
+def _dedupe_fragment_dicts(fragments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, int]] = set()
+    for fragment in fragments:
+        text_value = fragment.get("text")
+        match_type = fragment.get("match_type")
+        char_offset = fragment.get("char_offset")
+        if not isinstance(text_value, str) or not isinstance(match_type, str):
+            continue
+        if not isinstance(char_offset, int):
+            char_offset = 0
+        key = (text_value, match_type, char_offset)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append({"text": text_value, "match_type": match_type, "char_offset": char_offset})
+    return deduped
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        normalized = value.casefold()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(value)
+    return deduped
+
+
+def _merge_query_terms(*parts: str) -> str:
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        for token in part.split():
+            normalized = token.casefold()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            tokens.append(token)
+    return " ".join(tokens)
 
 
 def _get_anthropic_client_cls():

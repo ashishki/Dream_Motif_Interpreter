@@ -1,25 +1,25 @@
 # CODEX_PROMPT.md
 
-Version: 1.64
-Date: 2026-05-02
-Phase: Phase 20 complete — cleanup pass applied
+Version: 1.65
+Date: 2026-06-02
+Phase: Phase 21 planned — Test 6 recording/search regressions
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 20 is complete after deep review; post-phase cleanup closed the remaining accessible P3 fix queue items. Concrete emoji mapping is deferred by D-017 until the user provides emoji meanings.
+- **Phase:** Phase 21 is planned from Test 6 (2026-06-02): short dream recording, honest Google Doc writes, fish/image search recall, and full dream retrieval by title/date.
 - **Baseline:** Cleanup slice: 32 passed; ruff check/format clean for touched cleanup files. Phase 20 targeted slice: 85 passed; ruff check/format clean for touched Phase 20 files. CODE-17 found during deep review was fixed in-review. WS-18.6 retrieval gates remain passed.
 - **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-02 (Phase 20 complete; accessible tech debt closed)
+- **Last updated:** 2026-06-02 (Phase 21 planned from Test 6 report)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 20 is complete; accessible carry-forward tech debt is closed; await user direction for the next phase or configure emoji mapping when meanings are provided.
+- **Current planning state:** Phase 21 is active/planned; start with WS-21.1 short natural dream recording.
 - **Latest completed implementation task:** Post-Phase-20 Cleanup — closed CODE-4/CODE-5/CODE-6 and confirmed CODE-7/CODE-9/CODE-10 resolved.
 - **Current baseline:** Cleanup targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_config.py -q --tb=short` -> 32 passed); `ruff check app/telegram/handlers.py app/shared/config.py tests/unit/test_telegram_bot.py tests/unit/test_config.py` and matching `ruff format --check` pass. Phase 20 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py -q --tb=short` -> 85 passed).
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
@@ -32,7 +32,8 @@ Phase: Phase 20 complete — cleanup pass applied
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
 - **Mandatory local workflow:** `docs/prompts/ORCHESTRATOR.md`
-- **Active task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
+- **Active task graph:** `docs/tasks_phase21.md` (Test 6 recording/search regressions)
+- **Previous task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
 - **Previous task graph:** `docs/tasks_phase19.md` (direct title search)
 - **Previous task graph:** `docs/tasks_phase18.md` (search quality and hallucination suppression)
 - **Previous task graph:** `docs/tasks_phase17.md` (Phase 17: deterministic dream recording stabilization)
@@ -55,15 +56,21 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-Next Scope.
-Baseline: Phase 20 deep review passed; concrete emoji meaning mapping is deferred by D-017.
+WS-21.1: Save Short Natural Dreams Without Clarification.
+Baseline: Phase 20 deep review passed; post-phase cleanup passed (`tests/unit/test_telegram_bot.py tests/unit/test_config.py` -> 32 passed). Test 6 report shows short natural dreams can still be confirmed instead of saved.
 Goal:
-  Choose the next development scope. If the user provides emoji meanings, configure `TELEGRAM_REACTION_FEEDBACK_MAPPING`; otherwise start the next prioritized backlog phase.
+  Make short text and voice dreams beginning with natural openings save directly without clarification.
 
 Context refs:
 - `docs/CODEX_PROMPT.md`
-- `docs/archive/PHASE20_REVIEW.md`
-- `docs/tasks_phase20.md`
+- `docs/tasks_phase21.md`
+- `app/assistant/tools.py`
+- `app/assistant/prompts.py`
+- `app/workers/transcribe.py`
+- `app/telegram/handlers.py`
+- `tests/unit/test_assistant_chat.py`
+- `tests/unit/test_transcription_worker.py`
+- `tests/unit/test_telegram_bot.py`
 
 Deferred:
   Concrete `TELEGRAM_REACTION_FEEDBACK_MAPPING` remains pending user-provided emoji meanings; remind the user before enabling reaction semantics in production.

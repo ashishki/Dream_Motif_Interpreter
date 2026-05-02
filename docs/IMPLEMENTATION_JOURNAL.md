@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.10
-Last updated: 2026-05-02
+Version: 1.11
+Last updated: 2026-06-02
 Status: append-only
 
 ---
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-06-02 — PHASE21-PLAN — Test 6 Recording/Search Regressions
+
+- Scope: `docs/tasks_phase21.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Test 6 reported live regressions: short dreams are not saved deterministically, Google Doc write success is overstated or exposes fallback IDs, fish/image search misses exact evidence, and full dream retrieval by title/date still fails in conversation.
+- Decisions applied: none.
+- Evidence collected: code inspection of `app/assistant/tools.py`, `app/assistant/prompts.py`, `app/assistant/facade.py`, `app/telegram/handlers.py`, `app/workers/transcribe.py`; no tests run because this is planning only.
+- Follow-ups: start WS-21.1 with short natural dream recording for text and voice.
+- Notes for next agent: some capabilities exist (`search_dreams_by_title`, `search_dreams_exact`, write status), but Test 6 requires stricter deterministic routing and regression tests.
 
 ### 2026-05-02 — POST-PHASE20-CLEANUP — Carry-Forward Tech Debt Closure
 

@@ -1,27 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.55
-Date: 2026-05-01
-Phase: Phase 18 implementation — search quality and hallucination suppression
+Version: 1.59
+Date: 2026-05-02
+Phase: Phase 20 ready — notes placement and emoji feedback polish
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 18 complete locally; Phase 19 is blocked until live hybrid archive eval is rerun on a machine with valid provider keys
-- **Baseline:** WS-18.6 synthetic retrieval eval: hit@3=1.00, MRR=1.00, no-answer accuracy=1.00; read-only real archive eval: 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; Phase 18 unit regression suite: 124 passed. Combined Phase 17 unit + migration slice: 169 passed. Full local suite on non-live machine still requires broader live service coverage.
+- **Phase:** Phase 19 direct title search passed deep review; Phase 20 notes placement and emoji feedback polish is ready.
+- **Baseline:** WS-19.3 assistant title-flow unit slice after deep-review fix: 106 passed; ruff check/format clean for touched assistant files. WS-18.6 synthetic retrieval eval: hit@3=1.00, MRR=1.00, no-answer accuracy=1.00; read-only real archive eval: 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; live hybrid archive eval (`scripts/eval_phase18_real.py --mode live --limit 5`) completed with provider auth and archive-backed evidence for all 6 Phase 18 queries. Full local suite on non-live machine still requires broader live service coverage.
 - **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-02 (WS-18.6 retrieval eval recorded locally; live hybrid rerun required before Phase 19)
+- **Last updated:** 2026-05-02 (Phase 19 deep review archived; Phase 20 WS-20.1 next)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 18 complete locally; before starting Phase 19, rerun `scripts/eval_phase18_real.py --mode live --limit 5` on a machine with valid `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`; then continue with Phase 19 direct title search in `docs/tasks_phase19.md`.
-- **Latest completed implementation task:** WS-18.6 — retrieval eval run and Phase 18 gate.
-- **Current baseline:** WS-18.6 synthetic retrieval eval passes (`scripts/eval.py --task-id WS-18.6` against disposable `dream_motif_eval` -> hit@3=1.00, MRR=1.00, no-answer accuracy=1.00); read-only real archive eval passes (`scripts/eval_phase18_real.py --limit 5` -> 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; live hybrid embedding path still requires a real `OPENAI_API_KEY`); targeted slice passes (`tests/unit/test_eval_phase18_real.py`, `tests/unit/test_eval_script.py`, `tests/unit/test_retrieval_eval.py`, `tests/unit/test_rag_query_expansion.py`, `tests/unit/test_rag_query.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py` -> 124 passed); `ruff check scripts/eval_phase18_real.py scripts/eval.py app/retrieval/query.py app/assistant/facade.py app/assistant/tools.py app/assistant/prompts.py tests/unit/test_eval_phase18_real.py tests/unit/test_eval_script.py tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_retrieval_eval.py` passes from `.venv/bin/python -m ruff`. Combined Phase 17 slice passes (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py` -> 169 passed).
+- **Current planning state:** Phase 19 deep review archived; continue with Phase 20 (`docs/tasks_phase20.md`).
+- **Latest completed implementation task:** WS-19.3 — Full Dream Retrieval by Title Flow.
+- **Current baseline:** WS-19.3 targeted assistant slice passes after deep-review fix (`.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short` -> 106 passed); `ruff check app/assistant/tools.py app/assistant/prompts.py app/assistant/facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py` and matching `ruff format --check` pass. WS-18.6 synthetic retrieval eval passes (`scripts/eval.py --task-id WS-18.6` against disposable `dream_motif_eval` -> hit@3=1.00, MRR=1.00, no-answer accuracy=1.00); read-only real archive eval passes (`scripts/eval_phase18_real.py --limit 5` -> 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode); live hybrid archive eval passes (`scripts/eval_phase18_real.py --mode live --limit 5` with provider keys from `.env` -> 6/6 Phase 18 queries returned archive-backed evidence).
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -32,9 +32,9 @@ Phase: Phase 18 implementation — search quality and hallucination suppression
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
 - **Mandatory local workflow:** `docs/prompts/ORCHESTRATOR.md`
-- **Active task graph:** `docs/tasks_phase18.md` (search quality and hallucination suppression)
+- **Active task graph:** `docs/tasks_phase19.md` (direct title search)
 - **Previous task graph:** `docs/tasks_phase17.md` (Phase 17: deterministic dream recording stabilization)
-- **Upcoming task graph:** `docs/tasks_phase19.md` (direct title search)
+- **Previous task graph:** `docs/tasks_phase18.md` (search quality and hallucination suppression)
 - **Upcoming task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
 - **Previous task graph (Phase 16):** `docs/tasks_phase16.md` (implemented/planning source from Тест 4)
 - **Previous task graph (Phase 15):** `docs/tasks_phase15.md` (complete)
@@ -55,22 +55,17 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-**Do not start Phase 19 yet. First run live Phase 18 archive eval with valid provider keys.**
-
-Required gate command:
-
-`ANTHROPIC_API_KEY=<real> OPENAI_API_KEY=<real> .venv/bin/python scripts/eval_phase18_real.py --mode live --limit 5`
-
-WS-19.1: Title Search Facade Method.
-Baseline: WS-18.6 synthetic retrieval eval passed (`hit@3=1.00`, `MRR=1.00`, `no-answer accuracy=1.00`); read-only real archive eval passed (`scripts/eval_phase18_real.py --limit 5` -> 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode); targeted retrieval/facade/chat/eval tests passed (`tests/unit/test_eval_phase18_real.py`, `tests/unit/test_eval_script.py`, `tests/unit/test_retrieval_eval.py`, `tests/unit/test_rag_query_expansion.py`, `tests/unit/test_rag_query.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py` -> 124 passed); ruff check clean for touched retrieval/facade/tool/prompt/eval files.
+WS-20.1: Place Notes Under the Target Dream in Google Doc.
+Baseline: Phase 19 deep review passed; targeted assistant tests passed (`tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py` -> 106 passed); ruff check/format clean for touched assistant files; WS-18.6 retrieval gate remains passed.
 Goal:
-  Add a title-search method that returns dream IDs and enough metadata for disambiguation.
+  Make Google Doc note placement target-aware where possible.
 
 Context refs:
-- `docs/tasks_phase19.md` — active task graph (read §1-3 and WS-19.1 before coding)
-- `app/models/dream.py::DreamEntry`
-- `app/assistant/facade.py::list_recent_dreams`
-- `app/assistant/facade.py::get_dream`
+- `docs/tasks_phase20.md` — active task graph (read §1-3 and WS-20.1 before coding)
+- `app/services/gdocs_client.py`
+- `app/assistant/facade.py`
+- `tests/unit/test_gdocs_client.py`
+- `tests/unit/test_assistant_facade.py`
 
 ---
 
@@ -268,9 +263,9 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (58 Closed, 
 
 ## Tool-Use State
 
-- Tool-Use Profile: OFF
-- Registered tool schemas: n/a
-- Unsafe-action guardrails: n/a
+- Tool-Use Profile: ON (bounded)
+- Registered tool schemas: `search_dreams`, `search_dreams_exact`, `search_dreams_by_title`, `get_dream`, `list_recent_dreams`, `get_patterns`, `get_theme_history`, `trigger_sync`, `create_dream`, `add_dream_note`, `retry_write_to_google_doc`, `manage_archive_source`; optional `get_dream_motifs` and `research_motif_parallels` are feature-flag gated.
+- Unsafe-action guardrails: `create_dream` requires explicit current-message save intent; `research_motif_parallels` requires explicit user confirmation; title-search ambiguity is presented as options, not guessed.
 - Open tool findings: none
 
 ---
@@ -320,14 +315,14 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (58 Closed, 
 
 ### Last Evaluation
 
-- Profile: RAG
-- Task: T15
-- Date: 2026-04-14
-- Eval Source: `scripts/eval.py` against `docs/retrieval_eval.md §Evaluation Dataset` (10 queries), run 2026-04-14 against `synthetic-20-entries`; stub embeddings (test-key)
-- Metric(s): hit@3, MRR, no-answer accuracy
-- Score: `hit@3=1.00`, `MRR=1.00`, `no-answer accuracy=1.00`
-- Baseline: T12 baseline (1.00 / 1.00 / 1.00)
-- Delta: 0 (no change — search API layer does not modify retrieval semantics)
+- Profile: Tool-Use
+- Task: WS-19.2
+- Date: 2026-05-02
+- Eval Source: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short`, run 2026-05-02 against assistant tool schema/output coverage
+- Metric(s): tool schema registration, UUID-bearing output, ambiguous-match no-guessing guard
+- Score: `104 passed` for WS-19.2 assistant tool/facade slice; `106 passed` after WS-19.3 flow extension and deep-review robustness fix
+- Baseline: WS-19.1 AssistantFacade title-search slice (`40 passed`)
+- Delta: +65 targeted assistant tests vs. WS-19.1 slice; no tool safety regression
 - Regression: No
 
 ### Open Evaluation Issues
@@ -341,13 +336,22 @@ none
 | 2026-04-12 | T10 | RAG | hit@3, MRR | N/A (zero corpus) | N/A | N/A | No |
 | 2026-04-13 | T12 | RAG | hit@3, MRR, no-answer accuracy | 1.00 / 1.00 / 1.00 | initial seeded baseline | N/A | No |
 | 2026-04-14 | T15 | RAG | hit@3, MRR, no-answer accuracy | 1.00 / 1.00 / 1.00 | T12 baseline | 0 | No |
+| 2026-05-02 | WS-19.2 | Tool-Use | schema/output/ambiguity guard | 104 passed | WS-19.1 40 passed | +64 targeted tests | No |
 
 ---
 
 ## Completed Tasks
 
+- **WS-19.3** — Full Dream Retrieval by Title Flow — 2026-05-02 — targeted assistant tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`: 106 passed) — title search now retrieves the full dream via `get_dream` for a single match, leaves multiple matches as clarification options, and clearly says no title match was found before content-search fallback; light and deep review found no P0/P1/P2 issues; Phase 19 archive complete
+- **WS-19.2** — Assistant Tool `search_dreams_by_title` — 2026-05-02 — targeted assistant tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`: 104 passed) — added tool catalog schema and execute_tool branch for title lookup; output includes `dream_id` for follow-up `get_dream`; prompt now routes specific title/name/heading lookup through title search first and instructs ambiguous matches to be presented as options, not guessed; light review found no contract/security issues
+- **WS-19.1** — Title Search Facade Method — 2026-05-02 — targeted AssistantFacade tests passing (`tests/unit/test_assistant_facade.py`: 40 passed) — added `AssistantFacade.search_dreams_by_title(query, limit=10)` over `dream_entries.title`; results include `dream_id`, date, title, and raw-text preview; lookup supports case-insensitive partial and punctuation-insensitive normalized matching for titles such as `Я и дети. Тайное общество`; light review found no contract/security issues
 - **WS-18.2** — Deterministic Query Expansion Profiles — 2026-05-01 — targeted retrieval tests passing (`tests/unit/test_rag_query_expansion.py`, `tests/unit/test_rag_query.py`, `tests/unit/test_retrieval_eval.py`: 13 passed) — added deterministic religious/prayer query profile before embedding and FTS search; profile covers prayer, hymnody, church, temple, icon, divine-name, and Christmas terms while preserving best-effort LLM expansion as an additional merge source
 - **WS-18.1** — User Search Regression Dataset — 2026-05-01 — focused eval-doc test passing (`tests/unit/test_retrieval_eval.py`: 3 passed) — added Phase 18 regression dataset for `молитва`, prayer/religious-scene, church, and Christmas hymnody search failures; false-positive policy now requires archive-backed evidence fragments from `quote`, `chunk_text`, or `matched_fragments`
+
+---
+
+## Archived Tasks
+
 - **WS-17.6** — Recording Regression Suite and Manual Test Script — 2026-05-01 — combined Phase 17 unit + migration slice passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py`: 167 passed) — Phase 17 regression coverage and manual smoke-test checklist now cover natural narration, pending confirmation, relative dates, fallback titles, failed-write honesty, failed-write retry targeting, reply-to-voice save behavior, and updated Russian user guidance
 - **WS-17.5** — Reply-to-Voice "запиши сон" — 2026-05-01 — combined Phase 17 unit + migration slice passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py`: 167 passed) — added `voice_media_events.transcript_text` migration and model field; transcription worker persists transcript text; text handler detects replies to Telegram voice messages with explicit save commands and saves the stored transcript, reports still-processing transcripts, and refuses unavailable transcripts without claiming success
 - **WS-17.4** — Write Outbox and Honest Success Messages — 2026-05-01 — extended targeted tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_transcription_worker.py`: 143 passed); migration integration suite passing (`tests/integration/test_migrations.py`: 12 passed) — added `dream_write_statuses` migration and ORM model; Google Doc writes now record `pending` then `succeeded`/`failed` with sanitized error text; retry without `dream_id` targets the latest failed write scoped by Telegram chat source; retry tool returns explicit "nothing to retry" and failure text that cannot honestly be read as success
@@ -369,11 +373,6 @@ none
 - **T20** — End-to-End Integration Test — 2026-04-14 — 93 tests passing, 9 skipped — end-to-end sync-to-search coverage added with test-only pipeline orchestration; flow now exercises sync, analysis, search, bulk curation approval, pattern APIs, rollback history, and cleanup assertions
 - **T19** — Annotation Versioning and Rollback — 2026-04-14 — 91 tests passing, 9 skipped — authenticated theme history and rollback APIs implemented; rollback appends a new AnnotationVersion; append-only guard coverage added
 - **T18** — Archive-Level Pattern Detection — 2026-04-14 — 87 tests passing, 9 skipped — `/patterns/recurring`, `/patterns/co-occurrence`, and `/patterns/timeline` implemented with computational-pattern disclaimer framing and generated timestamps
-
----
-
-## Archived Tasks
-
 - **T17** — Background Worker Setup with Idempotency — 2026-04-14 — 83 tests passing, 9 skipped — Redis-backed sync job status, idempotent ingest/index workers, and integration coverage for done/failed worker outcomes implemented
 - **T16** — User Curation API — Theme Confirmation and Taxonomy Management — 2026-04-14 — 79 tests passing, 9 skipped — confirm/reject theme mutations, Redis-backed bulk confirm approval flow, category approval auth gate, and write-ahead AnnotationVersion coverage implemented
 - **T15** — Dream Browsing and Theme Search API — 2026-04-14 — 74 tests passing, 9 skipped — GET /search and GET /dreams/{id}/themes implemented; authenticated search returns ranked evidence with theme matches; insufficient_evidence and theme filter paths covered

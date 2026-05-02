@@ -23,6 +23,7 @@ _Append-only. One row per review cycle._
 | 12 | Phase 10 boundary | 2026-04-17 | WS-10.1–WS-10.5 full | No | 0 | 0 | 3 |
 | 13 | Phase 11 boundary | 2026-04-18 | WS-11.1–WS-11.3 full | No | 0 | 0 | 3 |
 | 14 | Phase 18 boundary | 2026-05-02 | WS-18.1–WS-18.6 full | No | 0 | 0 | 0 |
+| 15 | Phase 19 boundary | 2026-05-02 | WS-19.1–WS-19.3 full | No | 0 | 0 | 0 |
 
 ---
 
@@ -45,6 +46,7 @@ _Append-only. One row per review cycle._
 | 12 | `docs/archive/PHASE10_REVIEW.md` | Phase 10 boundary (WS-10.1–10.5) | OK — 0 P0/P1, 3 P2, 5 P3; Stop-Ship: No; Phase Gate: PASS |
 | 13 | `docs/archive/PHASE11_REVIEW.md` | Phase 11 boundary (WS-11.1–11.3) | OK — 0 P0/P1, 3 P2, 7 P3; Stop-Ship: No; Phase Gate: PASS |
 | 14 | `docs/archive/PHASE18_REVIEW.md` | Phase 18 boundary (WS-18.1–WS-18.6) | OK — 0 P0/P1/P2, 1 P3 follow-up; Stop-Ship: No; Phase Gate: PASS with synthetic eval and read-only real archive FTS eval |
+| 15 | `docs/archive/PHASE19_REVIEW.md` | Phase 19 boundary (WS-19.1–WS-19.3) | OK — 0 P0/P1/P2, 1 P3 fixed in-review; Stop-Ship: No; Phase Gate: PASS |
 
 ---
 

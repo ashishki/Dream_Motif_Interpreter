@@ -12,6 +12,7 @@ from app.assistant.facade import (
     CreatedDreamItem,
     DreamDetail,
     DreamSummary,
+    DreamTitleSearchResult,
     MotifInductionItem,
     SearchResult,
     SearchResultItem,
@@ -311,6 +312,38 @@ async def test_list_recent_dreams_returns_preview_and_theme_names() -> None:
     assert "theme_categories" in theme_statement
 
 
+@pytest.mark.asyncio
+async def test_search_dreams_by_title_returns_title_matches() -> None:
+    dream_id = uuid4()
+    created_at = datetime(2026, 4, 15, tzinfo=timezone.utc)
+    dream = SimpleNamespace(
+        id=dream_id,
+        date=date(2026, 4, 14),
+        title="Я и дети. Тайное общество",
+        raw_text="Я была с детьми и мы нашли тайное общество. " * 20,
+        created_at=created_at,
+    )
+    session = _FakeSession(execute_results=[_FakeResult(scalars=[dream])])
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    result = await facade.search_dreams_by_title("я и дети тайное общество", limit=5)
+
+    assert result == [
+        DreamTitleSearchResult(
+            dream_id=dream_id,
+            date="2026-04-14",
+            title="Я и дети. Тайное общество",
+            raw_text_preview=dream.raw_text[:400],
+        )
+    ]
+    statement = str(session.executed_statements[0])
+    assert "dream_entries.title" in statement
+    assert "dream_chunks" not in statement
+
+
 def test_assistant_facade_exposes_only_approved_operations() -> None:
     public_methods = {
         name
@@ -321,6 +354,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
     assert public_methods == {
         "search_dreams",
         "search_dreams_exact",
+        "search_dreams_by_title",
         "get_dream",
         "list_recent_dreams",
         "get_patterns",

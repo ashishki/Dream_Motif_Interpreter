@@ -13,7 +13,10 @@ from app.assistant import tools as tools_module
 from app.assistant.chat import handle_chat, _extract_text
 from app.assistant.facade import (
     AssistantFacade,
+    DreamDetail,
+    DreamThemeItem,
     DreamSummary,
+    DreamTitleSearchResult,
     MotifInductionItem,
     SearchResult,
     SearchResultItem,
@@ -405,6 +408,17 @@ def test_build_tools_includes_search_dreams_exact() -> None:
     assert "search_dreams_exact" in tool_names
 
 
+def test_build_tools_includes_search_dreams_by_title_schema() -> None:
+    from app.assistant.tools import build_tools
+
+    tools = build_tools()
+    title_tool = next(tool for tool in tools if tool["name"] == "search_dreams_by_title")
+
+    assert title_tool["input_schema"]["required"] == ["query"]
+    assert "limit" in title_tool["input_schema"]["properties"]
+    assert "guessing" in title_tool["description"]
+
+
 @pytest.mark.asyncio
 async def test_execute_tool_search_dreams_labels_verified_strength() -> None:
     dream_id = uuid.uuid4()
@@ -677,6 +691,167 @@ async def test_search_dreams_exact_routing() -> None:
     assert f"result_id: {dream_id}" in result
     assert 'evidence_text: "Мне приснилась церковь на холме"' in result
     facade.search_dreams_exact.assert_awaited_once_with("церковь")
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_search_dreams_by_title_includes_uuid_for_get_dream() -> None:
+    dream_id = uuid.uuid4()
+    theme_id = uuid.uuid4()
+    category_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams_by_title.return_value = [
+        DreamTitleSearchResult(
+            dream_id=dream_id,
+            date="2026-04-14",
+            title="Я и дети. Тайное общество",
+            raw_text_preview="Я была с детьми и мы нашли тайное общество.",
+        )
+    ]
+    facade.get_dream.return_value = DreamDetail(
+        id=dream_id,
+        date="2026-04-14",
+        title="Я и дети. Тайное общество",
+        raw_text="Полный текст сна про детей и тайное общество.",
+        word_count=8,
+        source_doc_id="doc-1",
+        created_at="2026-04-14T00:00:00+00:00",
+        segmentation_confidence="high",
+        themes=[
+            DreamThemeItem(
+                id=theme_id,
+                category_id=category_id,
+                category_name="Children",
+                salience=0.9,
+                status="draft",
+                match_type="semantic",
+                fragments=[],
+                deprecated=False,
+                created_at="2026-04-14T00:00:00+00:00",
+            )
+        ],
+        notes=["важная заметка"],
+    )
+
+    result = await tools_module.execute_tool(
+        "search_dreams_by_title",
+        {"query": "я и дети тайное общество"},
+        facade,
+    )
+
+    assert "Single title match found for 'я и дети тайное общество'. Full dream:" in result
+    assert f"Dream {dream_id}" in result
+    assert "Title: Я и дети. Тайное общество" in result
+    assert "Text: Полный текст сна про детей и тайное общество." in result
+    assert "Themes: Children" in result
+    assert "важная заметка" in result
+    facade.search_dreams_by_title.assert_awaited_once_with(
+        "я и дети тайное общество",
+        limit=10,
+    )
+    facade.get_dream.assert_awaited_once_with(dream_id)
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_search_dreams_by_title_formats_ambiguous_matches() -> None:
+    first_id = uuid.uuid4()
+    second_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams_by_title.return_value = [
+        DreamTitleSearchResult(
+            dream_id=first_id,
+            date="2026-04-14",
+            title="Тайное общество",
+            raw_text_preview="Первый сон.",
+        ),
+        DreamTitleSearchResult(
+            dream_id=second_id,
+            date="2026-04-20",
+            title="Тайное общество детей",
+            raw_text_preview="Второй сон.",
+        ),
+    ]
+
+    result = await tools_module.execute_tool(
+        "search_dreams_by_title",
+        {"query": "тайное общество", "limit": 2},
+        facade,
+    )
+
+    assert "2 matches" in result
+    assert "Present these as options; do not guess" in result
+    assert f"dream_id: {first_id}" in result
+    assert f"dream_id: {second_id}" in result
+    facade.search_dreams_by_title.assert_awaited_once_with("тайное общество", limit=2)
+    facade.get_dream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_search_dreams_by_title_falls_back_after_no_title_match() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams_by_title.return_value = []
+    facade.search_dreams.return_value = SearchResult(
+        items=[
+            SearchResultItem(
+                dream_id=dream_id,
+                date=date(2026, 4, 14),
+                title="Другой заголовок",
+                chunk_text="Тайное общество было в тексте сна.",
+                relevance_score=0.74,
+                matched_fragments=[],
+                quote="Тайное общество было в тексте сна",
+            )
+        ]
+    )
+
+    result = await tools_module.execute_tool(
+        "search_dreams_by_title",
+        {"query": "тайное общество"},
+        facade,
+    )
+
+    assert "No title match found for 'тайное общество'. Content search results:" in result
+    assert f"result_id: {dream_id}" in result
+    assert 'evidence_text: "Тайное общество было в тексте сна"' in result
+    facade.search_dreams_by_title.assert_awaited_once_with("тайное общество", limit=10)
+    facade.search_dreams.assert_awaited_once_with("тайное общество")
+    facade.get_dream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_search_dreams_by_title_uses_default_for_bad_limit() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams_by_title.return_value = [
+        DreamTitleSearchResult(
+            dream_id=dream_id,
+            date="2026-04-14",
+            title="Тайное общество",
+            raw_text_preview="Первый сон.",
+        ),
+        DreamTitleSearchResult(
+            dream_id=uuid.uuid4(),
+            date="2026-04-20",
+            title="Тайное общество детей",
+            raw_text_preview="Второй сон.",
+        ),
+    ]
+
+    result = await tools_module.execute_tool(
+        "search_dreams_by_title",
+        {"query": "тайное общество", "limit": "not-a-number"},
+        facade,
+    )
+
+    assert "Title search results for 'тайное общество'" in result
+    facade.search_dreams_by_title.assert_awaited_once_with("тайное общество", limit=10)
+
+
+def test_system_prompt_routes_title_lookup_to_title_search_first() -> None:
+    assert "search_dreams_by_title first" in SYSTEM_PROMPT
+    assert "specific dream by title" in SYSTEM_PROMPT
+    assert "multiple matches" in SYSTEM_PROMPT
+    assert "do not guess" in SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio

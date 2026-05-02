@@ -9,7 +9,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.dream import DreamEntry
@@ -82,6 +82,14 @@ class DreamSummary:
     title: str
     raw_text_preview: str
     theme_names: list[str]
+
+
+@dataclass(frozen=True)
+class DreamTitleSearchResult:
+    dream_id: uuid.UUID
+    date: str | None
+    title: str
+    raw_text_preview: str
 
 
 @dataclass(frozen=True)
@@ -289,6 +297,48 @@ class AssistantFacade:
         return [
             _dream_summary_item(dream, theme_names=themes_by_dream.get(dream.id, []))
             for dream in dreams
+        ]
+
+    async def search_dreams_by_title(
+        self, query: str, limit: int = 10
+    ) -> list[DreamTitleSearchResult]:
+        normalized_query = _normalize_title_search(query)
+        if not normalized_query:
+            return []
+
+        bounded_limit = max(1, min(limit, 50))
+        title_pattern = f"%{_escape_like(query.strip())}%"
+        normalized_title = func.lower(
+            func.regexp_replace(DreamEntry.title, r"[^0-9A-Za-zА-Яа-яЁё]+", " ", "g")
+        )
+        tracer = get_tracer(__name__)
+
+        async with self._session_factory() as session:
+            with tracer.start_as_current_span("assistant.search_dreams_by_title"):
+                result = await session.execute(
+                    select(DreamEntry)
+                    .where(
+                        or_(
+                            DreamEntry.title.ilike(title_pattern, escape="\\"),
+                            normalized_title.contains(normalized_query),
+                        )
+                    )
+                    .order_by(DreamEntry.date.desc(), DreamEntry.created_at.desc())
+                    .limit(bounded_limit)
+                )
+                dreams = result.scalars().all()
+
+        return [
+            DreamTitleSearchResult(
+                dream_id=dream.id,
+                date=dream.date.isoformat() if dream.date is not None else None,
+                title=dream.title,
+                raw_text_preview=(dream.raw_text or "")[:400],
+            )
+            for dream in sorted(
+                dreams,
+                key=lambda dream: _title_match_rank(dream.title, query),
+            )
         ]
 
     async def get_patterns(self) -> PatternSummary:
@@ -928,6 +978,32 @@ _TITLE_STOPWORDS = {
     "которая",
     "которые",
 }
+
+
+def _normalize_title_search(value: str) -> str:
+    return " ".join(word.casefold() for word in _WORD_RE.findall(value))
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _title_match_rank(title: str, query: str) -> tuple[int, str]:
+    title_folded = title.casefold()
+    query_folded = query.strip().casefold()
+    normalized_title = _normalize_title_search(title)
+    normalized_query = _normalize_title_search(query)
+    if title_folded == query_folded:
+        rank = 0
+    elif normalized_title == normalized_query:
+        rank = 1
+    elif query_folded and query_folded in title_folded:
+        rank = 2
+    else:
+        rank = 3
+    return rank, title_folded
+
+
 _RELATIVE_DATE_OFFSETS = (
     ("позавчера", 2),
     ("сегодня", 0),

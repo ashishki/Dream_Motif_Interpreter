@@ -50,6 +50,30 @@ _BASE_TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "search_dreams_by_title",
+        "description": (
+            "Search dream entries by title/name and return dream UUIDs for follow-up get_dream calls. "
+            "Use this before content search when the user asks for a specific dream by title, name, "
+            "or a phrase that appears to be the dream's heading. If multiple matches are returned, "
+            "present them as options instead of guessing."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Dream title or title fragment to search for.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of matching titles to return (default 10, max 20).",
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "add_dream_note",
         "description": (
             "Add a note to a dream entry. Use when the user says 'note: ...' or asks to "
@@ -353,6 +377,43 @@ async def execute_tool(
             lines.extend(_format_search_result_payload(item))
         return "\n".join(lines)
 
+    if tool_name == "search_dreams_by_title":
+        query = str(tool_input.get("query", "")).strip()
+        if not query:
+            return "No title query provided."
+        limit = _bounded_int(tool_input.get("limit", 10), default=10, minimum=1, maximum=20)
+        items = await facade.search_dreams_by_title(query, limit=limit)
+        if not items:
+            fallback = await facade.search_dreams(query)
+            if fallback.insufficient_reason is not None or not fallback.items:
+                return f"No title match found for '{query}'. No matching archive entries found."
+            lines = [f"No title match found for '{query}'. Content search results:"]
+            for item in fallback.items[:5]:
+                lines.extend(_format_search_result_payload(item))
+            return "\n".join(lines)
+        if len(items) == 1:
+            detail = await facade.get_dream(items[0].dream_id)
+            if detail is None:
+                lines = [
+                    f"Title search result for '{query}', but full dream retrieval failed:",
+                ]
+                lines.extend(_format_title_search_result_payload(items[0]))
+                return "\n".join(lines)
+            return "\n".join(
+                [
+                    f"Single title match found for '{query}'. Full dream:",
+                    _format_dream_detail_payload(detail),
+                ]
+            )
+        else:
+            lines = [
+                f"Title search results for '{query}' ({len(items)} matches).",
+                "Present these as options; do not guess which one the user meant.",
+            ]
+        for item in items:
+            lines.extend(_format_title_search_result_payload(item))
+        return "\n".join(lines)
+
     if tool_name == "create_dream":
         if not _is_explicit_create_request(request_text):
             return "Dream creation requires an explicit user request to save a new dream entry."
@@ -442,24 +503,10 @@ async def execute_tool(
         detail = await facade.get_dream(dream_id)
         if detail is None:
             return f"Dream not found: {raw_id}"
-        theme_names = ", ".join(t.category_name for t in detail.themes) or "none"
-        raw_text_clean = detail.raw_text.replace("*", "").replace("<", "")
-        lines = [
-            f"Dream {detail.id}\n"
-            f"Date: {detail.date or 'unknown'}\n"
-            f"Title: {detail.title}\n"
-            f"Words: {detail.word_count}\n"
-            f"Themes: {theme_names}\n"
-            f"Text: {raw_text_clean[:2000]}"
-        ]
-        if detail.notes:
-            lines.append("Notes:")
-            lines.extend(f"- {note}" for note in detail.notes)
-        return "\n".join(lines)
+        return _format_dream_detail_payload(detail)
 
     if tool_name == "list_recent_dreams":
-        raw_limit = tool_input.get("limit", 10)
-        limit = max(1, min(20, int(raw_limit)))
+        limit = _bounded_int(tool_input.get("limit", 10), default=10, minimum=1, maximum=20)
         dreams = await facade.list_recent_dreams(limit=limit)
         if not dreams:
             return "No dream entries in the archive."
@@ -707,6 +754,14 @@ def _search_strength_label(score: float) -> str:
     return "weak"
 
 
+def _bounded_int(value: Any, *, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
 def _format_search_result_payload(item: Any) -> list[str]:
     date_label = item.date.isoformat() if item.date is not None else "unknown date"
     title_str = item.title if item.title else "без названия"
@@ -719,6 +774,36 @@ def _format_search_result_payload(item: Any) -> list[str]:
         f"  strength: {strength}",
         f'  evidence_text: "{evidence_text}"',
     ]
+
+
+def _format_title_search_result_payload(item: Any) -> list[str]:
+    title_str = item.title if item.title else "без названия"
+    preview = item.raw_text_preview.strip()[:300] if item.raw_text_preview else ""
+    lines = [
+        f"- dream_id: {item.dream_id}",
+        f"  date: {item.date or 'unknown'}",
+        f"  title: {title_str}",
+    ]
+    if preview:
+        lines.append(f"  preview: {preview}")
+    return lines
+
+
+def _format_dream_detail_payload(detail: Any) -> str:
+    theme_names = ", ".join(t.category_name for t in detail.themes) or "none"
+    raw_text_clean = detail.raw_text.replace("*", "").replace("<", "")
+    lines = [
+        f"Dream {detail.id}\n"
+        f"Date: {detail.date or 'unknown'}\n"
+        f"Title: {detail.title}\n"
+        f"Words: {detail.word_count}\n"
+        f"Themes: {theme_names}\n"
+        f"Text: {raw_text_clean[:2000]}"
+    ]
+    if detail.notes:
+        lines.append("Notes:")
+        lines.extend(f"- {note}" for note in detail.notes)
+    return "\n".join(lines)
 
 
 def _search_evidence_text(item: Any) -> str:

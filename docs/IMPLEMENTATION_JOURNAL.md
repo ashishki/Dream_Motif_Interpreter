@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.2
-Last updated: 2026-05-01
+Version: 1.5
+Last updated: 2026-05-02
 Status: append-only
 
 ---
@@ -22,6 +22,33 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-02 — WS-19.3 — Full Dream Retrieval by Title Flow
+
+- Scope: `app/assistant/tools.py`, `tests/unit/test_assistant_chat.py`, `docs/tasks_phase19.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 19 needed a complete user flow where a title-like request can produce the full dream, not only a UUID-bearing intermediate result.
+- Decisions applied: D-007 (bounded internal assistant-tool facade).
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short` -> `106 passed`; `.venv/bin/ruff check app/assistant/tools.py app/assistant/prompts.py app/assistant/facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py` -> clean; `.venv/bin/ruff format --check app/assistant/tools.py app/assistant/prompts.py app/assistant/facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py` -> clean; light review PASS.
+- Follow-ups: Phase 19 deep review is archived; Phase 20 may begin.
+- Notes for next agent: `search_dreams_by_title` now calls `get_dream` for a single title match, does not call `get_dream` for ambiguous matches, and clearly prefixes content fallback with "No title match found".
+
+### 2026-05-02 — WS-19.2 — Assistant Tool `search_dreams_by_title`
+
+- Scope: `app/assistant/tools.py`, `app/assistant/prompts.py`, `tests/unit/test_assistant_chat.py`, `docs/tasks_phase19.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 19 needs the assistant to map user-provided dream titles to UUIDs before calling `get_dream`; the facade method from WS-19.1 was not yet exposed as a tool.
+- Decisions applied: D-007 (bounded internal assistant-tool facade).
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short` -> `104 passed`; `.venv/bin/ruff check app/assistant/tools.py app/assistant/prompts.py app/assistant/facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py` -> clean; `.venv/bin/ruff format --check app/assistant/tools.py app/assistant/prompts.py app/assistant/facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py` -> clean; light review PASS.
+- Follow-ups: WS-19.3 should make the full title flow retrieve the full dream on a single clear match and ask for clarification when title matches are ambiguous.
+- Notes for next agent: `search_dreams_by_title` tool output includes `dream_id`, date, title, and preview; ambiguous matches include a no-guessing instruction in the tool result and system prompt.
+
+### 2026-05-02 — WS-19.1 — Title Search Facade Method
+
+- Scope: `app/assistant/facade.py`, `tests/unit/test_assistant_facade.py`, `docs/tasks_phase19.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 19 requires direct lookup of a specific dream by title because content search does not query `dream_entries.title` and `get_dream` requires a UUID.
+- Decisions applied: D-007 (bounded internal assistant-tool facade); no RAG retrieval semantics changed.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_facade.py -q --tb=short` -> `40 passed`; `.venv/bin/ruff check app/assistant/facade.py tests/unit/test_assistant_facade.py` -> clean; `.venv/bin/ruff format --check app/assistant/facade.py tests/unit/test_assistant_facade.py` -> clean; light review PASS.
+- Follow-ups: WS-19.2 should expose `search_dreams_by_title` as an assistant tool and prompt route title/name lookup to title search first.
+- Notes for next agent: title search now returns `DreamTitleSearchResult` with `dream_id`, date, title, and preview; matching uses `dream_entries.title`, case-insensitive partial lookup, and punctuation-insensitive normalization for titles such as `Я и дети. Тайное общество`.
 
 ### 2026-05-02 — WS-18.6 — Retrieval Eval Run and Phase Gate
 

@@ -1,6 +1,6 @@
 # CODEX_PROMPT.md
 
-Version: 1.66
+Version: 1.67
 Date: 2026-06-02
 Phase: Phase 21 in progress — Test 6 recording/search regressions
 
@@ -8,20 +8,20 @@ Phase: Phase 21 in progress — Test 6 recording/search regressions
 
 ## Current State
 
-- **Phase:** Phase 21 is in progress from Test 6 (2026-06-02): WS-21.1 short dream recording is complete; honest Google Doc writes, fish/image search recall, and full dream retrieval by title/date remain.
-- **Baseline:** WS-21.1 targeted slice: 94 passed, 1 warning; ruff check/format clean for touched WS-21.1 files. Cleanup slice: 32 passed; Phase 20 targeted slice: 85 passed. CODE-17 found during deep review was fixed in-review. WS-18.6 retrieval gates remain passed.
+- **Phase:** Phase 21 is in progress from Test 6 (2026-06-02): WS-21.1 short dream recording and WS-21.2 honest Google Doc confirmations are complete; fish/image search recall and full dream retrieval by title/date remain.
+- **Baseline:** WS-21.2 targeted slice: 153 passed, 1 warning; ruff check/format clean for touched WS-21.2 files. WS-21.1 targeted slice: 94 passed, 1 warning. Cleanup slice: 32 passed; Phase 20 targeted slice: 85 passed. CODE-17 found during deep review was fixed in-review. WS-18.6 retrieval gates remain passed.
 - **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-06-02 (WS-21.1 complete)
+- **Last updated:** 2026-06-02 (WS-21.2 complete)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 21 is active; continue with WS-21.2 honest Google Doc write confirmation and retry.
-- **Latest completed implementation task:** WS-21.1 — short natural text and voice dreams save directly without clarification.
-- **Current baseline:** WS-21.1 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py -q --tb=short` -> 94 passed, 1 warning); `ruff check` and matching `ruff format --check` pass for touched WS-21.1 files. Cleanup targeted slice passes (32 passed). Phase 20 targeted slice passes (85 passed).
+- **Current planning state:** Phase 21 is active; continue with WS-21.3 verbatim image search recall.
+- **Latest completed implementation task:** WS-21.2 — Google Doc create/retry confirmations are truthful and hide fallback doc IDs.
+- **Current baseline:** WS-21.2 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/unit/test_assistant_facade.py -q --tb=short` -> 153 passed, 1 warning); `ruff check` and matching `ruff format --check` pass for touched WS-21.2 files. WS-21.1 targeted slice passes (94 passed, 1 warning). Cleanup targeted slice passes (32 passed). Phase 20 targeted slice passes (85 passed).
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -56,21 +56,21 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-WS-21.2: Honest Google Doc Write Confirmation and Retry.
-Baseline: WS-21.1 complete (`tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py` -> 94 passed, 1 warning; ruff clean). Test 6 report shows Telegram can say a dream was added to Google Doc when it was not, and success text can expose fallback doc IDs.
+WS-21.3: Verbatim Image Search Recall.
+Baseline: WS-21.2 complete (`tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/unit/test_assistant_facade.py` -> 153 passed, 1 warning; ruff clean). Test 6 report shows image search misses a dream containing the exact word `рыба`.
 Goal:
-  Make Telegram recording messages truthful: only confirm Google Doc addition after successful write, use exactly `Сон сохранён и добавлен в документ` for successful writes, hide fallback doc IDs, and keep retry guidance for write failures.
+  Ensure concrete image/object queries such as `сон с рыбой` run exact retrieval and return archive-backed evidence instead of relying only on semantic search.
 
 Context refs:
 - `docs/CODEX_PROMPT.md`
 - `docs/tasks_phase21.md`
-- `app/telegram/handlers.py`
-- `app/assistant/prompts.py`
 - `app/assistant/tools.py`
-- `app/assistant/facade.py`
+- `app/assistant/prompts.py`
+- `app/retrieval/query.py`
+- `docs/retrieval_eval.md`
 - `tests/unit/test_assistant_chat.py`
-- `tests/unit/test_telegram_bot.py`
-- `tests/unit/test_assistant_facade.py`
+- `tests/unit/test_rag_query.py`
+- `tests/unit/test_retrieval_eval.py`
 
 Deferred:
   Concrete `TELEGRAM_REACTION_FEEDBACK_MAPPING` remains pending user-provided emoji meanings; remind the user before enabling reaction semantics in production.

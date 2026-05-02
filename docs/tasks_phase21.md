@@ -1,8 +1,8 @@
 # Task Graph — Dream Motif Interpreter Phase 21
 
-Version: 1.1
+Version: 1.2
 Last updated: 2026-06-02
-Status: In progress — WS-21.1 complete
+Status: In progress — WS-21.2 complete
 
 ## 1. Purpose
 
@@ -110,6 +110,20 @@ Files:
   - `tests/unit/test_assistant_chat.py`
   - `tests/unit/test_assistant_facade.py`
 
+Implementation Notes:
+  - Completed 2026-06-02.
+  - Telegram create confirmations now say exactly `Сон сохранён и добавлен в документ` only
+    when `written_to_google_doc=True`; the formatter no longer appends document names or fallback
+    IDs.
+  - Failed Google Doc writes still report archive-only persistence with the retry phrase, and
+    duplicates do not imply a fresh Google Doc write.
+  - Assistant tool results for create/retry success no longer include `written_to_doc_name`, so the
+    model has no user-facing fallback doc ID to leak.
+  - Regression evidence:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/unit/test_assistant_facade.py -q --tb=short`
+    -> `153 passed, 1 warning`;
+    `ruff check` and `ruff format --check` passed for touched WS-21.2 files.
+
 ---
 
 ## WS-21.3: Verbatim Image Search Recall
@@ -199,7 +213,7 @@ Files:
 ## 4. Phase Gate
 
 - [x] Short natural text and voice dreams are saved without clarification.
-- [ ] Telegram write success/failure messages are honest and hide fallback doc IDs.
+- [x] Telegram write success/failure messages are honest and hide fallback doc IDs.
 - [ ] Fish/image exact search regression is covered and passes.
 - [ ] Full dream retrieval by title/date works without UUID user input.
 - [ ] Test 6 live/manual checklist is documented.

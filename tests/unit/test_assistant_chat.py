@@ -324,6 +324,16 @@ def test_system_prompt_requires_create_dream_for_explicit_save_requests() -> Non
     assert "занеси в архив" in prompt_lower
 
 
+def test_system_prompt_requires_honest_google_doc_write_confirmation() -> None:
+    assert "For successful writes, say exactly: «Сон сохранён и добавлен в документ»." in (
+        SYSTEM_PROMPT
+    )
+    assert "Do not include a Google Doc name, URL, or document ID" in SYSTEM_PROMPT
+    assert "Only say the dream was added to the document when the tool result confirms" in (
+        SYSTEM_PROMPT
+    )
+
+
 def test_system_prompt_contains_terminology_rules_for_google_docs_sources() -> None:
     prompt_lower = SYSTEM_PROMPT.lower()
     assert "## terminology rules".lower() in prompt_lower
@@ -587,6 +597,59 @@ async def test_execute_tool_create_dream_accepts_russian_relative_date_argument(
 
 
 @pytest.mark.asyncio
+async def test_execute_tool_create_dream_success_hides_doc_label() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=True,
+        date="2026-05-01",
+        title="01.05.26, без названия",
+        word_count=4,
+        source_doc_id="telegram:42",
+        written_to_google_doc=True,
+        written_to_doc_name="...O1rHIxHs",
+    )
+
+    result = await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": "запиши сон про рыбу"},
+        facade,
+        chat_id=42,
+        request_text="запиши сон про рыбу",
+    )
+
+    assert "Запись добавлена в Google Doc." in result
+    assert "...O1rHIxHs" not in result
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_create_dream_failure_does_not_claim_doc_write() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=True,
+        date="2026-05-01",
+        title="01.05.26, без названия",
+        word_count=4,
+        source_doc_id="telegram:42",
+        written_to_google_doc=False,
+        written_to_doc_name="Dream Archive",
+    )
+
+    result = await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": "запиши сон про рыбу"},
+        facade,
+        chat_id=42,
+        request_text="запиши сон про рыбу",
+    )
+
+    assert "Запись добавлена в Google Doc." not in result
+    assert "Запись сохранена в архиве." in result
+    assert "повтори запись в Google Doc" in result
+
+
+@pytest.mark.asyncio
 async def test_execute_tool_retry_write_reports_nothing_to_retry() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     facade.retry_write_to_google_doc.return_value = (False, "", "nothing_to_retry")
@@ -617,6 +680,22 @@ async def test_execute_tool_retry_write_failure_is_explicit() -> None:
     )
 
     assert "Сон не был добавлен в документ" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_retry_write_success_hides_doc_label() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.retry_write_to_google_doc.return_value = (True, "...O1rHIxHs", "retried")
+
+    result = await tools_module.execute_tool(
+        "retry_write_to_google_doc",
+        {},
+        facade,
+        chat_id=42,
+        request_text="повтори запись в Google Doc",
+    )
+
+    assert result == "Запись добавлена в Google Doc."
 
 
 @pytest.mark.parametrize(

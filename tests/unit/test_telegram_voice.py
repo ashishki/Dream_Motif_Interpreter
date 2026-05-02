@@ -274,7 +274,7 @@ async def test_text_handler_reply_to_voice_save_uses_stored_transcript() -> None
         "сегодня мне приснилось море и мост",
         chat_id=42,
     )
-    message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ Сны.")
+    message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ")
 
 
 @pytest.mark.asyncio

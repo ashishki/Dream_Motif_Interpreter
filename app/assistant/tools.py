@@ -445,8 +445,7 @@ async def execute_tool(
             f"date={created.date or 'unknown'} | source={created.source_doc_id}"
         ]
         if created.written_to_google_doc:
-            doc_label = created.written_to_doc_name or "Google Doc"
-            lines.append(f"Запись добавлена в Google Doc: {doc_label}.")
+            lines.append("Запись добавлена в Google Doc.")
         else:
             lines.append(
                 "Запись сохранена в архиве. "
@@ -485,8 +484,7 @@ async def execute_tool(
             chat_id=chat_id,
         )
         if success:
-            doc_label = doc_name or "Google Doc"
-            return f"Запись добавлена в Google Doc: {doc_label}."
+            return "Запись добавлена в Google Doc."
         if reason == "nothing_to_retry":
             return "Нет неудачной записи в Google Doc для повтора."
         return (

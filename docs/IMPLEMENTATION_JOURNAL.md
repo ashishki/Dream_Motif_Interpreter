@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.12
+Version: 1.13
 Last updated: 2026-06-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-06-02 — WS-21.2 — Honest Google Doc Save Confirmation
+
+- Scope: `app/telegram/handlers.py`, `app/assistant/tools.py`, `app/assistant/prompts.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `docs/tasks_phase21.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Test 6 showed the bot could say a dream was added to Google Doc even when it was not visible there, and the success message could expose fallback document IDs.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/unit/test_assistant_facade.py -q --tb=short` -> `153 passed, 1 warning`; `ruff check` and matching `ruff format --check` passed for touched WS-21.2 files.
+- Follow-ups: WS-21.3 should fix concrete image/object search recall, starting with the reported `рыба` regression.
+- Notes for next agent: Telegram create confirmations now hide doc labels and only say `Сон сохранён и добавлен в документ` when `written_to_google_doc=True`; failed writes keep the archive-only retry message, and assistant tool create/retry success results no longer include `written_to_doc_name`.
 
 ### 2026-06-02 — WS-21.1 — Short Natural Dream Recording
 

@@ -160,7 +160,7 @@ async def test_transcribe_and_reply_saves_short_natural_dream_transcript_without
     mock_send.assert_awaited_once_with(
         "TOK",
         5,
-        "Сон сохранён и добавлен в документ Dream Archive.",
+        "Сон сохранён и добавлен в документ",
     )
 
 

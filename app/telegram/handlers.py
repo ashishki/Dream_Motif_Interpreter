@@ -524,8 +524,7 @@ def _format_create_dream_reply(created: Any) -> str:
     if not getattr(created, "created", False):
         return "Эта запись уже есть в архиве. В Google Doc повторно не записываю."
     if getattr(created, "written_to_google_doc", False):
-        doc_label = getattr(created, "written_to_doc_name", "") or "Google Doc"
-        return f"Сон сохранён и добавлен в документ {doc_label}."
+        return "Сон сохранён и добавлен в документ"
     return (
         "Сон сохранён в архиве. "
         "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."

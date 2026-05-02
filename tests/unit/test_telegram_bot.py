@@ -22,6 +22,7 @@ from app.telegram.handlers import (
     MAX_PENDING_FEEDBACK_REQUESTS,
     VOICE_PROCESSING_ACK,
     _remember_feedback_request,
+    _format_create_dream_reply,
     chat_guard,
     text_message_handler,
 )
@@ -293,7 +294,7 @@ async def test_text_message_handler_saves_short_natural_dream_without_confirmati
 
     mock_chat.assert_not_awaited()
     facade.create_dream.assert_awaited_once_with("сегодня мне приснилось рыба", chat_id=42)
-    message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ Dream Archive.")
+    message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ")
     assert load_pending_dream_draft(42) is None
 
 
@@ -325,9 +326,7 @@ async def test_text_message_handler_yes_saves_pending_dream() -> None:
         dream_date=None,
         chat_id=42,
     )
-    confirm_message.reply_text.assert_awaited_once_with(
-        "Сон сохранён и добавлен в документ Dream Archive."
-    )
+    confirm_message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ")
     assert load_pending_dream_draft(42) is None
 
 
@@ -350,6 +349,42 @@ async def test_text_message_handler_no_clears_pending_dream() -> None:
     facade.create_dream.assert_not_awaited()
     decline_message.reply_text.assert_awaited_once_with("Хорошо, не сохраняю.")
     assert load_pending_dream_draft(42) is None
+
+
+def test_format_create_dream_reply_hides_doc_label_on_success() -> None:
+    created = SimpleNamespace(
+        created=True,
+        written_to_google_doc=True,
+        written_to_doc_name="...O1rHIxHs",
+    )
+
+    assert _format_create_dream_reply(created) == "Сон сохранён и добавлен в документ"
+
+
+def test_format_create_dream_reply_does_not_claim_doc_write_on_failure() -> None:
+    created = SimpleNamespace(
+        created=True,
+        written_to_google_doc=False,
+        written_to_doc_name="Dream Archive",
+    )
+
+    assert _format_create_dream_reply(created) == (
+        "Сон сохранён в архиве. "
+        "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
+    )
+
+
+def test_format_create_dream_reply_does_not_claim_duplicate_doc_write() -> None:
+    created = SimpleNamespace(
+        created=False,
+        written_to_google_doc=True,
+        written_to_doc_name="Dream Archive",
+    )
+
+    assert (
+        _format_create_dream_reply(created)
+        == "Эта запись уже есть в архиве. В Google Doc повторно не записываю."
+    )
 
 
 class _ReactionSession:

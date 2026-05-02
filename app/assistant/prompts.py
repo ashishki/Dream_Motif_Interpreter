@@ -160,6 +160,16 @@ def build_system_prompt(feedback_rows: list[dict] | None = None) -> str:
         comment = row.get("comment") or ""
         created_at = row.get("created_at")
         date_str = created_at.strftime("%Y-%m-%d") if isinstance(created_at, datetime) else "?"
+        if row.get("source") == "telegram_reaction":
+            emoji = row.get("emoji") or "?"
+            label = row.get("label") or "reaction"
+            if score is None:
+                lines.append(f'- [{date_str}] reaction={emoji} ({label}): "{comment}"')
+            else:
+                lines.append(
+                    f'- [{date_str}] reaction={emoji} ({label}), score={score}/5: "{comment}"'
+                )
+            continue
         if comment:
             lines.append(f'- [{date_str}] score={score}/5: "{comment}"')
         else:

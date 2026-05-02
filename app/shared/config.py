@@ -29,6 +29,19 @@ class OperatorParserProfileAssignments(BaseModel):
     source_containers: dict[str, str] = Field(default_factory=dict)
 
 
+class ReactionFeedbackMeaning(BaseModel):
+    label: str
+    prompt_hint: str
+    score: int | None = None
+
+    @field_validator("score")
+    @classmethod
+    def _validate_score(cls, value: int | None) -> int | None:
+        if value is not None and not 1 <= value <= 5:
+            raise ValueError("reaction feedback score must be between 1 and 5")
+        return value
+
+
 class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str
@@ -48,6 +61,9 @@ class Settings(BaseSettings):
 
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ALLOWED_CHAT_ID: int = 0
+    TELEGRAM_REACTION_FEEDBACK_MAPPING: dict[str, ReactionFeedbackMeaning] = Field(
+        default_factory=dict
+    )
     VOICE_MEDIA_DIR: str = "/tmp/dream_voice"
     VOICE_RETENTION_SECONDS: int = 3600
     APP_TIMEZONE: str = "Asia/Tbilisi"

@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.6
+Version: 1.7
 Last updated: 2026-05-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-02 — WS-20.2 — Emoji Reaction Feedback Scaffold
+
+- Scope: `app/shared/config.py`, `app/services/reaction_feedback.py`, `app/services/feedback_service.py`, `app/assistant/prompts.py`, `tests/unit/test_reaction_model.py`, `tests/unit/test_feedback_context.py`, `docs/FEEDBACK_LOOP.md`, `docs/tasks_phase20.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 20 needs Telegram reactions to become qualitative feedback once the user supplies emoji meanings, but the code path can be prepared before final product mapping exists.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py -q --tb=short` -> `28 passed`; `.venv/bin/ruff check app/shared/config.py app/services/reaction_feedback.py app/services/feedback_service.py app/assistant/prompts.py app/telegram/bot.py tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py` -> clean; matching `ruff format --check` -> clean.
+- Follow-ups: configure `TELEGRAM_REACTION_FEEDBACK_MAPPING` after the user provides concrete emoji meanings; then rerun the same targeted slice and `ruff format --check`.
+- Notes for next agent: the default mapping is empty, so unknown emoji remain raw `message_reactions`; removed reactions are excluded by `removed_at IS NULL`.
 
 ### 2026-05-02 — WS-20.1 — Target-Aware Dream Notes in Google Docs
 

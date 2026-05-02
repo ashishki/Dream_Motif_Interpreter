@@ -2,7 +2,7 @@
 
 Version: 1.0
 Last updated: 2026-05-02
-Status: In progress — WS-20.1 implemented locally; WS-20.2 blocked on emoji mapping
+Status: In progress — WS-20.2 semantic scaffold implemented locally; concrete emoji mapping pending
 
 ## 1. Purpose
 
@@ -56,7 +56,7 @@ Owner:      codex
 Phase:      20
 Type:       feedback
 Priority:   P2
-Depends-On: user provides emoji mapping
+Depends-On: user provides emoji mapping for final configuration
 
 Objective:
   Interpret stored Telegram reactions as qualitative feedback once the user provides the emoji
@@ -77,7 +77,21 @@ Files:
   - `tests/unit/test_feedback_context.py`
 
 Blocker:
-  User must provide emoji list and meanings.
+  User must provide emoji list and meanings before final production mapping can be configured.
+
+Implementation Notes:
+  - `TELEGRAM_REACTION_FEEDBACK_MAPPING` defines optional JSON semantics for Telegram emoji
+    reactions. The default mapping is empty, so no raw reaction is interpreted until configured.
+  - `ReactionFeedbackService` converts only active mapped reactions (`removed_at IS NULL`) into
+    assistant feedback context. Unknown emoji remain raw `message_reactions` rows.
+  - `FeedbackService.get_recent_for_context()` merges numeric feedback rows with mapped reaction
+    feedback rows so prompt injection works once the mapping is provided.
+  - Evidence: `.venv/bin/python -m pytest tests/unit/test_reaction_model.py
+    tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py -q --tb=short`
+    -> 28 passed; `.venv/bin/ruff check app/shared/config.py app/services/reaction_feedback.py
+    app/services/feedback_service.py app/assistant/prompts.py app/telegram/bot.py
+    tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py
+    tests/unit/test_telegram_bot.py` -> clean; matching `ruff format --check` -> clean.
 
 ---
 
@@ -106,5 +120,5 @@ Files:
 ## 3. Phase Gate
 
 - [x] Notes placement behavior is target-aware or explicitly falls back.
-- [ ] Emoji semantics implemented after mapping is provided.
+- [ ] Emoji semantics scaffold implemented; final mapping still requires user-provided meanings.
 - [ ] Feedback prompt UX decision documented.

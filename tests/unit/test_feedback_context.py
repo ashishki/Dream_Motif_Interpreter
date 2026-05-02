@@ -40,6 +40,40 @@ def test_build_system_prompt_low_score_no_comment() -> None:
     assert "score=1/5 (no comment)" in result
 
 
+def test_build_system_prompt_with_reaction_feedback() -> None:
+    rows = [
+        {
+            "source": "telegram_reaction",
+            "emoji": "👍",
+            "label": "helpful",
+            "score": 5,
+            "comment": "The response was useful.",
+            "created_at": datetime(2026, 4, 5),
+        }
+    ]
+
+    result = build_system_prompt(rows)
+
+    assert 'reaction=👍 (helpful), score=5/5: "The response was useful."' in result
+
+
+def test_build_system_prompt_with_qualitative_reaction_feedback_without_score() -> None:
+    rows = [
+        {
+            "source": "telegram_reaction",
+            "emoji": "👀",
+            "label": "needs review",
+            "score": None,
+            "comment": "The response needs later review.",
+            "created_at": datetime(2026, 4, 5),
+        }
+    ]
+
+    result = build_system_prompt(rows)
+
+    assert 'reaction=👀 (needs review): "The response needs later review."' in result
+
+
 def test_build_system_prompt_rows_ordered_oldest_first() -> None:
     rows = [
         {"score": 3, "comment": "first", "created_at": datetime(2026, 4, 1)},
@@ -58,6 +92,40 @@ async def test_get_recent_for_context_returns_empty_list_when_no_rows() -> None:
 
     rows = await FeedbackService().get_recent_for_context(mock_session)
     assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_get_recent_for_context_merges_reaction_feedback_rows() -> None:
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_result = MagicMock()
+    feedback_row = SimpleNamespace(
+        score=2,
+        comment="Too long",
+        created_at=datetime(2026, 4, 1),
+    )
+    mock_result.all.return_value = [feedback_row]
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    reaction_rows = [
+        {
+            "source": "telegram_reaction",
+            "emoji": "👍",
+            "label": "helpful",
+            "score": 5,
+            "comment": "Useful.",
+            "created_at": datetime(2026, 4, 2),
+        }
+    ]
+
+    with patch(
+        "app.services.feedback_service.ReactionFeedbackService.get_recent_for_context",
+        new=AsyncMock(return_value=reaction_rows),
+    ):
+        rows = await FeedbackService().get_recent_for_context(mock_session)
+
+    assert rows == [
+        {"score": 2, "comment": "Too long", "created_at": datetime(2026, 4, 1)},
+        reaction_rows[0],
+    ]
 
 
 @pytest.mark.asyncio

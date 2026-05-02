@@ -123,3 +123,38 @@ If the database query fails (network error, timeout, etc.), the base `SYSTEM_PRO
 ### Scope boundary
 
 This injection path is one-way read: the feedback loop reads from `assistant_feedback` to inform the system prompt. It does not write to the archive, does not alter RAG indexing, and does not modify stored motifs or research results. `assistant_feedback` remains excluded from all ingestion pipelines.
+
+---
+
+## 7. Telegram Reaction Semantics
+
+Telegram message reactions are stored raw in `message_reactions`. A removed reaction is not
+deleted; it is marked with `removed_at`.
+
+Reaction semantics are configured through `TELEGRAM_REACTION_FEEDBACK_MAPPING` as JSON. Until
+the user provides the final emoji meanings, the default mapping is empty and no reaction changes
+assistant behavior.
+
+Example shape:
+
+```json
+{
+  "👍": {
+    "label": "helpful",
+    "prompt_hint": "The response was useful.",
+    "score": 5
+  },
+  "👀": {
+    "label": "needs review",
+    "prompt_hint": "The response needs later review."
+  }
+}
+```
+
+Rules:
+
+- Only mapped emoji are converted into assistant feedback context.
+- Unknown emoji remain stored as raw reactions and are not interpreted.
+- Removed reactions are excluded from feedback context because `removed_at IS NULL` is required.
+- A mapping entry may include `score` from 1 to 5, but qualitative-only entries are allowed.
+- This does not train, fine-tune, or mutate archive data; it only adds prompt context.

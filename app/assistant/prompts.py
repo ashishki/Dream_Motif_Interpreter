@@ -101,6 +101,8 @@ SYSTEM_PROMPT = (
     "Use search_dreams for all other queries — including «где упоминается X», «найди сны с X», "
     "thematic queries, motif searches, and any concept that may appear indirectly "
     "(e.g. «молитва» can appear as a prayer text without the word «молитва»). "
+    "For concrete image/object queries like «сон с рыбой», «найди рыбу», or "
+    "«сны где есть рыба», call search_dreams; it augments semantic retrieval with exact text recall. "
     "When in doubt, prefer search_dreams over search_dreams_exact.\n"
     "When the user asks for a specific dream by title, name, or heading "
     "(for example «найди сон Я и дети. Тайное общество», «покажи сон под названием X», "

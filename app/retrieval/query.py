@@ -54,6 +54,52 @@ RELIGIOUS_QUERY_MARKERS = (
 )
 DIVINE_NAME_RE = re.compile(r"\bбог(?:а|у|ом|е)?\b", re.IGNORECASE)
 BROAD_QUERY_MARKERS = ("сюжет", "мотив", "тема", "образ")
+CONCRETE_IMAGE_QUERY_MARKERS = (
+    "сон с ",
+    "сон со ",
+    "сны с ",
+    "сны со ",
+    "найди ",
+    "найти ",
+    "где есть ",
+    "где была ",
+    "где был ",
+    "где были ",
+    "в котором есть ",
+    "в которых есть ",
+)
+CONCRETE_IMAGE_QUERY_STOPWORDS = frozenset(
+    {
+        "сон",
+        "сны",
+        "сне",
+        "сновидение",
+        "сновидения",
+        "найди",
+        "найти",
+        "покажи",
+        "где",
+        "есть",
+        "был",
+        "была",
+        "было",
+        "были",
+        "про",
+        "об",
+        "о",
+        "с",
+        "со",
+        "в",
+        "во",
+        "на",
+        "и",
+        "или",
+        "котором",
+        "которых",
+        "который",
+        "которая",
+    }
+)
 RELIGIOUS_MULTI_QUERY_PROBES = (
     "церковь храм богослужение",
     "молитва песнопение Рождество",
@@ -411,6 +457,37 @@ def _build_retrieval_probes(original_query: str, expanded_query: str) -> list[st
             _merge_query_terms(original_query, probe) for probe in RELIGIOUS_MULTI_QUERY_PROBES
         )
     return _dedupe_strings(probes)
+
+
+def extract_concrete_image_query(query: str) -> str | None:
+    normalized = query.casefold()
+    if not any(marker in normalized for marker in CONCRETE_IMAGE_QUERY_MARKERS):
+        return None
+
+    tokens = re.findall(r"[0-9A-Za-zА-Яа-яЁё]+", normalized)
+    content_tokens = [
+        _normalize_concrete_image_token(token)
+        for token in tokens
+        if token not in CONCRETE_IMAGE_QUERY_STOPWORDS and len(token) >= 3
+    ]
+    content_tokens = _dedupe_strings(content_tokens)
+    if not content_tokens or len(content_tokens) > 3:
+        return None
+    return " ".join(content_tokens)
+
+
+def _normalize_concrete_image_token(token: str) -> str:
+    if not re.fullmatch(r"[а-яё]+", token):
+        return token
+    if len(token) > 4 and token.endswith(("ою", "ею")):
+        return token[:-2] + "а"
+    if len(token) > 4 and token.endswith(("ой", "ей")):
+        return token[:-2] + "а"
+    if len(token) > 3 and token.endswith("у"):
+        return token[:-1] + "а"
+    if len(token) > 3 and token.endswith("ю"):
+        return token[:-1] + "я"
+    return token
 
 
 def _matches_religious_query_profile(query: str) -> bool:

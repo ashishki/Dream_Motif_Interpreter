@@ -41,9 +41,9 @@ A passing answer-quality check with declining retrieval metrics is a warning sig
 
 ---
 
-Version: 1
-Last updated: 2026-05-02
-Changed by: WS-18.6 — Retrieval Evaluation Run
+Version: 2
+Last updated: 2026-06-02
+Changed by: WS-21.3 — Test 6 fish/image exact recall regression
 
 ---
 
@@ -125,6 +125,28 @@ Expected relevant archive classes for Phase 18:
   `где фигурирует молитва`, and `рождественское песнопение`.
 - Church/icon/prayer dreams: expected relevant for `религиозные сюжеты`, `церковь`, and
   prayer queries when the evidence fragment contains religious language.
+
+---
+
+## Phase 21 Image/Object Exact Recall Regression Dataset
+
+This focused slice captures the Test 6 report that an image search for a fish did not find a
+dream entry whose text contains `рыба`.
+
+False-negative policy:
+
+- Concrete image/object queries must not rely only on semantic/vector ranking.
+- If the object appears verbatim in `dream_entries.raw_text` or `dream_chunks.chunk_text`, an
+  exact evidence fragment must be surfaced even when semantic retrieval returns insufficient
+  evidence.
+- Success is archive-backed only when `evidence_text` contains the exact object word or a
+  same-stem inflected form from the source text.
+
+| ID | Query | Query Type | Expected relevant evidence | False-negative rule |
+|----|-------|------------|----------------------------|---------------------|
+| P21-Q01 | сон с рыбой | concrete-image-exact | Dream containing `рыба` / same-stem fish word in evidence_text | Fails if no exact fish evidence is returned |
+| P21-Q02 | найди рыбу | concrete-image-exact | Same fish dream evidence | Fails if query routing skips exact recall |
+| P21-Q03 | сны где есть рыба | concrete-image-exact | Same fish dream evidence | Fails if semantic threshold suppresses exact fish evidence |
 
 ---
 
@@ -273,3 +295,4 @@ none
 | 2026-05-02 | WS-18.6 | synthetic-20-entries | scripts/eval.py against §Evaluation Dataset (10 queries), run 2026-05-02 | 1.00 | 1.00 | 1.00 | — | — | synthetic seeded baseline established |
 | 2026-05-02 | WS-18.6 | real-user-archive-read-only | `.venv/bin/python scripts/eval_phase18_real.py --limit 5`, run 2026-05-02 | N/A | N/A | Pass | — | — | 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; live hybrid embedding path deferred until a real OpenAI key is configured |
 | 2026-05-02 | WS-18.6 | real-user-archive-live-hybrid | `.venv/bin/python scripts/eval_phase18_real.py --mode live --limit 5`, run 2026-05-02 | N/A | N/A | Pass | — | — | live hybrid path completed with provider auth; 6/6 Phase 18 prayer/religion queries returned archive-backed evidence |
+| 2026-06-02 | WS-21.3 | phase21-fish-image-unit-regression | `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short`, run 2026-06-02 | N/A | N/A | Pass | — | — | concrete fish/image queries route through search_dreams with exact recall fallback; P21-Q01–P21-Q03 documented |

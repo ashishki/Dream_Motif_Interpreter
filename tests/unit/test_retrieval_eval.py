@@ -86,3 +86,19 @@ def test_phase18_eval_run_documents_unit_regression_and_live_limit() -> None:
     assert any(
         "scripts/eval_phase18_real.py --limit 5" in row["Eval Source"] for row in phase18_rows
     )
+
+
+def test_phase21_fish_image_regression_dataset_is_documented() -> None:
+    text = DOCS_PATH.read_text(encoding="utf-8")
+
+    assert "## Phase 21 Image/Object Exact Recall Regression Dataset" in text
+    for query in ["сон с рыбой", "найди рыбу", "сны где есть рыба"]:
+        assert query in text
+    assert "dream entry whose text contains `рыба`" in text
+    assert "exact evidence fragment must be surfaced" in text
+
+    rows = load_evaluation_history(DOCS_PATH)
+    phase21_rows = [row for row in rows if row["Task"] == "WS-21.3"]
+    assert phase21_rows
+    assert phase21_rows[-1]["Date"] == "2026-06-02"
+    assert "tests/unit/test_assistant_chat.py" in phase21_rows[-1]["Eval Source"]

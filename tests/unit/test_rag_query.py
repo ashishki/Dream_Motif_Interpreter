@@ -127,6 +127,17 @@ def test_broad_religious_query_builds_multiple_retrieval_probes() -> None:
     ]
 
 
+def test_extract_concrete_image_query_normalizes_fish_object_queries() -> None:
+    assert query.extract_concrete_image_query("сон с рыбой") == "рыба"
+    assert query.extract_concrete_image_query("найди рыбу") == "рыба"
+    assert query.extract_concrete_image_query("сны где есть рыба") == "рыба"
+
+
+def test_extract_concrete_image_query_ignores_broad_queries() -> None:
+    assert query.extract_concrete_image_query("образы воды") is None
+    assert query.extract_concrete_image_query("религиозные сюжеты") is None
+
+
 def test_merge_probe_rows_dedupes_by_dream_id_and_preserves_evidence() -> None:
     dream_id = uuid4()
     other_dream_id = uuid4()

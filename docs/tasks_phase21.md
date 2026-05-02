@@ -1,8 +1,8 @@
 # Task Graph — Dream Motif Interpreter Phase 21
 
-Version: 1.2
+Version: 1.3
 Last updated: 2026-06-02
-Status: In progress — WS-21.2 complete
+Status: In progress — WS-21.3 complete
 
 ## 1. Purpose
 
@@ -154,6 +154,19 @@ Files:
   - `tests/unit/test_rag_query.py`
   - `tests/unit/test_retrieval_eval.py`
 
+Implementation Notes:
+  - Completed 2026-06-02.
+  - `search_dreams` now augments concrete image/object queries such as `сон с рыбой`,
+    `найди рыбу`, and `сны где есть рыба` with exact FTS recall through
+    `search_dreams_exact`.
+  - Exact fish/object results are merged with semantic results and deduped by `dream_id`; exact
+    hits are not suppressed by semantic insufficient-evidence thresholds.
+  - `docs/retrieval_eval.md` now records the Phase 21 fish/image regression dataset P21-Q01–P21-Q03.
+  - Regression evidence:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short`
+    -> `92 passed, 1 warning`;
+    `ruff check` and `ruff format --check` passed for touched WS-21.3 files.
+
 ---
 
 ## WS-21.4: Full Dream by Title and Date Flow
@@ -214,7 +227,7 @@ Files:
 
 - [x] Short natural text and voice dreams are saved without clarification.
 - [x] Telegram write success/failure messages are honest and hide fallback doc IDs.
-- [ ] Fish/image exact search regression is covered and passes.
+- [x] Fish/image exact search regression is covered and passes.
 - [ ] Full dream retrieval by title/date works without UUID user input.
 - [ ] Test 6 live/manual checklist is documented.
 - [ ] Phase 21 deep review passed.

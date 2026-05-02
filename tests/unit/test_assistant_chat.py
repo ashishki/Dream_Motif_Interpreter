@@ -351,6 +351,12 @@ def test_system_prompt_requires_search_answers_to_cite_evidence_text() -> None:
     assert "final answers must cite only evidence_text" in prompt_lower
 
 
+def test_system_prompt_routes_concrete_image_queries_to_augmented_search() -> None:
+    prompt_lower = SYSTEM_PROMPT.lower()
+    assert "сон с рыбой" in prompt_lower
+    assert "augments semantic retrieval with exact text recall" in prompt_lower
+
+
 # ---------------------------------------------------------------------------
 # build_tools — conditional get_dream_motifs registration
 # ---------------------------------------------------------------------------
@@ -774,6 +780,79 @@ async def test_search_dreams_exact_routing() -> None:
     assert f"result_id: {dream_id}" in result
     assert 'evidence_text: "Мне приснилась церковь на холме"' in result
     facade.search_dreams_exact.assert_awaited_once_with("церковь")
+
+
+@pytest.mark.asyncio
+async def test_search_dreams_augments_fish_image_query_with_exact_recall() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams.return_value = SearchResult(
+        items=[],
+        insufficient_reason="No verified archive-backed matches found",
+    )
+    facade.search_dreams_exact.return_value = [
+        SearchResultItem(
+            dream_id=dream_id,
+            date=date(2026, 4, 14),
+            title="Рыба в воде",
+            chunk_text="В этом сне была рыба в прозрачной воде.",
+            relevance_score=1.0,
+            matched_fragments=[],
+            quote="В этом сне была рыба в прозрачной воде",
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "search_dreams",
+        {"query": "сон с рыбой"},
+        facade,
+    )
+
+    facade.search_dreams.assert_awaited_once_with("сон с рыбой")
+    facade.search_dreams_exact.assert_awaited_once_with("рыба")
+    assert f"result_id: {dream_id}" in result
+    assert 'evidence_text: "В этом сне была рыба в прозрачной воде"' in result
+    assert "No more archive-backed matches found." not in result
+
+
+@pytest.mark.asyncio
+async def test_search_dreams_dedupes_exact_and_semantic_image_results() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams.return_value = SearchResult(
+        items=[
+            SearchResultItem(
+                dream_id=dream_id,
+                date=date(2026, 4, 14),
+                title="Рыба в воде",
+                chunk_text="Потом вода стала темной.",
+                relevance_score=0.6,
+                matched_fragments=[{"text": "вода стала темной", "match_type": "semantic"}],
+                quote=None,
+            )
+        ],
+    )
+    facade.search_dreams_exact.return_value = [
+        SearchResultItem(
+            dream_id=dream_id,
+            date=date(2026, 4, 14),
+            title="Рыба в воде",
+            chunk_text="В этом сне была рыба в прозрачной воде.",
+            relevance_score=1.0,
+            matched_fragments=[],
+            quote="В этом сне была рыба в прозрачной воде",
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "search_dreams",
+        {"query": "сон с рыбой"},
+        facade,
+    )
+
+    assert result.count(f"result_id: {dream_id}") == 1
+    assert "strength: strong" in result
+    assert "В этом сне была рыба в прозрачной воде" in result
 
 
 @pytest.mark.asyncio

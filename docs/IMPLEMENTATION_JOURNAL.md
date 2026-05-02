@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.13
+Version: 1.14
 Last updated: 2026-06-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-06-02 — WS-21.3 — Fish/Image Exact Recall
+
+- Scope: `app/assistant/tools.py`, `app/assistant/prompts.py`, `app/retrieval/query.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_rag_query.py`, `tests/unit/test_retrieval_eval.py`, `docs/retrieval_eval.md`, `docs/tasks_phase21.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Test 6 showed image search could miss a dream containing the exact word `рыба`.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short` -> `92 passed, 1 warning`; `ruff check` and matching `ruff format --check` passed for touched WS-21.3 files.
+- Follow-ups: WS-21.4 should make list/title/date flows resolve `dream_id` and retrieve full dream text without asking the user for UUIDs.
+- Notes for next agent: `search_dreams` now detects concrete image/object phrasings and calls `search_dreams_exact` with normalized object terms, e.g. `сон с рыбой` -> `рыба`, then merges exact and semantic results by `dream_id`.
 
 ### 2026-06-02 — WS-21.2 — Honest Google Doc Save Confirmation
 

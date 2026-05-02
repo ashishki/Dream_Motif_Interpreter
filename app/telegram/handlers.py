@@ -29,7 +29,7 @@ from app.telegram.voice import download_voice_file
 LOGGER = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
 VOICE_PROCESSING_ACK = "Обрабатываю голосовое сообщение..."
-FEEDBACK_PROMPT = "Оцените ответ от 1 до 5 или добавьте комментарий после цифры."
+FEEDBACK_PROMPT = "Ответьте 1–5, можно с коротким комментарием."
 FEEDBACK_ACK = "Thanks, noted."
 VOICE_TRANSCRIPT_PROCESSING = (
     "Расшифровка голосового сообщения ещё выполняется. Повторите команду после завершения."

@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.7
+Version: 1.8
 Last updated: 2026-05-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-02 — WS-20.3 — Feedback Prompt UX Decision
+
+- Scope: `app/telegram/handlers.py`, `tests/unit/test_telegram_bot.py`, `docs/FEEDBACK_LOOP.md`, `docs/USER_GUIDE_RU.md`, `docs/tasks_phase20.md`, `docs/CODEX_PROMPT.md`, `docs/DECISION_LOG.md`
+- Why this work happened: Phase 20 needed a concrete UX decision for the recurring Telegram feedback prompt after the reaction semantics scaffold landed.
+- Decisions applied: D-017 — numeric feedback prompt remains active and shortened; concrete emoji meaning mapping is deferred.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_telegram_bot.py -q --tb=short` -> `15 passed`; `.venv/bin/ruff check app/telegram/handlers.py tests/unit/test_telegram_bot.py` -> clean; matching `ruff format --check` -> clean.
+- Follow-ups: run Phase 20 deep review; remind the user that emoji reactions remain raw until `TELEGRAM_REACTION_FEEDBACK_MAPPING` is configured.
+- Notes for next agent: visible prompt is now `Ответьте 1–5, можно с коротким комментарием.`; handler parsing behavior did not change.
 
 ### 2026-05-02 — WS-20.2 — Emoji Reaction Feedback Scaffold
 

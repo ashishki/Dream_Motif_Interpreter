@@ -103,6 +103,10 @@ def test_voice_processing_ack_is_russian() -> None:
     assert VOICE_PROCESSING_ACK == "Обрабатываю голосовое сообщение..."
 
 
+def test_feedback_prompt_is_short_numeric_reply_prompt() -> None:
+    assert FEEDBACK_PROMPT == "Ответьте 1–5, можно с коротким комментарием."
+
+
 @pytest.mark.asyncio
 async def test_text_message_handler_sends_handle_chat_response() -> None:
     update, message = _make_text_message_update("hello", chat_id=7)

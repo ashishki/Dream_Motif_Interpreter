@@ -6,7 +6,7 @@ This document defines the feedback capture capability planned for Phase 11: its 
 
 ## 1. Purpose
 
-The feedback loop provides a quality signal for human review of assistant responses. It allows the user to rate individual responses on a 1–5 scale with an optional comment.
+The feedback loop provides a quality signal for human review of assistant responses. It allows the user to rate individual responses on a 1–5 scale with an optional comment. Emoji reactions are captured separately, but remain uninterpreted until the operator configures explicit meanings.
 
 Ratings are stored for manual inspection only. They do not feed into automated retraining, do not alter model behavior in any session, and are not used for any unsupervised training pipeline. The sole purpose is to accumulate a quality signal that a human reviewer can inspect.
 
@@ -20,7 +20,7 @@ The feedback is captured passively via Telegram without requiring a separate wor
 
 ### Trigger condition
 
-After the assistant delivers a substantive response (not an error message, not a transcription acknowledgment, not a system notice), it appends: "Reply to this message to rate (1–5), or add a comment after the digit."
+After the assistant delivers a substantive response (not an error message, not a transcription acknowledgment, not a system notice), it appends: "Ответьте 1–5, можно с коротким комментарием."
 
 ### Primary path — Telegram reply
 
@@ -35,6 +35,16 @@ Detection is deterministic (no LLM calls). Only a reply to the exact bot message
 ### Fallback path — plain digit message
 
 For backward compatibility, a plain digit message (1–5, no other characters) sent immediately after a substantive response is also accepted as a rating if the pending-feedback state is set. Comment is `NULL` in this path.
+
+### UX decision — Phase 20
+
+The numeric prompt remains the active feedback UX for now, but the text is shortened so it is less noisy after every substantive assistant response. Emoji reactions are not yet promoted to the primary UX because their production mapping is still pending.
+
+The active prompt is:
+
+```text
+Ответьте 1–5, можно с коротким комментарием.
+```
 
 ### Acknowledgment
 
@@ -131,9 +141,9 @@ This injection path is one-way read: the feedback loop reads from `assistant_fee
 Telegram message reactions are stored raw in `message_reactions`. A removed reaction is not
 deleted; it is marked with `removed_at`.
 
-Reaction semantics are configured through `TELEGRAM_REACTION_FEEDBACK_MAPPING` as JSON. Until
-the user provides the final emoji meanings, the default mapping is empty and no reaction changes
-assistant behavior.
+Reaction semantics are configured through `TELEGRAM_REACTION_FEEDBACK_MAPPING` as JSON. The
+concrete mapping is intentionally skipped for now; until the user provides final emoji meanings,
+the default mapping is empty and no reaction changes assistant behavior.
 
 Example shape:
 

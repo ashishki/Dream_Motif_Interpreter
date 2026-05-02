@@ -2,7 +2,7 @@
 
 Version: 1.0
 Last updated: 2026-05-02
-Status: In progress — WS-20.2 semantic scaffold implemented locally; concrete emoji mapping pending
+Status: Implemented locally — WS-20.3 complete; concrete emoji mapping deferred by D-017
 
 ## 1. Purpose
 
@@ -117,8 +117,17 @@ Files:
   - `docs/FEEDBACK_LOOP.md`
   - `docs/USER_GUIDE_RU.md`
 
+Implementation Notes:
+  - Decision D-017 keeps the numeric Telegram feedback prompt as the active UX while shortening
+    the visible text to `Ответьте 1–5, можно с коротким комментарием.`
+  - Emoji reactions remain stored and ready for semantics, but concrete emoji meanings are
+    deferred until the user provides the mapping.
+  - Evidence: `.venv/bin/python -m pytest tests/unit/test_telegram_bot.py -q --tb=short`
+    -> 15 passed; `.venv/bin/ruff check app/telegram/handlers.py
+    tests/unit/test_telegram_bot.py` -> clean; matching `ruff format --check` -> clean.
+
 ## 3. Phase Gate
 
 - [x] Notes placement behavior is target-aware or explicitly falls back.
-- [ ] Emoji semantics scaffold implemented; final mapping still requires user-provided meanings.
-- [ ] Feedback prompt UX decision documented.
+- [x] Emoji semantics scaffold implemented; final mapping deferred until user provides meanings.
+- [x] Feedback prompt UX decision documented.

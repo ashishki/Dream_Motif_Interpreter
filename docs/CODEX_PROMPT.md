@@ -1,27 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.61
+Version: 1.62
 Date: 2026-05-02
-Phase: Phase 20 in progress — emoji feedback scaffold implemented; concrete mapping pending
+Phase: Phase 20 implemented locally — deep review next
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 20 WS-20.2 emoji semantics scaffold is implemented locally; final production mapping still needs user-provided emoji meanings.
-- **Baseline:** WS-20.2 reaction feedback slice: 28 passed; ruff check/format clean for touched reaction/feedback files. WS-20.1 Google Docs/facade slice: 54 passed; ruff check/format clean for touched Google Docs/facade/test files. WS-19.3 assistant title-flow unit slice after deep-review fix: 106 passed; ruff check/format clean for touched assistant files. WS-18.6 synthetic retrieval eval: hit@3=1.00, MRR=1.00, no-answer accuracy=1.00; read-only real archive eval: 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; live hybrid archive eval (`scripts/eval_phase18_real.py --mode live --limit 5`) completed with provider auth and archive-backed evidence for all 6 Phase 18 queries. Full local suite on non-live machine still requires broader live service coverage.
+- **Phase:** Phase 20 implementation is complete locally; concrete emoji mapping is deferred by D-017; deep review is next.
+- **Baseline:** WS-20.3 Telegram prompt slice: 15 passed; ruff check/format clean for touched Telegram files. WS-20.2 reaction feedback slice: 28 passed; ruff check/format clean for touched reaction/feedback files. WS-20.1 Google Docs/facade slice: 54 passed; ruff check/format clean for touched Google Docs/facade/test files. WS-19.3 assistant title-flow unit slice after deep-review fix: 106 passed; ruff check/format clean for touched assistant files. WS-18.6 retrieval gates remain passed.
 - **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-02 (Phase 20 WS-20.2 scaffold implemented; final mapping pending)
+- **Last updated:** 2026-05-02 (Phase 20 WS-20.3 implemented; deep review next)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 20 is active; WS-20.2 scaffold is implemented locally, final emoji meanings still need user input.
-- **Latest completed implementation task:** WS-20.2 — Emoji Reaction Semantics scaffold.
-- **Current baseline:** WS-20.2 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py -q --tb=short` -> 28 passed); `ruff check app/shared/config.py app/services/reaction_feedback.py app/services/feedback_service.py app/assistant/prompts.py app/telegram/bot.py tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py` and matching `ruff format --check` pass. WS-20.1 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py -q --tb=short` -> 54 passed); `ruff check app/services/gdocs_client.py app/assistant/facade.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py` and matching `ruff format --check` pass. WS-19.3 targeted assistant slice passes after deep-review fix (`.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short` -> 106 passed). WS-18.6 retrieval gates remain passed.
+- **Current planning state:** Phase 20 implementation is complete locally and awaits mandatory phase-boundary deep review.
+- **Latest completed implementation task:** WS-20.3 — Feedback Prompt UX Decision.
+- **Current baseline:** WS-20.3 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_telegram_bot.py -q --tb=short` -> 15 passed); `ruff check app/telegram/handlers.py tests/unit/test_telegram_bot.py` and matching `ruff format --check` pass. WS-20.2 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py -q --tb=short` -> 28 passed); `ruff check app/shared/config.py app/services/reaction_feedback.py app/services/feedback_service.py app/assistant/prompts.py app/telegram/bot.py tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py` and matching `ruff format --check` pass. WS-20.1 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py -q --tb=short` -> 54 passed).
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -55,22 +55,22 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-WS-20.2 follow-up: Configure Concrete Emoji Reaction Mapping.
-Baseline: WS-20.2 scaffold passed (`tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py` -> 28 passed); ruff check/format clean for touched reaction/feedback files.
+Phase 20 Deep Review.
+Baseline: WS-20.1/20.2/20.3 targeted slices pass; concrete emoji meaning mapping is deferred by D-017.
 Goal:
-  Add the user-approved emoji list and meanings to `TELEGRAM_REACTION_FEEDBACK_MAPPING`.
+  Run mandatory phase-boundary deep review in order: META, ARCH, CODE, CONSOLIDATED. Fix any findings before archiving Phase 20.
 
 Context refs:
-- `docs/tasks_phase20.md` — active task graph (read §1-3 and WS-20.2 before coding)
-- `app/models/reaction.py`
-- `app/services/feedback_service.py` or a new reaction feedback service
-- `app/telegram/bot.py`
+- `docs/tasks_phase20.md`
 - `docs/FEEDBACK_LOOP.md`
-- `tests/unit/test_reaction_model.py`
-- `tests/unit/test_feedback_context.py`
+- `docs/USER_GUIDE_RU.md`
+- `docs/DECISION_LOG.md`
+- `app/telegram/handlers.py`
+- `app/services/reaction_feedback.py`
+- `app/services/feedback_service.py`
 
-Blocker:
-  User must provide the emoji list and meanings before production mapping can be finalized.
+Deferred:
+  Concrete `TELEGRAM_REACTION_FEEDBACK_MAPPING` remains pending user-provided emoji meanings; remind the user before enabling reaction semantics in production.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Version: 1.0
 Last updated: 2026-05-01
-Status: Planned — source: Тест 4-5 search feedback
+Status: In Progress — WS-18.2 implemented locally
 
 ## 1. Purpose
 
@@ -45,6 +45,7 @@ Phase:      18
 Type:       eval
 Priority:   P0
 Depends-On: none
+Status:     Implemented locally — 2026-05-01
 
 Objective:
   Add a focused retrieval evaluation slice from user-reported failures.
@@ -67,6 +68,19 @@ Context-Refs:
   - `tests/unit/test_retrieval_eval.py`
   - user feedback from Тест 4-5 summarized in this task graph
 
+Implementation Notes:
+  - Added `docs/retrieval_eval.md §Phase 18 User Search Regression Dataset`.
+  - Dataset covers `молитва`, `где упоминается молитва`, `где фигурирует молитва`,
+    `религиозные сюжеты`, `церковь`, and `рождественское песнопение`.
+  - The Christmas hymn/prayer dream is explicitly marked expected relevant for prayer
+    queries, and church/icon/prayer dreams are marked expected relevant for religious
+    plot queries.
+  - False-positive policy requires archive-backed evidence fragments from `quote`,
+    `chunk_text`, or `matched_fragments`; weak semantic adjacency without evidence is
+    counted as a false positive.
+  - Verification: `.venv/bin/python -m pytest tests/unit/test_retrieval_eval.py -q --tb=short`
+    -> 3 passed.
+
 ---
 
 ## WS-18.2: Deterministic Query Expansion Profiles
@@ -76,6 +90,7 @@ Phase:      18
 Type:       retrieval
 Priority:   P1
 Depends-On: WS-18.1
+Status:     Implemented locally — 2026-05-01
 
 Objective:
   Add deterministic domain-aware expansion for common symbolic/thematic search classes before
@@ -97,6 +112,17 @@ Context-Refs:
   - `app/retrieval/query.py::_expand_query_terms`
   - `docs/MOTIF_ABSTRACTION.md` for motif/thematic vocabulary boundaries
 
+Implementation Notes:
+  - Added a deterministic religious/prayer expansion profile in `app/retrieval/query.py`.
+  - Profile terms include `молитва`, `песнопение`, `богослужение`, `церковь`, `храм`,
+    `икона`, `Христос`, `Бог`, and `Рождество`.
+  - Matching queries include prayer, hymnody, church, religious, icon, divine-name, and
+    Christmas hymn markers.
+  - The deterministic profile is applied before embedding and FTS search; LLM expansion
+    remains best-effort and is merged with deterministic terms when available.
+  - Verification: `.venv/bin/python -m pytest tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short`
+    -> 13 passed; `ruff check` and `ruff format --check` passed for the touched retrieval/test files.
+
 ---
 
 ## WS-18.3: Multi-Query Retrieval in Code, Not Prompt Only
@@ -106,6 +132,7 @@ Phase:      18
 Type:       retrieval + assistant facade
 Priority:   P1
 Depends-On: WS-18.2
+Status:     Implemented locally — 2026-05-02
 
 Objective:
   Make broad motif/theme search issue multiple retrieval probes deterministically and merge by
@@ -130,6 +157,21 @@ Context-Refs:
   - `app/retrieval/query.py::_search`
   - `app/assistant/prompts.py` search routing rules
 
+Implementation Notes:
+  - `RagQueryService.retrieve()` now builds deterministic retrieval probes for broad
+    religious motif/theme queries instead of relying on the assistant to issue repeated
+    `search_dreams` calls.
+  - Religious broad queries run probes equivalent to church/place-of-worship,
+    prayer/hymn/Christmas, and icon/divine-name variants.
+  - Probe results are merged by `dream_id`; the highest relevance score is retained and
+    distinct evidence chunks are joined with `---`.
+  - Matched fragments are deduplicated while preserving valid `text`, `match_type`, and
+    `char_offset` metadata.
+  - Light review: PASS — no blocking findings in retrieval contract, ordering, or merge
+    behavior.
+  - Verification: `.venv/bin/python -m pytest tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_assistant_facade.py -q --tb=short`
+    -> 54 passed; `ruff check` and `ruff format --check` passed for touched retrieval/test files.
+
 ---
 
 ## WS-18.4: Evidence Verification and Weak-Result Suppression
@@ -139,6 +181,7 @@ Phase:      18
 Type:       retrieval + output contract
 Priority:   P0
 Depends-On: WS-18.3
+Status:     Implemented locally — 2026-05-02
 
 Objective:
   Suppress results that cannot expose a real evidence fragment connected to the query.
@@ -165,6 +208,20 @@ Context-Refs:
   - `app/assistant/tools.py::execute_tool search_dreams`
   - `app/assistant/facade.py::_extract_quote`
 
+Implementation Notes:
+  - `AssistantFacade.search_dreams()` now suppresses weak results (`score < 0.4`) when
+    they have no query quote and no matched fragments, preventing low-signal vector-only
+    neighbors from reaching the assistant.
+  - If filtering removes all candidates, the facade returns an insufficient-evidence reason
+    for missing verified archive-backed matches.
+  - `execute_tool("search_dreams")` maps that condition to `No more archive-backed matches found.`
+  - Search tool output now labels verified results with `strength=strong|moderate|weak`
+    after facade verification.
+  - Light review: PASS — no blocking findings in exact-search behavior, verified result
+    preservation, or no-more-matches messaging.
+  - Verification: `.venv/bin/python -m pytest tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py -q --tb=short`
+    -> 114 passed; `ruff check` and `ruff format --check` passed for touched retrieval/facade/tool/test files.
+
 ---
 
 ## WS-18.5: Grounded Search Response Contract
@@ -174,6 +231,7 @@ Phase:      18
 Type:       assistant tool contract
 Priority:   P0
 Depends-On: WS-18.4
+Status:     Implemented locally — 2026-05-02
 
 Objective:
   Reduce the LLM's opportunity to invent fragments by giving it a stricter, citation-like
@@ -196,6 +254,18 @@ Context-Refs:
   - `app/assistant/tools.py::execute_tool`
   - `app/assistant/prompts.py §Search Grounding Rules`
 
+Implementation Notes:
+  - Search tool output now uses a citation-like payload for each result:
+    `result_id`, `date`, `title`, `strength`, and `evidence_text`.
+  - `evidence_text` is selected from `quote`, then matched fragment text, then chunk text.
+  - `SYSTEM_PROMPT` now defines `evidence_text` as the citation boundary and instructs final
+    answers to cite only `evidence_text` from search tool results.
+  - No-result and no-more-matches paths contain no invented dream text.
+  - Light review: PASS — no blocking findings; stale prompt wording around exact-search
+    `quote` was updated to `evidence_text`.
+  - Verification: `.venv/bin/python -m pytest tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py -q --tb=short`
+    -> 115 passed; `ruff check` and `ruff format --check` passed for touched retrieval/facade/tool/prompt/test files.
+
 ---
 
 ## WS-18.6: Retrieval Eval Run and Phase Gate
@@ -205,6 +275,7 @@ Phase:      18
 Type:       eval + docs
 Priority:   P0
 Depends-On: WS-18.1, WS-18.2, WS-18.3, WS-18.4, WS-18.5
+Status:     Implemented locally — 2026-05-02
 
 Objective:
   Run and record the Phase 18 retrieval eval before closing the phase.
@@ -220,14 +291,40 @@ Files:
   - `docs/retrieval_eval.md`
   - `docs/CODEX_PROMPT.md`
   - `docs/IMPLEMENTATION_JOURNAL.md`
+  - `scripts/eval_phase18_real.py`
+  - `tests/unit/test_eval_phase18_real.py`
+
+Implementation Notes:
+  - Added `docs/retrieval_eval.md §Phase 18 Evaluation Run` and an `Evaluation History`
+    row for WS-18.6.
+  - Ran `scripts/eval.py --task-id WS-18.6` against disposable PostgreSQL database
+    `dream_motif_eval`; synthetic retrieval metrics are hit@3=1.00, MRR=1.00, and
+    no-answer accuracy=1.00.
+  - Recorded the unit regression suite as additional Phase 18 gate evidence:
+    124 passed after the WS-18.6 eval script/doc/test update.
+  - Added read-only real archive eval script `scripts/eval_phase18_real.py`. It never runs
+    migrations or resets schema; with the local placeholder OpenAI key, `--mode auto` used
+    the FTS-only fallback and confirmed all 6 Phase 18 prayer/religion queries returned
+    archive-backed evidence fragments.
+  - Live hybrid embedding recall remains deferred until a real `OPENAI_API_KEY` is configured;
+    `.venv/bin/python scripts/eval_phase18_real.py --mode live --limit 5` was attempted on
+    2026-05-02 and reached providers, but failed with Anthropic 401 and OpenAI embedding
+    401 Unauthorized.
+  - False-positive count for fabricated/non-evidence fragments is recorded as 0 in unit
+    regression coverage.
+  - Light review: PASS — limitation is explicit and eval source/date are present.
+  - Verification: `.venv/bin/python -m pytest tests/unit/test_eval_phase18_real.py tests/unit/test_eval_script.py tests/unit/test_retrieval_eval.py tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py -q --tb=short`
+    -> 124 passed; `ruff check` passed for touched retrieval/facade/tool/prompt/eval/test files.
 
 ## 4. Phase Gate
 
-- [ ] Prayer query finds prayer-like hymn/text even without the literal word "молитва".
-- [ ] Religious motif query finds church/icon/hymn/divine-name dreams.
-- [ ] No result is shown without archive-backed evidence text.
-- [ ] Very weak/no-evidence matches are suppressed.
-- [ ] Phase 18 retrieval eval recorded.
+- [x] Prayer query finds prayer-like hymn/text even without the literal word "молитва" in deterministic expansion/unit coverage; synthetic retrieval eval passes.
+- [x] Religious motif query runs church/icon/hymn/divine-name retrieval probes in deterministic unit coverage; synthetic retrieval eval passes.
+- [x] No result is shown without archive-backed evidence text.
+- [x] Very weak/no-evidence matches are suppressed.
+- [x] Phase 18 retrieval eval recorded with local environment limitation.
+- [ ] Before Phase 19 starts, rerun `scripts/eval_phase18_real.py --mode live --limit 5`
+  on a machine with valid `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`, then record the result.
 
 ## 5. Not In Scope
 

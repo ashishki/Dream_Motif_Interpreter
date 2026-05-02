@@ -23,6 +23,60 @@ Status: append-only
 
 ## Entries
 
+### 2026-05-02 — WS-18.6 — Retrieval Eval Run and Phase Gate
+
+- Scope: `docs/retrieval_eval.md`, `tests/unit/test_retrieval_eval.py`, `scripts/eval_phase18_real.py`, `tests/unit/test_eval_phase18_real.py`, `docs/tasks_phase18.md`, `docs/CODEX_PROMPT.md`, `docs/IMPLEMENTATION_JOURNAL.md`
+- Why this work happened: Phase 18 requires a recorded retrieval eval before closing the search quality and hallucination suppression phase.
+- Decisions applied: none.
+- Evidence collected: `TEST_DATABASE_URL=postgresql+asyncpg://postgres@localhost:5433/dream_motif_eval OPENAI_API_KEY=test-key EVAL_DATE=2026-05-02 .venv/bin/python scripts/eval.py --task-id WS-18.6` -> synthetic metrics hit@3=1.00, MRR=1.00, no-answer accuracy=1.00; `.venv/bin/python scripts/eval_phase18_real.py --limit 5` -> 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in read-only FTS-only mode; `.venv/bin/python scripts/eval_phase18_real.py --mode live --limit 5` -> attempted live hybrid path, blocked by provider auth with Anthropic 401 and OpenAI embedding 401 Unauthorized; `.venv/bin/python -m pytest tests/unit/test_eval_phase18_real.py tests/unit/test_eval_script.py tests/unit/test_retrieval_eval.py tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py -q --tb=short` -> 124 passed; `.venv/bin/python -m ruff check scripts/eval_phase18_real.py scripts/eval.py app/retrieval/query.py app/assistant/facade.py app/assistant/tools.py app/assistant/prompts.py tests/unit/test_eval_phase18_real.py tests/unit/test_eval_script.py tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_retrieval_eval.py` -> clean; light review PASS.
+- Follow-ups: before starting Phase 19 WS-19.1, rerun `scripts/eval_phase18_real.py --mode live --limit 5` on a machine with valid `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. Phase 19 title search work starts only after that live gate is recorded.
+- Notes for next agent: `scripts/eval.py` now records the run date dynamically; it still resets the target schema, so only run it against an explicit disposable test database. `scripts/eval_phase18_real.py` is the safe read-only checker for the existing archive.
+
+### 2026-05-02 — WS-18.5 — Grounded Search Response Contract
+
+- Scope: `app/assistant/tools.py`, `app/assistant/prompts.py`, `tests/unit/test_assistant_chat.py`, `docs/tasks_phase18.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 18 requires search tool output to reduce the assistant's opportunity to invent fragments by exposing a stricter citation-like evidence contract.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py -q --tb=short` -> 115 passed; `.venv/bin/ruff check app/retrieval/query.py app/assistant/facade.py app/assistant/tools.py app/assistant/prompts.py tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py` -> clean; `.venv/bin/ruff format --check app/retrieval/query.py app/assistant/facade.py app/assistant/tools.py app/assistant/prompts.py tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py` -> clean; light review PASS.
+- Follow-ups: WS-18.6 retrieval eval run and phase gate is next.
+- Notes for next agent: search result payloads now expose `result_id`, `date`, `title`, `strength`, and `evidence_text`; final answers should cite only `evidence_text`.
+
+### 2026-05-02 — WS-18.4 — Evidence Verification and Weak-Result Suppression
+
+- Scope: `app/assistant/facade.py`, `app/assistant/tools.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py`, `docs/tasks_phase18.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 18 requires the assistant not to present weak vector neighbors when there is no query-related evidence.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py -q --tb=short` -> 114 passed; `.venv/bin/ruff check app/retrieval/query.py app/assistant/facade.py app/assistant/tools.py tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py` -> clean; `.venv/bin/ruff format --check app/retrieval/query.py app/assistant/facade.py app/assistant/tools.py tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py` -> clean; light review PASS.
+- Follow-ups: WS-18.5 grounded search response contract is next.
+- Notes for next agent: `search_dreams` now filters weak no-quote/no-fragment results before tool output; tool output labels remaining results with `strength=strong|moderate|weak`.
+
+### 2026-05-02 — WS-18.3 — Multi-Query Retrieval in Code
+
+- Scope: `app/retrieval/query.py`, `tests/unit/test_rag_query.py`, `tests/unit/test_rag_query_expansion.py`, `docs/tasks_phase18.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 18 requires broad motif/theme search to issue deterministic retrieval probes in code instead of relying on prompt-owned repeated `search_dreams` calls.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_assistant_facade.py -q --tb=short` -> 54 passed; `.venv/bin/ruff check app/retrieval/query.py tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_assistant_facade.py` -> clean; `.venv/bin/ruff format --check app/retrieval/query.py tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_assistant_facade.py` -> clean; light review PASS.
+- Follow-ups: WS-18.4 evidence verification and weak-result suppression is next.
+- Notes for next agent: broad religious queries now fan out into church/place-of-worship, prayer/hymn/Christmas, and icon/divine-name probes; merged rows are deduped by `dream_id` and preserve all distinct evidence chunks.
+
+### 2026-05-01 — WS-18.2 — Deterministic Query Expansion Profiles
+
+- Scope: `app/retrieval/query.py`, `tests/unit/test_rag_query_expansion.py`, `docs/tasks_phase18.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 18 requires prayer/religion recall to be deterministic rather than relying only on prompt-owned multi-search or live LLM query expansion.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short` -> 13 passed; `.venv/bin/ruff check app/retrieval/query.py tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py` -> clean; `.venv/bin/ruff format --check app/retrieval/query.py tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py` -> clean.
+- Follow-ups: WS-18.3 multi-query retrieval in code is next.
+- Notes for next agent: `_expand_query_terms()` now applies deterministic religious/prayer profile terms before embedding and FTS search, then merges optional LLM expansion when it succeeds.
+
+### 2026-05-01 — WS-18.1 — User Search Regression Dataset
+
+- Scope: `docs/retrieval_eval.md`, `tests/unit/test_retrieval_eval.py`, `docs/tasks_phase18.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 18 starts by freezing user-reported search failures around `молитва`, religious scenes, Christmas hymnody, church/icon/prayer evidence, and false-positive suppression.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_retrieval_eval.py -q --tb=short` -> 3 passed.
+- Follow-ups: WS-18.2 deterministic query expansion profiles is next.
+- Notes for next agent: the Phase 18 dataset is a separate section in `docs/retrieval_eval.md`; it is not yet part of `scripts/eval.py` metrics, and WS-18.6 should record a Phase 18 eval row after retrieval changes land.
+
 ### 2026-05-01 — FIX-13..FIX-17 — Phase 17 Audit Follow-ups
 
 - Scope: `app/assistant/facade.py`, `app/assistant/voice_media.py`, `app/assistant/session.py`, `app/shared/config.py`, `docs/RUNBOOK_TELEGRAM_BOT.md`, `docs/ARCHITECTURE.md`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_session.py`, `docs/CODEX_PROMPT.md`, `docs/audit/*`

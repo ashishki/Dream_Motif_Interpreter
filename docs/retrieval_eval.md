@@ -42,8 +42,8 @@ A passing answer-quality check with declining retrieval metrics is a warning sig
 ---
 
 Version: 1
-Last updated: 2026-04-21
-Changed by: T22 — Normalized Document Contract
+Last updated: 2026-05-02
+Changed by: WS-18.6 — Retrieval Evaluation Run
 
 ---
 
@@ -96,6 +96,69 @@ Changed by: T22 — Normalized Document Contract
 
 ---
 
+## Phase 18 User Search Regression Dataset
+
+This focused slice captures user-reported failures from Тест 4-5. It is evaluated in
+addition to the synthetic T12 dataset when Phase 18 retrieval changes are implemented.
+
+False-positive policy:
+
+- A result is correct only when it exposes an archive-backed evidence fragment.
+- The evidence fragment must come from `quote`, `chunk_text`, or `matched_fragments`.
+- Semantic adjacency alone is not enough; weak vector neighbors without real evidence
+  must be counted as false positives.
+- The assistant must not invent or paraphrase dream fragments that are absent from
+  retrieved evidence.
+
+| ID | Query | Query Type | Expected relevant evidence | False-positive rule |
+|----|-------|------------|----------------------------|---------------------|
+| P18-Q01 | молитва | semantic-symbolic | Dream containing Christmas hymn/prayer text; church/icon/prayer dreams if evidence mentions worship, prayer, divine names, liturgy, or hymnody | Do not count generic anxiety, family, or winter scenes unless the returned fragment contains religious/prayer evidence |
+| P18-Q02 | где упоминается молитва | semantic-symbolic | Same Christmas hymn/prayer dream even if the literal word `молитва` is absent; evidence may use hymn, prayer-like text, divine names, or worship language | Literal-word absence is acceptable only when archive evidence is prayer-like; no evidence means no hit |
+| P18-Q03 | где фигурирует молитва | semantic-symbolic | Same prayer/hymn evidence class as P18-Q01/P18-Q02 | Do not count a result correct without a real fragment tied to prayer, hymnody, liturgy, church, icon, or divine names |
+| P18-Q04 | религиозные сюжеты | thematic | Church, icon, prayer, liturgy, divine-name, and Christmas hymnody dreams | Do not return weak symbolic guesses that lack explicit religious evidence |
+| P18-Q05 | церковь | semantic-symbolic | Dreams whose evidence mentions church/храм/chapel/liturgy/icon setting | Do not count buildings, halls, schools, or crowds without religious-place evidence |
+| P18-Q06 | рождественское песнопение | semantic-symbolic | Dream containing Christmas hymn/prayer/song text | Do not count generic Christmas/winter scenes unless evidence includes hymn/song/prayer language |
+
+Expected relevant archive classes for Phase 18:
+
+- Christmas hymn/prayer dream: expected relevant for `молитва`, `где упоминается молитва`,
+  `где фигурирует молитва`, and `рождественское песнопение`.
+- Church/icon/prayer dreams: expected relevant for `религиозные сюжеты`, `церковь`, and
+  prayer queries when the evidence fragment contains religious language.
+
+---
+
+## Phase 18 Evaluation Run
+
+_Recorded at: 2026-05-02 after WS-18.6_
+
+Eval Source: `scripts/eval.py against §Evaluation Dataset (10 queries), run 2026-05-02` against disposable PostgreSQL database `dream_motif_eval`; read-only real archive eval with `.venv/bin/python scripts/eval_phase18_real.py --limit 5`, run 2026-05-02; plus `.venv/bin/python -m pytest tests/unit/test_eval_phase18_real.py tests/unit/test_eval_script.py tests/unit/test_retrieval_eval.py tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py -q --tb=short`, run 2026-05-02.
+
+Scope note: `scripts/eval.py` was run against a disposable seeded test database because it
+resets the target schema before loading the synthetic corpus. This validates the synthetic
+T12 retrieval dataset after Phase 18 code changes.
+
+The real archive check uses `scripts/eval_phase18_real.py`, which is read-only: it does not
+run migrations, reset schema, or write documents. In the local environment the configured
+OpenAI key is a placeholder, so `--mode auto` selected the FTS-only archive path instead of
+live hybrid embedding retrieval. This measures whether the real indexed archive exposes
+archive-backed evidence fragments for the Phase 18 prayer/religion queries. It does not
+verify live semantic embedding behavior; that still requires a real `OPENAI_API_KEY` and
+`scripts/eval_phase18_real.py --mode live`. A live attempt on 2026-05-02 reached the external
+providers but failed authorization: Anthropic query expansion returned 401 and OpenAI
+embedding retrieval returned 401 Unauthorized.
+
+| Metric | Result | Notes |
+|--------|--------|-------|
+| Synthetic retrieval eval | hit@3=1.00; MRR=1.00; no-answer accuracy=1.00 | `scripts/eval.py --task-id WS-18.6` against `dream_motif_eval` |
+| Phase 18 unit regression suite | 124 passed | Covers deterministic prayer/religion expansion, broad religious multi-query probes, weak no-evidence suppression, grounded `evidence_text` tool contract, dataset documentation, eval-run limitation documentation, dynamic eval run dates, and read-only real archive eval safeguards |
+| Prayer/religion recall on user archive | 6/6 queries returned archive-backed evidence in FTS-only mode | `молитва`, `где упоминается молитва`, `где фигурирует молитва`, `религиозные сюжеты`, `церковь`, and `рождественское песнопение` returned real archive evidence fragments from prayer, church, hymnody, or divine-name dreams |
+| Live hybrid embedding recall on user archive | Attempted, blocked by provider auth | `.venv/bin/python scripts/eval_phase18_real.py --mode live --limit 5` reached Anthropic/OpenAI but failed with 401 Unauthorized; requires valid provider keys |
+| False-positive count for fabricated/non-evidence fragments | 0 in unit regression | `search_dreams` suppresses weak no-quote/no-fragment results; no-result path contains no invented dream text |
+| No-answer/no-more-evidence behavior | Pass in unit regression | Verified via insufficient-evidence and no-more archive-backed matches paths |
+
+---
+
 ## Baseline Metrics
 
 _Recorded at: 2026-04-13 after T12_
@@ -107,8 +170,8 @@ _Recorded at: 2026-04-13 after T12_
 | MRR | 1.00 | Mean Reciprocal Rank across query set |
 | Citation precision | 0.72 | Fraction of cited docs that are relevant to the query |
 | No-answer accuracy | 1.00 | Fraction of no-answer queries correctly returning insufficient_evidence |
-| Median retrieval latency | 25 ms | p50 latency for the retrieve stage (ms) |
-| p95 retrieval latency | 30 ms | p95 latency for the retrieve stage (ms) |
+| Median retrieval latency | 28 ms | p50 latency for the retrieve stage (ms) |
+| p95 retrieval latency | 35 ms | p95 latency for the retrieve stage (ms) |
 ---
 
 ## Current Metrics
@@ -122,8 +185,8 @@ _Recorded at: 2026-04-13 after T12_
 | MRR | — | 1.00 | — | No |
 | Citation precision | — | 0.72 | — | No |
 | No-answer accuracy | — | 1.00 | — | No |
-| Median retrieval latency | — | 25 ms | — | No |
-| p95 retrieval latency | — | 30 ms | — | No |
+| Median retrieval latency | — | 28 ms | — | No |
+| p95 retrieval latency | — | 35 ms | — | No |
 ---
 
 ## Answer Quality Metrics
@@ -145,8 +208,6 @@ Judge: manual rubric over `scripts/eval.py` retrieval outputs (evidence-only pro
 ## Regression Notes
 
 No retrieval regression is recorded for T12. This baseline uses the synthetic 20-entry corpus and falls back to stub embeddings plus lexical ranking when `OPENAI_API_KEY` is absent or starts with `test-`, so the local evaluation remains executable without live OpenAI access.
-
-T22 changes the source-to-parser normalization contract before dream segmentation. It does not modify chunking, embedding, ranking, retrieval thresholds, or evidence assembly, so the T12 retrieval and answer-quality metrics carry forward unchanged.
 
 ---
 
@@ -208,3 +269,7 @@ none
 | 2026-04-17 | Cycle 10 (WS-10.1–10.5) | synthetic-20-entries | advisory — no retrieval run; RAG retrieval layer unchanged in Phase 10; T12 baseline metrics carry forward. Phase 10 adds ResearchRetriever (external HTTP path separate from dream archive RAG) | 1.00 | 0.94 | 0.96 | — | — | ResearchRetriever does not touch dream_chunks, embedding, or ranking |
 | 2026-04-18 | Cycle 11 (WS-11.1–11.3) | synthetic-20-entries | advisory — no retrieval run; RAG retrieval layer unchanged in Phase 11; T12 baseline metrics carry forward. Phase 11 adds Feedback Loop (assistant_feedback table, digit-reply capture, GET /feedback) — no changes to chunking, embedding, or ranking | 1.00 | 0.94 | 0.96 | — | — | Phase 11 does not touch dream_chunks, embedding, or RAG query path |
 | 2026-04-21 | T22 | synthetic-20-entries | advisory — no retrieval run; normalization contract added before segmentation; chunking, embedding, ranking, and evidence assembly unchanged; T12/T14 metrics carry forward | 1.00 | 1.00 | 1.00 | 1.00 | 0.94 | normalization is pre-parser only; no retrieval-layer metric delta expected |
+| 2026-05-02 | WS-18.6 | phase18-unit-regression | `.venv/bin/python -m pytest tests/unit/test_eval_phase18_real.py tests/unit/test_eval_script.py tests/unit/test_retrieval_eval.py tests/unit/test_rag_query_expansion.py tests/unit/test_rag_query.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py -q --tb=short`, run 2026-05-02 | N/A | N/A | Pass | — | — | 124 passed; false-positive count for fabricated/non-evidence fragments is 0 in unit regression |
+| 2026-05-02 | WS-18.6 | synthetic-20-entries | scripts/eval.py against §Evaluation Dataset (10 queries), run 2026-05-02 | 1.00 | 1.00 | 1.00 | — | — | synthetic seeded baseline established |
+| 2026-05-02 | WS-18.6 | real-user-archive-read-only | `.venv/bin/python scripts/eval_phase18_real.py --limit 5`, run 2026-05-02 | N/A | N/A | Pass | — | — | 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; live hybrid embedding path deferred until a real OpenAI key is configured |
+| 2026-05-02 | WS-18.6 | real-user-archive-live-hybrid | `.venv/bin/python scripts/eval_phase18_real.py --mode live --limit 5`, run 2026-05-02 | SKIPPED | SKIPPED | SKIPPED | — | — | attempted live hybrid path; blocked by provider auth, with Anthropic 401 and OpenAI embedding 401 Unauthorized |

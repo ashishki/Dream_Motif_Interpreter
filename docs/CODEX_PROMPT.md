@@ -1,27 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.51
+Version: 1.55
 Date: 2026-05-01
-Phase: Phase 18 planning — search quality and hallucination suppression
+Phase: Phase 18 implementation — search quality and hallucination suppression
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 17 implemented locally; Phase 18 next
-- **Baseline:** Combined Phase 17 unit + migration slice: 169 passed. Full local suite on non-live machine still requires broader live service coverage.
+- **Phase:** Phase 18 complete locally; Phase 19 is blocked until live hybrid archive eval is rerun on a machine with valid provider keys
+- **Baseline:** WS-18.6 synthetic retrieval eval: hit@3=1.00, MRR=1.00, no-answer accuracy=1.00; read-only real archive eval: 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; Phase 18 unit regression suite: 124 passed. Combined Phase 17 unit + migration slice: 169 passed. Full local suite on non-live machine still requires broader live service coverage.
 - **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-01 (WS-17.6 regression/docs gate implemented; Phase 17 gate complete locally)
+- **Last updated:** 2026-05-02 (WS-18.6 retrieval eval recorded locally; live hybrid rerun required before Phase 19)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 18 next — search quality and hallucination suppression; see `docs/tasks_phase18.md`
-- **Latest completed implementation task:** WS-17.6 — recording regression suite and manual test script.
-- **Current baseline:** Combined Phase 17 slice passes (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py` -> 169 passed); `ruff check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` and `ruff format --check app/ tests/ alembic/versions/015_add_dream_write_statuses.py alembic/versions/016_add_voice_transcript_text.py` pass from `.venv/bin/ruff`.
+- **Current planning state:** Phase 18 complete locally; before starting Phase 19, rerun `scripts/eval_phase18_real.py --mode live --limit 5` on a machine with valid `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`; then continue with Phase 19 direct title search in `docs/tasks_phase19.md`.
+- **Latest completed implementation task:** WS-18.6 — retrieval eval run and Phase 18 gate.
+- **Current baseline:** WS-18.6 synthetic retrieval eval passes (`scripts/eval.py --task-id WS-18.6` against disposable `dream_motif_eval` -> hit@3=1.00, MRR=1.00, no-answer accuracy=1.00); read-only real archive eval passes (`scripts/eval_phase18_real.py --limit 5` -> 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; live hybrid embedding path still requires a real `OPENAI_API_KEY`); targeted slice passes (`tests/unit/test_eval_phase18_real.py`, `tests/unit/test_eval_script.py`, `tests/unit/test_retrieval_eval.py`, `tests/unit/test_rag_query_expansion.py`, `tests/unit/test_rag_query.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py` -> 124 passed); `ruff check scripts/eval_phase18_real.py scripts/eval.py app/retrieval/query.py app/assistant/facade.py app/assistant/tools.py app/assistant/prompts.py tests/unit/test_eval_phase18_real.py tests/unit/test_eval_script.py tests/unit/test_rag_query.py tests/unit/test_rag_query_expansion.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_retrieval_eval.py` passes from `.venv/bin/python -m ruff`. Combined Phase 17 slice passes (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py` -> 169 passed).
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -32,8 +32,8 @@ Phase: Phase 18 planning — search quality and hallucination suppression
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
 - **Mandatory local workflow:** `docs/prompts/ORCHESTRATOR.md`
-- **Active task graph:** `docs/tasks_phase17.md` (Phase 17: deterministic dream recording stabilization)
-- **Upcoming task graph:** `docs/tasks_phase18.md` (search quality and hallucination suppression)
+- **Active task graph:** `docs/tasks_phase18.md` (search quality and hallucination suppression)
+- **Previous task graph:** `docs/tasks_phase17.md` (Phase 17: deterministic dream recording stabilization)
 - **Upcoming task graph:** `docs/tasks_phase19.md` (direct title search)
 - **Upcoming task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
 - **Previous task graph (Phase 16):** `docs/tasks_phase16.md` (implemented/planning source from Тест 4)
@@ -55,20 +55,22 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-**Start Phase 18 with WS-18.1.**
+**Do not start Phase 19 yet. First run live Phase 18 archive eval with valid provider keys.**
 
-WS-18.1: User Search Regression Dataset.
-Baseline: Combined Phase 17 unit + migration slice passed locally (169 passed).
+Required gate command:
+
+`ANTHROPIC_API_KEY=<real> OPENAI_API_KEY=<real> .venv/bin/python scripts/eval_phase18_real.py --mode live --limit 5`
+
+WS-19.1: Title Search Facade Method.
+Baseline: WS-18.6 synthetic retrieval eval passed (`hit@3=1.00`, `MRR=1.00`, `no-answer accuracy=1.00`); read-only real archive eval passed (`scripts/eval_phase18_real.py --limit 5` -> 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode); targeted retrieval/facade/chat/eval tests passed (`tests/unit/test_eval_phase18_real.py`, `tests/unit/test_eval_script.py`, `tests/unit/test_retrieval_eval.py`, `tests/unit/test_rag_query_expansion.py`, `tests/unit/test_rag_query.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py` -> 124 passed); ruff check clean for touched retrieval/facade/tool/prompt/eval files.
 Goal:
-  Add a focused retrieval evaluation slice from user-reported search failures around
-  "молитва", religious scenes, Christmas hymnody, church/icon/prayer evidence, and
-  false-positive suppression.
+  Add a title-search method that returns dream IDs and enough metadata for disambiguation.
 
 Context refs:
-- `docs/tasks_phase18.md` — active task graph (read §1-3 and WS-18.1 before coding)
-- `docs/retrieval_eval.md`
-- `tests/unit/test_retrieval_eval.py`
-- user feedback from Тест 4-5 summarized in `docs/tasks_phase18.md`
+- `docs/tasks_phase19.md` — active task graph (read §1-3 and WS-19.1 before coding)
+- `app/models/dream.py::DreamEntry`
+- `app/assistant/facade.py::list_recent_dreams`
+- `app/assistant/facade.py::get_dream`
 
 ---
 
@@ -344,6 +346,8 @@ none
 
 ## Completed Tasks
 
+- **WS-18.2** — Deterministic Query Expansion Profiles — 2026-05-01 — targeted retrieval tests passing (`tests/unit/test_rag_query_expansion.py`, `tests/unit/test_rag_query.py`, `tests/unit/test_retrieval_eval.py`: 13 passed) — added deterministic religious/prayer query profile before embedding and FTS search; profile covers prayer, hymnody, church, temple, icon, divine-name, and Christmas terms while preserving best-effort LLM expansion as an additional merge source
+- **WS-18.1** — User Search Regression Dataset — 2026-05-01 — focused eval-doc test passing (`tests/unit/test_retrieval_eval.py`: 3 passed) — added Phase 18 regression dataset for `молитва`, prayer/religious-scene, church, and Christmas hymnody search failures; false-positive policy now requires archive-backed evidence fragments from `quote`, `chunk_text`, or `matched_fragments`
 - **WS-17.6** — Recording Regression Suite and Manual Test Script — 2026-05-01 — combined Phase 17 unit + migration slice passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py`: 167 passed) — Phase 17 regression coverage and manual smoke-test checklist now cover natural narration, pending confirmation, relative dates, fallback titles, failed-write honesty, failed-write retry targeting, reply-to-voice save behavior, and updated Russian user guidance
 - **WS-17.5** — Reply-to-Voice "запиши сон" — 2026-05-01 — combined Phase 17 unit + migration slice passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_telegram_voice.py`, `tests/unit/test_transcription_worker.py`, `tests/integration/test_migrations.py`: 167 passed) — added `voice_media_events.transcript_text` migration and model field; transcription worker persists transcript text; text handler detects replies to Telegram voice messages with explicit save commands and saves the stored transcript, reports still-processing transcripts, and refuses unavailable transcripts without claiming success
 - **WS-17.4** — Write Outbox and Honest Success Messages — 2026-05-01 — extended targeted tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_session.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_transcription_worker.py`: 143 passed); migration integration suite passing (`tests/integration/test_migrations.py`: 12 passed) — added `dream_write_statuses` migration and ORM model; Google Doc writes now record `pending` then `succeeded`/`failed` with sanitized error text; retry without `dream_id` targets the latest failed write scoped by Telegram chat source; retry tool returns explicit "nothing to retry" and failure text that cannot honestly be read as success

@@ -1,27 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.63
+Version: 1.64
 Date: 2026-05-02
-Phase: Phase 20 complete — next scope pending
+Phase: Phase 20 complete — cleanup pass applied
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 20 is complete after deep review; concrete emoji mapping is deferred by D-017 until the user provides emoji meanings.
-- **Baseline:** Phase 20 targeted slice: 85 passed; ruff check/format clean for touched Phase 20 files. CODE-17 found during deep review was fixed in-review. WS-18.6 retrieval gates remain passed.
+- **Phase:** Phase 20 is complete after deep review; post-phase cleanup closed the remaining accessible P3 fix queue items. Concrete emoji mapping is deferred by D-017 until the user provides emoji meanings.
+- **Baseline:** Cleanup slice: 32 passed; ruff check/format clean for touched cleanup files. Phase 20 targeted slice: 85 passed; ruff check/format clean for touched Phase 20 files. CODE-17 found during deep review was fixed in-review. WS-18.6 retrieval gates remain passed.
 - **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-02 (Phase 20 deep review passed; CODE-17 fixed)
+- **Last updated:** 2026-05-02 (Phase 20 complete; accessible tech debt closed)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 20 is complete; await user direction for the next phase or configure emoji mapping when meanings are provided.
-- **Latest completed implementation task:** Phase 20 Deep Review — CODE-17 fixed in-review.
-- **Current baseline:** Phase 20 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py -q --tb=short` -> 85 passed); `ruff check app/services/gdocs_client.py app/assistant/facade.py app/shared/config.py app/services/reaction_feedback.py app/services/feedback_service.py app/assistant/prompts.py app/telegram/handlers.py app/telegram/bot.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py` and matching `ruff format --check` pass.
+- **Current planning state:** Phase 20 is complete; accessible carry-forward tech debt is closed; await user direction for the next phase or configure emoji mapping when meanings are provided.
+- **Latest completed implementation task:** Post-Phase-20 Cleanup — closed CODE-4/CODE-5/CODE-6 and confirmed CODE-7/CODE-9/CODE-10 resolved.
+- **Current baseline:** Cleanup targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_config.py -q --tb=short` -> 32 passed); `ruff check app/telegram/handlers.py app/shared/config.py tests/unit/test_telegram_bot.py tests/unit/test_config.py` and matching `ruff format --check` pass. Phase 20 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py -q --tb=short` -> 85 passed).
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -83,20 +83,20 @@ Deferred:
 ✅ FIX-12 [P2] — retrieval_eval.md missing Cycle 11 advisory row (RET-7 violation)
   File: docs/retrieval_eval.md · Change: add Cycle 11 (2026-04-18) advisory row to §Evaluation History confirming RAG layer unchanged in Phase 11 (no modifications to chunking, embedding, ranking, or evidence assembly); T12 baseline metrics carry forward · Test: doc review — no automated test required
 
-─── P3 findings (Fix Queue pass — resolve before Phase 12 gate) ──────
+─── Closed P3 findings (Post-Phase-20 cleanup) ──────────────────────
 
-  CODE-4 [P3] — handlers.py feedback commit not guarded; DB failure suppresses FEEDBACK_ACK
-    File: app/telegram/handlers.py:54–58 · Change: wrap session.commit() in try/except; log DB error; still send FEEDBACK_ACK reply
-  CODE-5 [P3] — RESEARCH_API_KEY empty-string not validated at startup (Cycle 10 carry-forward — third cycle)
-    File: app/shared/config.py:31 · Change: add model_validator that raises if RESEARCH_AUGMENTATION_ENABLED=True and RESEARCH_API_KEY="" — OR formally document acceptance in ADR-010 §Consequences and close the finding with a decision reference
-  CODE-6 [P3] — _feedback_pending_by_chat dict unbounded, no TTL or size cap
-    File: app/telegram/handlers.py:44, 74–79, 203–204 · Change: add max-size cap (e.g. maxsize=10_000) or TTL eviction — OR defer with DECISION_LOG entry
-  CODE-7 [P3] — DECISION_LOG.md missing WS-11.4 deferral entry (D-014)
-    File: docs/DECISION_LOG.md · Change: add D-014 entry recording WS-11.4 (optional comment capture) as explicitly deferred following D-012 pattern
-  CODE-9 [P3] — ARCHITECTURE.md §19 header reads "(Planned — Phase 11)" despite WS-11.1–11.3 implemented
-    File: docs/ARCHITECTURE.md:381 · Change: update §19 header to "(Implemented — Phase 11 WS-11.1–11.3)"; move assistant_feedback row from §20 Planned table to Current tables; annotate FeedbackService in §9 component table
-  CODE-10 [P3] — IMPLEMENTATION_JOURNAL.md has no Phase 11 entry
-    File: docs/IMPLEMENTATION_JOURNAL.md · Change: append Phase 11 entry covering WS-11.1–11.3 scope, D-014 deferral of WS-11.4, and test baseline 225
+✅ CODE-4 [P3] — handlers.py feedback commit not guarded; DB failure suppresses FEEDBACK_ACK
+  Files: `app/telegram/handlers.py`, `tests/unit/test_telegram_bot.py` · Change: feedback persistence is wrapped in `_record_feedback_safely()`; DB failures are logged and the user still receives FEEDBACK_ACK · Test: targeted cleanup slice passed (32 passed)
+✅ CODE-5 [P3] — RESEARCH_API_KEY empty-string not validated at startup
+  Files: `app/shared/config.py`, `tests/unit/test_config.py` · Change: Settings now raises when `RESEARCH_AUGMENTATION_ENABLED=True` and `RESEARCH_API_KEY` is empty · Test: targeted cleanup slice passed (32 passed)
+✅ CODE-6 [P3] — `_feedback_pending_by_chat` dict unbounded
+  Files: `app/telegram/handlers.py`, `tests/unit/test_telegram_bot.py` · Change: added `MAX_PENDING_FEEDBACK_REQUESTS=10_000` with oldest-first eviction that also removes paired bot message IDs · Test: targeted cleanup slice passed (32 passed)
+✅ CODE-7 [P3] — DECISION_LOG.md missing WS-11.4 deferral entry
+  File: `docs/DECISION_LOG.md` · Status: already resolved by D-014
+✅ CODE-9 [P3] — ARCHITECTURE.md Phase 11 feedback section stale
+  File: `docs/ARCHITECTURE.md` · Status: confirmed resolved; §19 is implemented and FeedbackService/assistant_feedback are documented
+✅ CODE-10 [P3] — IMPLEMENTATION_JOURNAL.md missing Phase 11 entry
+  File: `docs/IMPLEMENTATION_JOURNAL.md` · Status: confirmed resolved; Phase 11 entry exists
 
 ─── Closed Fix Queue items (Cycle 13) ────────────────────────────────
 

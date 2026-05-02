@@ -15,7 +15,9 @@ from app.assistant.facade import AssistantFacade
 from app.telegram.bot import handle_message_reaction
 from app.telegram.handlers import (
     FEEDBACK_PROMPT,
+    MAX_PENDING_FEEDBACK_REQUESTS,
     VOICE_PROCESSING_ACK,
+    _remember_feedback_request,
     chat_guard,
     text_message_handler,
 )
@@ -107,6 +109,46 @@ def test_feedback_prompt_is_short_numeric_reply_prompt() -> None:
     assert FEEDBACK_PROMPT == "Ответьте 1–5, можно с коротким комментарием."
 
 
+def test_pending_feedback_requests_are_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.telegram.handlers.MAX_PENDING_FEEDBACK_REQUESTS",
+        2,
+    )
+    pending: dict[str, dict[str, object]] = {}
+    bot_msg_ids: dict[str, int] = {}
+
+    _remember_feedback_request(
+        pending,
+        bot_msg_ids,
+        chat_key="1",
+        message_id=101,
+        response_text="first",
+        tool_calls_made=[],
+    )
+    _remember_feedback_request(
+        pending,
+        bot_msg_ids,
+        chat_key="2",
+        message_id=102,
+        response_text="second",
+        tool_calls_made=[],
+    )
+    _remember_feedback_request(
+        pending,
+        bot_msg_ids,
+        chat_key="3",
+        message_id=103,
+        response_text="third",
+        tool_calls_made=[],
+    )
+
+    assert MAX_PENDING_FEEDBACK_REQUESTS == 10_000
+    assert list(pending) == ["2", "3"]
+    assert bot_msg_ids == {"2": 102, "3": 103}
+
+
 @pytest.mark.asyncio
 async def test_text_message_handler_sends_handle_chat_response() -> None:
     update, message = _make_text_message_update("hello", chat_id=7)
@@ -184,6 +226,50 @@ async def test_text_message_handler_sends_typing_before_handle_chat() -> None:
 
     mock_chat.assert_awaited_once()
     message.reply_text.assert_awaited_once_with(f"pong\n\n{FEEDBACK_PROMPT}")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_acks_feedback_when_commit_fails() -> None:
+    class _FailingFeedbackSession:
+        def add(self, value: object) -> None:
+            del value
+
+        async def commit(self) -> None:
+            raise RuntimeError("db unavailable")
+
+    class _FailingFeedbackSessionFactory:
+        def __call__(self) -> "_FailingFeedbackSessionFactory":
+            return self
+
+        async def __aenter__(self) -> _FailingFeedbackSession:
+            return _FailingFeedbackSession()
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    update, message = _make_text_message_update("5", chat_id=42)
+    message.reply_to_message = SimpleNamespace(message_id=901)
+    facade = AsyncMock(spec=AssistantFacade)
+    context = SimpleNamespace(
+        bot_data={
+            "facade": facade,
+            "session_factory": _FailingFeedbackSessionFactory(),
+            "allowed_chat_id": 42,
+            "_feedback_pending_by_chat": {
+                "42": {
+                    "message_id": 901,
+                    "response_summary": "answer",
+                    "tool_calls_made": [],
+                }
+            },
+            "_bot_message_ids_by_chat": {"42": 901},
+        },
+        bot=SimpleNamespace(send_chat_action=AsyncMock()),
+    )
+
+    await text_message_handler(update, context)
+
+    message.reply_text.assert_awaited_once_with("Thanks, noted.")
 
 
 @pytest.mark.asyncio

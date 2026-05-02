@@ -39,6 +39,7 @@ VOICE_TRANSCRIPT_UNAVAILABLE = (
 )
 _FEEDBACK_STATE_KEY = "_feedback_pending_by_chat"
 _BOT_MESSAGE_IDS_KEY = "_bot_message_ids_by_chat"
+MAX_PENDING_FEEDBACK_REQUESTS = 10_000
 
 
 async def chat_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -91,15 +92,13 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             score, comment = parsed_feedback
             feedback_context = pending_feedback.pop(chat_key)
             bot_msg_ids.pop(chat_key, None)
-            async with session_factory() as session:
-                await FeedbackService().record(
-                    chat_key,
-                    score,
-                    feedback_context,
-                    session,
-                    comment=comment,
-                )
-                await session.commit()
+            await _record_feedback_safely(
+                chat_key=chat_key,
+                score=score,
+                feedback_context=feedback_context,
+                session_factory=session_factory,
+                comment=comment,
+            )
             await message.reply_text(FEEDBACK_ACK)
             return
 
@@ -112,15 +111,13 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     ):
         feedback_context = pending_feedback.pop(chat_key)
         bot_msg_ids.pop(chat_key, None)
-        async with session_factory() as session:
-            await FeedbackService().record(
-                chat_key,
-                int(stripped_text),
-                feedback_context,
-                session,
-                comment=None,
-            )
-            await session.commit()
+        await _record_feedback_safely(
+            chat_key=chat_key,
+            score=int(stripped_text),
+            feedback_context=feedback_context,
+            session_factory=session_factory,
+            comment=None,
+        )
         await message.reply_text(FEEDBACK_ACK)
         return
 
@@ -169,12 +166,14 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
     if chat_key is not None and _is_substantive_response(result.text):
-        pending_feedback[chat_key] = {
-            "message_id": int(getattr(sent_message, "message_id", 0)),
-            "response_summary": result.text[:200],
-            "tool_calls_made": list(result.tool_calls_made),
-        }
-        bot_msg_ids[chat_key] = int(getattr(sent_message, "message_id", 0))
+        _remember_feedback_request(
+            pending_feedback,
+            bot_msg_ids,
+            chat_key=chat_key,
+            message_id=int(getattr(sent_message, "message_id", 0)),
+            response_text=result.text,
+            tool_calls_made=list(result.tool_calls_made),
+        )
 
 
 async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -306,6 +305,54 @@ def _feedback_state(context: ContextTypes.DEFAULT_TYPE) -> MutableMapping[str, d
 
 def _bot_message_ids(context: ContextTypes.DEFAULT_TYPE) -> MutableMapping[str, int]:
     return context.bot_data.setdefault(_BOT_MESSAGE_IDS_KEY, {})
+
+
+async def _record_feedback_safely(
+    *,
+    chat_key: str,
+    score: int,
+    feedback_context: dict[str, Any],
+    session_factory: Any,
+    comment: str | None,
+) -> None:
+    try:
+        async with session_factory() as session:
+            await FeedbackService().record(
+                chat_key,
+                score,
+                feedback_context,
+                session,
+                comment=comment,
+            )
+            await session.commit()
+    except Exception:
+        LOGGER.warning(
+            "Failed to persist Telegram feedback",
+            extra={"chat_id": chat_key},
+            exc_info=True,
+        )
+
+
+def _remember_feedback_request(
+    pending_feedback: MutableMapping[str, dict[str, Any]],
+    bot_msg_ids: MutableMapping[str, int],
+    *,
+    chat_key: str,
+    message_id: int,
+    response_text: str,
+    tool_calls_made: list[str],
+) -> None:
+    while len(pending_feedback) >= MAX_PENDING_FEEDBACK_REQUESTS:
+        oldest_key = next(iter(pending_feedback))
+        pending_feedback.pop(oldest_key, None)
+        bot_msg_ids.pop(oldest_key, None)
+
+    pending_feedback[chat_key] = {
+        "message_id": message_id,
+        "response_summary": response_text[:200],
+        "tool_calls_made": tool_calls_made,
+    }
+    bot_msg_ids[chat_key] = message_id
 
 
 def _is_rating_message(text: str) -> bool:

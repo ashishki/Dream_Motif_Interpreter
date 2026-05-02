@@ -141,6 +141,29 @@ def test_google_doc_ids_parse_from_env_csv(monkeypatch: pytest.MonkeyPatch) -> N
     assert settings.GOOGLE_DOC_IDS == ["doc-b", "doc-c"]
 
 
+def test_research_api_key_required_when_research_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("RESEARCH_AUGMENTATION_ENABLED", "true")
+    monkeypatch.setenv("RESEARCH_API_KEY", "")
+
+    with pytest.raises(ValidationError, match="RESEARCH_API_KEY must be set"):
+        Settings(_env_file=None)
+
+
+def test_research_api_key_can_be_empty_when_research_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("RESEARCH_AUGMENTATION_ENABLED", "false")
+    monkeypatch.setenv("RESEARCH_API_KEY", "")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.RESEARCH_API_KEY == ""
+
+
 def test_get_all_doc_ids_primary_first_and_deduplicated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.9
+Version: 1.10
 Last updated: 2026-05-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-02 — POST-PHASE20-CLEANUP — Carry-Forward Tech Debt Closure
+
+- Scope: `app/telegram/handlers.py`, `app/shared/config.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_config.py`, `docs/CODEX_PROMPT.md`
+- Why this work happened: User requested closing remaining planned work and available technical debt after Phase 20 completion.
+- Decisions applied: D-014 already records WS-11.4 deferral; D-017 keeps concrete emoji mapping deferred until user supplies meanings.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_config.py -q --tb=short` -> `32 passed`; `.venv/bin/ruff check app/telegram/handlers.py app/shared/config.py tests/unit/test_telegram_bot.py tests/unit/test_config.py` -> clean; matching `ruff format --check` -> clean.
+- Follow-ups: concrete `TELEGRAM_REACTION_FEEDBACK_MAPPING` remains product-input blocked; no code blocker remains for it.
+- Notes for next agent: CODE-4, CODE-5, and CODE-6 are closed in code; CODE-7, CODE-9, and CODE-10 were already resolved and are marked closed in `docs/CODEX_PROMPT.md`.
 
 ### 2026-05-02 — PHASE20-REVIEW — Deep Review and Close
 

@@ -8,6 +8,7 @@ from typing import Annotated
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic import field_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _logger = logging.getLogger(__name__)
@@ -92,6 +93,12 @@ class Settings(BaseSettings):
         if isinstance(v, list):
             return [s.strip() for s in v if isinstance(s, str) and s.strip()]
         return []
+
+    @model_validator(mode="after")
+    def _validate_research_api_key_when_enabled(self) -> "Settings":
+        if self.RESEARCH_AUGMENTATION_ENABLED and not self.RESEARCH_API_KEY.strip():
+            raise ValueError("RESEARCH_API_KEY must be set when RESEARCH_AUGMENTATION_ENABLED=True")
+        return self
 
     def resolve_operator_parser_profile(
         self,

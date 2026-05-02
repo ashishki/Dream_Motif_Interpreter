@@ -1,8 +1,8 @@
 # Task Graph — Dream Motif Interpreter Phase 21
 
-Version: 1.4
+Version: 1.5
 Last updated: 2026-06-02
-Status: In progress — WS-21.4 complete
+Status: Complete — Phase 21 deep review passed
 
 ## 1. Purpose
 
@@ -236,11 +236,25 @@ Files:
   - `docs/CODEX_PROMPT.md`
   - `docs/archive/PHASE21_REVIEW.md`
 
+Implementation Notes:
+  - Completed 2026-06-02.
+  - `docs/RUNBOOK_TELEGRAM_BOT.md` now includes the Test 6 regression smoke checklist for short
+    text/voice dreams, honest Google Doc write messages, fish/image search, and full dream by
+    title/date.
+  - `docs/USER_GUIDE_RU.md` now documents short dream recording, exact image search behavior,
+    Google Doc success text, and full dream retrieval by title/date without manual UUID input.
+  - Phase 21 deep review is archived at `docs/archive/PHASE21_REVIEW.md`; CODE-18 was found and
+    fixed in-review.
+  - Regression evidence:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py -q --tb=short`
+    -> `174 passed, 1 warning`;
+    `ruff check` and `ruff format --check` passed for touched Phase 21 code/tests.
+
 ## 4. Phase Gate
 
 - [x] Short natural text and voice dreams are saved without clarification.
 - [x] Telegram write success/failure messages are honest and hide fallback doc IDs.
 - [x] Fish/image exact search regression is covered and passes.
 - [x] Full dream retrieval by title/date works without UUID user input.
-- [ ] Test 6 live/manual checklist is documented.
-- [ ] Phase 21 deep review passed.
+- [x] Test 6 live/manual checklist is documented.
+- [x] Phase 21 deep review passed.

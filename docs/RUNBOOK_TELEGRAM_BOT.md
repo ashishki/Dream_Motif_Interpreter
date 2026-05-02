@@ -1,6 +1,6 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-05-01 (Phase 17 recording smoke checks)
+Last updated: 2026-06-02 (Phase 21 Test 6 smoke checks)
 
 ## 1. Purpose
 
@@ -56,21 +56,32 @@ APP_TIMEZONE=Asia/Tbilisi                  # default; resolves "сегодня/�
 Run this after deployment or after changing Telegram, voice, assistant, or Google Docs write code.
 
 1. Send a natural dream opening, for example: `Сегодня мне приснилось, что я шёл по мосту над морем`.
-2. If the bot asks whether to record it, reply `да`; verify the saved text is the same candidate.
+2. Verify the bot does not ask whether to record it and replies with either `Сон сохранён и добавлен в документ` after a successful Google Doc write or the archive-only retry message after a failed write.
 3. Verify the Google Doc gets one heading in the form `дд.мм.гг - <title>` and the title does not duplicate the date.
 4. Send a duplicate of the same dream text; verify it does not create a duplicate Google Doc entry.
-5. Temporarily break Google Docs write credentials or use a test failure stub; verify the bot says the dream was not added to Google Doc.
+5. Temporarily break Google Docs write credentials or use a test failure stub; verify the bot says the dream was saved only in the archive and does not claim it was added to Google Doc.
 6. Restore write access and send `повтори запись в Google Doc`; verify it retries the failed write, not the latest unrelated dream.
 7. Send a voice message, wait for transcription, then reply to that voice message with `запиши сон`; verify the stored transcript is saved.
 8. Repeat the reply-to-voice save while transcription is still processing or after a failed transcription; verify the bot does not claim success.
 
+## 5. Test 6 Regression Smoke Checklist
+
+Run this checklist after any deployment that touches recording, search, or assistant tool routing.
+
+1. Text short dream: send `Сегодня мне приснилось рыба`; verify the bot saves immediately, does not ask for more details, and does not create a pending confirmation draft.
+2. Voice short dream: send a voice message whose transcript starts with `сегодня мне приснилось`; verify the transcript is saved directly without the assistant asking whether to record it.
+3. Successful Google Doc write: verify the visible success text is exactly `Сон сохранён и добавлен в документ` with no document name, URL, or fallback document ID.
+4. Failed Google Doc write: force a write failure and verify the bot says the dream was saved only in the archive and gives the retry phrase `повтори запись в Google Doc`.
+5. Fish/image search: ask `найди сон с рыбой`; verify the response contains an archive-backed evidence fragment with `рыба` or a same-stem fish word from the dream text.
+6. Full dream by title/date: ask for the full text of `04.04.26, Кирилл, мужик, настольки`; verify the assistant resolves the title/date, calls `get_dream`, and does not ask the user for a UUID.
+
 Automated regression slice:
 
 ```bash
-.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_feedback_context.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py tests/integration/test_migrations.py -q --tb=short
+.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py -q --tb=short
 ```
 
-## 5. Common Failure Modes
+## 6. Common Failure Modes
 
 ### Bot starts but receives nothing
 
@@ -107,7 +118,7 @@ Check:
 - `ASSISTANT_MODEL` is a valid model ID
 - bounded tool-use loop hit MAX_TOOL_ROUNDS=5 without an end_turn response (log will show this)
 
-## 6. Voice Failure Diagnostics
+## 7. Voice Failure Diagnostics
 
 Voice messages go through a two-stage pipeline: the handler persists + downloads, then a background task transcribes and replies.
 
@@ -146,7 +157,7 @@ Log pattern: `Voice download failed for message_id=... event_id=...`
 
 Check disk space and `VOICE_MEDIA_DIR` permissions. User will have already received "Could not download your voice message."
 
-## 7. Session State Diagnostics
+## 8. Session State Diagnostics
 
 Chat history is persisted in the `bot_sessions` table (one row per `chat_id`).
 
@@ -176,11 +187,11 @@ UPDATE bot_sessions SET history_json = '[]', updated_at = now()
 WHERE chat_id = <chat_id>;
 ```
 
-## 8. Safety Rule
+## 9. Safety Rule
 
 If chat-driven mutation tools are not in the approved phase scope, disable or omit them entirely.
 
-## 9. Logging Rules
+## 10. Logging Rules
 
 Use identifiers and statuses.
 Do not log raw dream text, transcript text, or secrets.

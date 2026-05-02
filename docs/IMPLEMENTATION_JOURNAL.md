@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.15
+Version: 1.16
 Last updated: 2026-06-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-06-02 — WS-21.5 — Regression Gate and Deep Review
+
+- Scope: `docs/RUNBOOK_TELEGRAM_BOT.md`, `docs/USER_GUIDE_RU.md`, `docs/archive/PHASE21_REVIEW.md`, `app/assistant/tools.py`, `tests/unit/test_assistant_chat.py`, `docs/tasks_phase21.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 21 needed the Test 6 manual smoke checklist, user-facing behavior docs, final combined regression gate, and mandatory deep review before close.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py -q --tb=short` -> `174 passed, 1 warning`; `ruff check` and matching `ruff format --check` passed for touched Phase 21 code/tests.
+- Follow-ups: run the documented Test 6 Telegram smoke checklist against deployed credentials; concrete `TELEGRAM_REACTION_FEEDBACK_MAPPING` remains pending user-provided emoji meanings.
+- Notes for next agent: CODE-18 was found and fixed in-review; concrete image exact recall now survives semantic retrieval failure when exact evidence exists.
 
 ### 2026-06-02 — WS-21.4 — Full Dream by Title and Date
 

@@ -857,6 +857,35 @@ async def test_search_dreams_dedupes_exact_and_semantic_image_results() -> None:
 
 
 @pytest.mark.asyncio
+async def test_search_dreams_returns_exact_image_result_when_semantic_search_fails() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams.side_effect = RuntimeError("embedding down")
+    facade.search_dreams_exact.return_value = [
+        SearchResultItem(
+            dream_id=dream_id,
+            date=date(2026, 4, 14),
+            title="Рыба в воде",
+            chunk_text="В этом сне была рыба в прозрачной воде.",
+            relevance_score=1.0,
+            matched_fragments=[],
+            quote="В этом сне была рыба в прозрачной воде",
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "search_dreams",
+        {"query": "сон с рыбой"},
+        facade,
+    )
+
+    facade.search_dreams_exact.assert_awaited_once_with("рыба")
+    facade.search_dreams.assert_awaited_once_with("сон с рыбой")
+    assert f"result_id: {dream_id}" in result
+    assert 'evidence_text: "В этом сне была рыба в прозрачной воде"' in result
+
+
+@pytest.mark.asyncio
 async def test_execute_tool_search_dreams_by_title_includes_uuid_for_get_dream() -> None:
     dream_id = uuid.uuid4()
     theme_id = uuid.uuid4()

@@ -352,11 +352,20 @@ async def execute_tool(
         query = str(tool_input.get("query", "")).strip()
         if not query:
             return "No query provided."
-        result = await facade.search_dreams(query)
         exact_query = extract_concrete_image_query(query)
         exact_items: list[SearchResultItem] = []
         if exact_query is not None:
             exact_items = await facade.search_dreams_exact(exact_query)
+        try:
+            result = await facade.search_dreams(query)
+        except Exception:
+            if not exact_items:
+                raise
+            items = _merge_search_result_items(exact_items)
+            lines = ["Search results:"]
+            for item in items[:5]:
+                lines.extend(_format_search_result_payload(item))
+            return "\n".join(lines)
         if exact_items:
             semantic_items = [] if result.insufficient_reason is not None else result.items
             items = _merge_search_result_items([*exact_items, *semantic_items])

@@ -1,27 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.69
+Version: 1.70
 Date: 2026-06-02
-Phase: Phase 21 in progress — Test 6 recording/search regressions
+Phase: Phase 21 complete — Test 6 recording/search regressions
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 21 is in progress from Test 6 (2026-06-02): WS-21.1 short dream recording, WS-21.2 honest Google Doc confirmations, WS-21.3 fish/image exact recall, and WS-21.4 title/date full retrieval are complete; final checklist/deep review remain.
-- **Baseline:** WS-21.4 targeted slice: 120 passed, 1 warning; ruff check/format clean for touched WS-21.4 files. WS-21.3 targeted slice: 92 passed, 1 warning. WS-21.2 targeted slice: 153 passed, 1 warning. WS-21.1 targeted slice: 94 passed, 1 warning. Cleanup slice: 32 passed; Phase 20 targeted slice: 85 passed.
+- **Phase:** Phase 21 is complete from Test 6 (2026-06-02): short dream recording, honest Google Doc confirmations, fish/image exact recall, title/date full retrieval, docs, regression gate, and deep review are complete.
+- **Baseline:** Phase 21 combined gate: 174 passed, 1 warning; ruff check/format clean for touched Phase 21 code/tests. WS-21.4 targeted slice: 120 passed, 1 warning. WS-21.3 targeted slice: 92 passed, 1 warning. WS-21.2 targeted slice: 153 passed, 1 warning. WS-21.1 targeted slice: 94 passed, 1 warning.
 - **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-06-02 (WS-21.4 complete)
+- **Last updated:** 2026-06-02 (Phase 21 complete)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 21 is active; continue with WS-21.5 regression gate, manual checklist, docs, then Phase 21 deep review.
-- **Latest completed implementation task:** WS-21.4 — recent-list/title/date flows expose or resolve `dream_id` and retrieve full dream text.
-- **Current baseline:** WS-21.4 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short` -> 120 passed, 1 warning); `ruff check` and matching `ruff format --check` pass for touched WS-21.4 files. WS-21.3 targeted slice passes (92 passed, 1 warning). WS-21.2 targeted slice passes (153 passed, 1 warning). WS-21.1 targeted slice passes (94 passed, 1 warning).
+- **Current planning state:** Phase 21 is closed; wait for next product report or user-selected follow-up.
+- **Latest completed implementation task:** WS-21.5 — Test 6 checklist/user docs, combined regression gate, and Phase 21 deep review.
+- **Current baseline:** Phase 21 combined gate passes (`.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py -q --tb=short` -> 174 passed, 1 warning); `ruff check` and matching `ruff format --check` pass for touched Phase 21 code/tests. Deep review archived at `docs/archive/PHASE21_REVIEW.md`.
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -56,18 +56,17 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-WS-21.5: Regression Gate and Live Verification Checklist.
-Baseline: WS-21.4 complete (`tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py` -> 120 passed, 1 warning; ruff clean). Test 6 code fixes are implemented; remaining work is documentation, final targeted gate, and Phase 21 deep review.
+Next phase: Await user direction.
+Baseline: Phase 21 complete (`tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py` -> 174 passed, 1 warning; ruff clean). Test 6 code fixes and documentation are implemented.
 Goal:
-  Document the Test 6 Telegram smoke checklist, update Russian user guide behavior, run the combined targeted Phase 21 suite, archive deep review, and close the phase.
+  Do not start a new development phase without a new user report or explicit product direction.
 
 Context refs:
 - `docs/CODEX_PROMPT.md`
 - `docs/tasks_phase21.md`
+- `docs/archive/PHASE21_REVIEW.md`
 - `docs/RUNBOOK_TELEGRAM_BOT.md`
 - `docs/USER_GUIDE_RU.md`
-- `docs/archive/PHASE21_REVIEW.md`
-- Phase 21 touched code/tests from WS-21.1–WS-21.4
 
 Deferred:
   Concrete `TELEGRAM_REACTION_FEEDBACK_MAPPING` remains pending user-provided emoji meanings; remind the user before enabling reaction semantics in production.

@@ -129,6 +129,47 @@ async def test_get_recent_for_context_merges_reaction_feedback_rows() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_recent_for_context_keeps_recent_rows_oldest_first() -> None:
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_result = MagicMock()
+    newest_feedback = SimpleNamespace(
+        score=2,
+        comment="new",
+        created_at=datetime(2026, 4, 3),
+    )
+    older_feedback = SimpleNamespace(
+        score=1,
+        comment="old",
+        created_at=datetime(2026, 4, 1),
+    )
+    mock_result.all.return_value = [newest_feedback, older_feedback]
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    reaction_rows = [
+        {
+            "source": "telegram_reaction",
+            "emoji": "👍",
+            "label": "helpful",
+            "score": 5,
+            "comment": "Useful.",
+            "created_at": datetime(2026, 4, 2),
+        }
+    ]
+
+    with patch(
+        "app.services.feedback_service.ReactionFeedbackService.get_recent_for_context",
+        new=AsyncMock(return_value=reaction_rows),
+    ):
+        rows = await FeedbackService().get_recent_for_context(mock_session, limit=2)
+
+    assert [row["created_at"] for row in rows] == [
+        datetime(2026, 4, 2),
+        datetime(2026, 4, 3),
+    ]
+    compiled = str(mock_session.execute.await_args.args[0])
+    assert "ORDER BY assistant_feedback.created_at DESC" in compiled
+
+
+@pytest.mark.asyncio
 async def test_handle_chat_with_metadata_uses_built_system_prompt() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     final_response = MagicMock()

@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.8
+Version: 1.9
 Last updated: 2026-05-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-02 — PHASE20-REVIEW — Deep Review and Close
+
+- Scope: `app/services/feedback_service.py`, `app/services/reaction_feedback.py`, `tests/unit/test_feedback_context.py`, `tests/unit/test_reaction_model.py`, `docs/archive/PHASE20_REVIEW.md`, `docs/tasks_phase20.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 20 reached the mandatory phase-boundary deep review gate.
+- Decisions applied: D-017 — concrete emoji mapping remains deferred until user supplies meanings.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_reaction_model.py tests/unit/test_feedback_context.py tests/unit/test_telegram_bot.py -q --tb=short` -> `85 passed`; `ruff check` and matching `ruff format --check` passed for the touched Phase 20 slice.
+- Follow-ups: pick next phase or configure `TELEGRAM_REACTION_FEEDBACK_MAPPING` after the user provides emoji meanings.
+- Notes for next agent: CODE-17 was found and fixed in-review; feedback context now selects recent rows first and returns prompt context oldest-first.
 
 ### 2026-05-02 — WS-20.3 — Feedback Prompt UX Decision
 

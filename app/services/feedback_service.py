@@ -55,7 +55,7 @@ class FeedbackService:
                         AssistantFeedback.score <= 2,
                     )
                 )
-                .order_by(AssistantFeedback.created_at.asc())
+                .order_by(AssistantFeedback.created_at.desc())
                 .limit(limit)
             )
             result = await session.execute(stmt)

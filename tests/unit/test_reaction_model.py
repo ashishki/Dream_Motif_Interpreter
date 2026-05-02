@@ -80,6 +80,33 @@ async def test_reaction_feedback_context_ignores_unmapped_rows_returned_by_sessi
 
 
 @pytest.mark.asyncio
+async def test_reaction_feedback_context_returns_recent_rows_oldest_first() -> None:
+    older = datetime(2026, 5, 1, tzinfo=timezone.utc)
+    newer = datetime(2026, 5, 2, tzinfo=timezone.utc)
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [
+        SimpleNamespace(emoji="👍", created_at=newer, removed_at=None),
+        SimpleNamespace(emoji="👍", created_at=older, removed_at=None),
+    ]
+    session.execute = AsyncMock(return_value=result)
+    service = ReactionFeedbackService(
+        mapping={
+            "👍": ReactionFeedbackMeaning(
+                label="helpful",
+                prompt_hint="The response was useful.",
+            )
+        }
+    )
+
+    rows = await service.get_recent_for_context(session)
+
+    assert [row["created_at"] for row in rows] == [older, newer]
+    compiled = str(session.execute.await_args.args[0])
+    assert "ORDER BY message_reactions.created_at DESC" in compiled
+
+
+@pytest.mark.asyncio
 async def test_reaction_feedback_context_returns_empty_without_mapping() -> None:
     session = AsyncMock()
 

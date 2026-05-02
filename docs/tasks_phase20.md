@@ -2,7 +2,7 @@
 
 Version: 1.0
 Last updated: 2026-05-02
-Status: Implemented locally — WS-20.3 complete; concrete emoji mapping deferred by D-017
+Status: Complete — deep review passed; concrete emoji mapping deferred by D-017
 
 ## 1. Purpose
 
@@ -131,3 +131,4 @@ Implementation Notes:
 - [x] Notes placement behavior is target-aware or explicitly falls back.
 - [x] Emoji semantics scaffold implemented; final mapping deferred until user provides meanings.
 - [x] Feedback prompt UX decision documented.
+- [x] Phase 20 deep review passed; CODE-17 fixed in-review.

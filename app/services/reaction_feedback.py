@@ -43,7 +43,7 @@ class ReactionFeedbackService:
                     MessageReaction.removed_at.is_(None),
                     MessageReaction.emoji.in_(list(mapping)),
                 )
-                .order_by(MessageReaction.created_at.asc())
+                .order_by(MessageReaction.created_at.desc())
                 .limit(limit)
             )
             result = await session.execute(stmt)
@@ -52,7 +52,11 @@ class ReactionFeedbackService:
                 reactions = await reactions
 
             rows: list[dict] = []
-            for reaction in reactions:
+            recent_reactions = sorted(
+                reactions,
+                key=lambda reaction: reaction.created_at,
+            )[-limit:]
+            for reaction in recent_reactions:
                 meaning = mapping.get(reaction.emoji)
                 if meaning is None:
                     continue

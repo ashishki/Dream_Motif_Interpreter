@@ -300,7 +300,7 @@ class AssistantFacade:
         ]
 
     async def search_dreams_by_title(
-        self, query: str, limit: int = 10
+        self, query: str, limit: int = 10, dream_date: date | None = None
     ) -> list[DreamTitleSearchResult]:
         normalized_query = _normalize_title_search(query)
         if not normalized_query:
@@ -315,17 +315,18 @@ class AssistantFacade:
 
         async with self._session_factory() as session:
             with tracer.start_as_current_span("assistant.search_dreams_by_title"):
-                result = await session.execute(
-                    select(DreamEntry)
-                    .where(
-                        or_(
-                            DreamEntry.title.ilike(title_pattern, escape="\\"),
-                            normalized_title.contains(normalized_query),
-                        )
+                stmt = select(DreamEntry).where(
+                    or_(
+                        DreamEntry.title.ilike(title_pattern, escape="\\"),
+                        normalized_title.contains(normalized_query),
                     )
-                    .order_by(DreamEntry.date.desc(), DreamEntry.created_at.desc())
-                    .limit(bounded_limit)
                 )
+                if dream_date is not None:
+                    stmt = stmt.where(DreamEntry.date == dream_date)
+                stmt = stmt.order_by(DreamEntry.date.desc(), DreamEntry.created_at.desc()).limit(
+                    bounded_limit
+                )
+                result = await session.execute(stmt)
                 dreams = result.scalars().all()
 
         return [

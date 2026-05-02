@@ -69,6 +69,13 @@ _BASE_TOOLS: list[dict[str, Any]] = [
                     "type": "integer",
                     "description": "Maximum number of matching titles to return (default 10, max 20).",
                 },
+                "date": {
+                    "type": "string",
+                    "description": (
+                        "Optional dream date used to disambiguate title matches. "
+                        "Accepts YYYY-MM-DD, DD.MM.YY, DD.MM.YYYY, or Russian relative dates."
+                    ),
+                },
             },
             "required": ["query"],
             "additionalProperties": False,
@@ -394,7 +401,20 @@ async def execute_tool(
         if not query:
             return "No title query provided."
         limit = _bounded_int(tool_input.get("limit", 10), default=10, minimum=1, maximum=20)
-        items = await facade.search_dreams_by_title(query, limit=limit)
+        raw_date = str(tool_input.get("date", "")).strip()
+        dream_date = None
+        if raw_date:
+            try:
+                dream_date = _parse_tool_date(raw_date)
+            except ValueError:
+                return (
+                    f"Invalid date: {raw_date!r}. "
+                    "Expected YYYY-MM-DD, DD.MM.YY, DD.MM.YYYY, or Russian relative date."
+                )
+        search_kwargs: dict[str, Any] = {"limit": limit}
+        if dream_date is not None:
+            search_kwargs["dream_date"] = dream_date
+        items = await facade.search_dreams_by_title(query, **search_kwargs)
         if not items:
             fallback = await facade.search_dreams(query)
             if fallback.insufficient_reason is not None or not fallback.items:
@@ -527,6 +547,7 @@ async def execute_tool(
             themes_str = ", ".join(dream.theme_names) if dream.theme_names else "нет тем"
             preview = dream.raw_text_preview.strip()[:200] if dream.raw_text_preview else ""
             lines.append(f"- {date_str} | {title_str}")
+            lines.append(f"  dream_id: {dream.id}")
             if preview:
                 lines.append(f"  preview: {preview}")
             if dream.theme_names:
@@ -770,6 +791,27 @@ def _bounded_int(value: Any, *, default: int, minimum: int, maximum: int) -> int
     except (TypeError, ValueError):
         parsed = default
     return max(minimum, min(maximum, parsed))
+
+
+def _parse_tool_date(raw_date: str) -> date:
+    relative = _resolve_relative_dream_date(raw_date)
+    if relative is not None:
+        return relative
+    try:
+        return date.fromisoformat(raw_date)
+    except ValueError:
+        pass
+
+    match = re.fullmatch(r"(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})", raw_date.strip())
+    if match is None:
+        raise ValueError(raw_date)
+    day = int(match.group(1))
+    month = int(match.group(2))
+    year_raw = match.group(3)
+    year = int(year_raw)
+    if len(year_raw) == 2:
+        year += 2000
+    return date(year, month, day)
 
 
 def _format_search_result_payload(item: Any) -> list[str]:

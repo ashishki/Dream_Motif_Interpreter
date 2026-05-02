@@ -344,6 +344,40 @@ async def test_search_dreams_by_title_returns_title_matches() -> None:
     assert "dream_chunks" not in statement
 
 
+@pytest.mark.asyncio
+async def test_search_dreams_by_title_can_filter_by_date() -> None:
+    dream_id = uuid4()
+    dream = SimpleNamespace(
+        id=dream_id,
+        date=date(2026, 4, 4),
+        title="Кирилл, мужик, настольки",
+        raw_text="Полный текст сна.",
+        created_at=datetime(2026, 4, 4, tzinfo=timezone.utc),
+    )
+    session = _FakeSession(execute_results=[_FakeResult(scalars=[dream])])
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    result = await facade.search_dreams_by_title(
+        "Кирилл, мужик, настольки",
+        limit=5,
+        dream_date=date(2026, 4, 4),
+    )
+
+    assert result == [
+        DreamTitleSearchResult(
+            dream_id=dream_id,
+            date="2026-04-04",
+            title="Кирилл, мужик, настольки",
+            raw_text_preview="Полный текст сна.",
+        )
+    ]
+    statement = str(session.executed_statements[0])
+    assert "dream_entries.date" in statement
+
+
 def test_assistant_facade_exposes_only_approved_operations() -> None:
     public_methods = {
         name

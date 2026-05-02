@@ -1,8 +1,8 @@
 # Task Graph — Dream Motif Interpreter Phase 21
 
-Version: 1.3
+Version: 1.4
 Last updated: 2026-06-02
-Status: In progress — WS-21.3 complete
+Status: In progress — WS-21.4 complete
 
 ## 1. Purpose
 
@@ -196,6 +196,19 @@ Files:
   - `tests/unit/test_assistant_chat.py`
   - `tests/unit/test_assistant_facade.py`
 
+Implementation Notes:
+  - Completed 2026-06-02.
+  - `list_recent_dreams` tool output now includes `dream_id`, so a listed dream can be opened
+    with `get_dream`.
+  - `search_dreams_by_title` accepts optional `date` and supports `YYYY-MM-DD`, `DD.MM.YY`,
+    `DD.MM.YYYY`, and Russian relative dates from the tool layer.
+  - The reported `04.04.26` / `Кирилл, мужик, настольки` flow is covered: a date-filtered
+    single title match calls `get_dream` and returns the full text.
+  - Regression evidence:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short`
+    -> `120 passed, 1 warning`;
+    `ruff check` and `ruff format --check` passed for touched WS-21.4 files.
+
 ---
 
 ## WS-21.5: Regression Gate and Live Verification Checklist
@@ -228,6 +241,6 @@ Files:
 - [x] Short natural text and voice dreams are saved without clarification.
 - [x] Telegram write success/failure messages are honest and hide fallback doc IDs.
 - [x] Fish/image exact search regression is covered and passes.
-- [ ] Full dream retrieval by title/date works without UUID user input.
+- [x] Full dream retrieval by title/date works without UUID user input.
 - [ ] Test 6 live/manual checklist is documented.
 - [ ] Phase 21 deep review passed.

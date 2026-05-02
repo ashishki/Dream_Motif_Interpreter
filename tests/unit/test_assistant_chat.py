@@ -432,6 +432,7 @@ def test_build_tools_includes_search_dreams_by_title_schema() -> None:
 
     assert title_tool["input_schema"]["required"] == ["query"]
     assert "limit" in title_tool["input_schema"]["properties"]
+    assert "date" in title_tool["input_schema"]["properties"]
     assert "guessing" in title_tool["description"]
 
 
@@ -748,9 +749,9 @@ async def test_execute_tool_list_recent_dreams_includes_preview_and_themes() -> 
     result = await tools_module.execute_tool("list_recent_dreams", {"limit": 1}, facade)
 
     assert "2026-04-14 | Bridge dream" in result
+    assert f"dream_id: {dream_id}" in result
     assert "preview: I crossed a bridge at dusk and saw a dark river." in result
     assert "themes: Transitions, Water" in result
-    assert str(dream_id) not in result
     assert "words" not in result
 
 
@@ -914,6 +915,48 @@ async def test_execute_tool_search_dreams_by_title_includes_uuid_for_get_dream()
 
 
 @pytest.mark.asyncio
+async def test_execute_tool_search_dreams_by_title_uses_date_to_get_full_dream() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams_by_title.return_value = [
+        DreamTitleSearchResult(
+            dream_id=dream_id,
+            date="2026-04-04",
+            title="Кирилл, мужик, настольки",
+            raw_text_preview="Начало сна про Кирилла.",
+        )
+    ]
+    facade.get_dream.return_value = DreamDetail(
+        id=dream_id,
+        date="2026-04-04",
+        title="Кирилл, мужик, настольки",
+        raw_text="Полный текст сна про Кирилла, мужика и настольки.",
+        word_count=9,
+        source_doc_id="doc-1",
+        created_at="2026-04-04T00:00:00+00:00",
+        segmentation_confidence="high",
+        themes=[],
+        notes=[],
+    )
+
+    result = await tools_module.execute_tool(
+        "search_dreams_by_title",
+        {"query": "Кирилл, мужик, настольки", "date": "04.04.26"},
+        facade,
+    )
+
+    assert "Full dream" in result
+    assert f"Dream {dream_id}" in result
+    assert "Text: Полный текст сна про Кирилла, мужика и настольки." in result
+    facade.search_dreams_by_title.assert_awaited_once_with(
+        "Кирилл, мужик, настольки",
+        limit=10,
+        dream_date=date(2026, 4, 4),
+    )
+    facade.get_dream.assert_awaited_once_with(dream_id)
+
+
+@pytest.mark.asyncio
 async def test_execute_tool_search_dreams_by_title_formats_ambiguous_matches() -> None:
     first_id = uuid.uuid4()
     second_id = uuid.uuid4()
@@ -1012,6 +1055,8 @@ async def test_execute_tool_search_dreams_by_title_uses_default_for_bad_limit() 
 def test_system_prompt_routes_title_lookup_to_title_search_first() -> None:
     assert "search_dreams_by_title first" in SYSTEM_PROMPT
     assert "specific dream by title" in SYSTEM_PROMPT
+    assert "Never claim that a title-to-UUID lookup is unavailable." in SYSTEM_PROMPT
+    assert "pass it as the date argument" in SYSTEM_PROMPT
     assert "multiple matches" in SYSTEM_PROMPT
     assert "do not guess" in SYSTEM_PROMPT
 

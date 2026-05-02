@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.14
+Version: 1.15
 Last updated: 2026-06-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-06-02 — WS-21.4 — Full Dream by Title and Date
+
+- Scope: `app/assistant/tools.py`, `app/assistant/prompts.py`, `app/assistant/facade.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`, `docs/tasks_phase21.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Test 6 showed the assistant could list a known dream by title/date but claim it could not retrieve the full text without a UUID.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short` -> `120 passed, 1 warning`; `ruff check` and matching `ruff format --check` passed for touched WS-21.4 files.
+- Follow-ups: WS-21.5 should document the Test 6 smoke checklist, run the combined gate, archive the deep review, and close Phase 21.
+- Notes for next agent: `list_recent_dreams` now includes `dream_id`; `search_dreams_by_title` accepts date disambiguation and `04.04.26` resolves to `2026-04-04` before calling `get_dream`.
 
 ### 2026-06-02 — WS-21.3 — Fish/Image Exact Recall
 

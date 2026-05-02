@@ -322,18 +322,14 @@ async def execute_tool(
             return "No query provided."
         result = await facade.search_dreams(query)
         if result.insufficient_reason is not None:
+            if "verified archive-backed matches" in result.insufficient_reason:
+                return "No more archive-backed matches found."
             return f"Insufficient evidence: {result.insufficient_reason}"
         if not result.items:
             return "No matching archive entries found."
         lines = ["Search results:"]
         for item in result.items[:5]:
-            date_label = item.date.isoformat() if item.date is not None else "unknown date"
-            title_str = item.title if item.title else "без названия"
-            lines.append(f"- [{date_label}] {title_str} (score={item.relevance_score:.2f})")
-            if item.quote:
-                lines.append(f'  Quote: "{item.quote}"')
-            else:
-                lines.append(f"  {item.chunk_text[:200]}")
+            lines.extend(_format_search_result_payload(item))
         return "\n".join(lines)
 
     if tool_name == "search_dreams_exact":
@@ -350,23 +346,11 @@ async def execute_tool(
                 f"Exact match for '{query}' not found. Semantic search results:",
             ]
             for item in fallback.items[:5]:
-                date_label = item.date.isoformat() if item.date is not None else "unknown date"
-                title_str = item.title if item.title else "без названия"
-                lines.append(f"- [{date_label}] {title_str} (score={item.relevance_score:.2f})")
-                if item.quote:
-                    lines.append(f'  Quote: "{item.quote}"')
-                else:
-                    lines.append(f"  {item.chunk_text[:200]}")
+                lines.extend(_format_search_result_payload(item))
             return "\n".join(lines)
         lines = [f"Exact search results for '{query}' ({len(items)} fragments):"]
         for item in items:
-            date_label = item.date.isoformat() if item.date is not None else "unknown date"
-            title_str = item.title if item.title else "без названия"
-            lines.append(f"- [{date_label}] {title_str} (score={item.relevance_score:.2f})")
-            if item.quote:
-                lines.append(f'  Quote: "{item.quote}"')
-            else:
-                lines.append(f"  {item.chunk_text[:200]}")
+            lines.extend(_format_search_result_payload(item))
         return "\n".join(lines)
 
     if tool_name == "create_dream":
@@ -713,6 +697,44 @@ async def execute_tool(
         return "\n".join(lines)
 
     return f"Unknown tool: {tool_name}"
+
+
+def _search_strength_label(score: float) -> str:
+    if score >= 0.7:
+        return "strong"
+    if score >= 0.4:
+        return "moderate"
+    return "weak"
+
+
+def _format_search_result_payload(item: Any) -> list[str]:
+    date_label = item.date.isoformat() if item.date is not None else "unknown date"
+    title_str = item.title if item.title else "без названия"
+    strength = _search_strength_label(item.relevance_score)
+    evidence_text = _search_evidence_text(item)
+    return [
+        f"- result_id: {item.dream_id}",
+        f"  date: {date_label}",
+        f"  title: {title_str}",
+        f"  strength: {strength}",
+        f'  evidence_text: "{evidence_text}"',
+    ]
+
+
+def _search_evidence_text(item: Any) -> str:
+    if item.quote:
+        return item.quote
+
+    fragments = item.matched_fragments if isinstance(item.matched_fragments, list) else []
+    fragment_texts = [
+        str(fragment["text"]).strip()
+        for fragment in fragments
+        if isinstance(fragment, dict) and str(fragment.get("text", "")).strip()
+    ]
+    if fragment_texts:
+        return "\n---\n".join(fragment_texts)
+
+    return item.chunk_text.strip()
 
 
 def _is_explicit_create_request(request_text: str | None) -> bool:

@@ -332,6 +332,12 @@ def test_system_prompt_contains_terminology_rules_for_google_docs_sources() -> N
     )
 
 
+def test_system_prompt_requires_search_answers_to_cite_evidence_text() -> None:
+    prompt_lower = SYSTEM_PROMPT.lower()
+    assert "evidence_text" in prompt_lower
+    assert "final answers must cite only evidence_text" in prompt_lower
+
+
 # ---------------------------------------------------------------------------
 # build_tools — conditional get_dream_motifs registration
 # ---------------------------------------------------------------------------
@@ -397,6 +403,46 @@ def test_build_tools_includes_search_dreams_exact() -> None:
     tools = build_tools()
     tool_names = [t["name"] for t in tools]
     assert "search_dreams_exact" in tool_names
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_search_dreams_labels_verified_strength() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams.return_value = SearchResult(
+        items=[
+            SearchResultItem(
+                dream_id=dream_id,
+                date=date(2026, 4, 15),
+                title="Church dream",
+                chunk_text="Мне приснилась церковь на холме.",
+                relevance_score=0.82,
+                matched_fragments=[],
+                quote="Мне приснилась церковь на холме",
+            )
+        ]
+    )
+
+    result = await tools_module.execute_tool("search_dreams", {"query": "церковь"}, facade)
+
+    assert f"result_id: {dream_id}" in result
+    assert "strength: strong" in result
+    assert 'evidence_text: "Мне приснилась церковь на холме"' in result
+    assert "Quote:" not in result
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_search_dreams_reports_no_more_archive_backed_matches() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams.return_value = SearchResult(
+        items=[],
+        insufficient_reason="No verified archive-backed matches found",
+    )
+
+    result = await tools_module.execute_tool("search_dreams", {"query": "молитва"}, facade)
+
+    assert result == "No more archive-backed matches found."
+    assert "Мне приснилось" not in result
 
 
 @pytest.mark.asyncio
@@ -607,10 +653,11 @@ async def test_execute_tool_list_recent_dreams_includes_preview_and_themes() -> 
 
 @pytest.mark.asyncio
 async def test_search_dreams_exact_routing() -> None:
+    dream_id = uuid.uuid4()
     facade = AsyncMock(spec=AssistantFacade)
     facade.search_dreams_exact.return_value = [
         SearchResultItem(
-            dream_id=uuid.uuid4(),
+            dream_id=dream_id,
             date=date(2026, 4, 14),
             title="Church dream",
             chunk_text="Мне приснилась церковь на холме.",
@@ -627,7 +674,8 @@ async def test_search_dreams_exact_routing() -> None:
     )
 
     assert "Exact search results for 'церковь' (1 fragments):" in result
-    assert 'Quote: "Мне приснилась церковь на холме"' in result
+    assert f"result_id: {dream_id}" in result
+    assert 'evidence_text: "Мне приснилась церковь на холме"' in result
     facade.search_dreams_exact.assert_awaited_once_with("церковь")
 
 

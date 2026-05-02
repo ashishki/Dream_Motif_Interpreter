@@ -28,6 +28,7 @@ from app.shared.config import get_settings
 from app.shared.tracing import get_logger, get_tracer
 
 logger = get_logger(__name__)
+WEAK_SEARCH_RELEVANCE_THRESHOLD = 0.4
 
 
 @dataclass(frozen=True)
@@ -189,6 +190,8 @@ class AssistantFacade:
         for block in result:
             did = block.dream_id
             item = _search_result_item(block, query)
+            if not _is_verified_search_item(item):
+                continue
             if did not in grouped:
                 grouped[did] = item
             else:
@@ -205,6 +208,10 @@ class AssistantFacade:
                     matched_fragments=new_fragments,
                     quote=_extract_quote(new_text, query),
                 )
+        if not grouped:
+            return SearchResult(
+                items=[], insufficient_reason="No verified archive-backed matches found"
+            )
         return SearchResult(items=list(grouped.values()))
 
     async def search_dreams_exact(self, query: str) -> list[SearchResultItem]:
@@ -796,6 +803,12 @@ def _search_result_item(block: EvidenceBlock, query: str) -> SearchResultItem:
         ],
         quote=_extract_quote(block.chunk_text, query),
     )
+
+
+def _is_verified_search_item(item: SearchResultItem) -> bool:
+    if item.quote or item.matched_fragments:
+        return True
+    return item.relevance_score >= WEAK_SEARCH_RELEVANCE_THRESHOLD and bool(item.chunk_text.strip())
 
 
 def _exact_result_item(row: dict[str, Any], query: str) -> SearchResultItem:

@@ -1105,3 +1105,33 @@ async def test_search_dreams_groups_multiple_chunks_per_dream() -> None:
     assert "Фрагмент первый." in item.chunk_text
     assert "Фрагмент второй." in item.chunk_text
     assert "\n---\n" in item.chunk_text
+
+
+@pytest.mark.asyncio
+async def test_search_dreams_suppresses_weak_vector_result_without_query_evidence() -> None:
+    dream_id = uuid4()
+    rag_query_service = SimpleNamespace(
+        retrieve=AsyncMock(
+            return_value=[
+                EvidenceBlock(
+                    dream_id=dream_id,
+                    date=date(2026, 4, 15),
+                    title="Unrelated dream",
+                    chunk_text="Я шел по коридору и искал дверь.",
+                    relevance_score=0.31,
+                    matched_fragments=[],
+                )
+            ]
+        )
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession()),
+        rag_query_service=rag_query_service,
+    )
+
+    result = await facade.search_dreams("молитва")
+
+    assert result == SearchResult(
+        items=[],
+        insufficient_reason="No verified archive-backed matches found",
+    )

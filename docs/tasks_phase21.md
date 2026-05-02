@@ -1,8 +1,8 @@
 # Task Graph — Dream Motif Interpreter Phase 21
 
-Version: 1.0
+Version: 1.1
 Last updated: 2026-06-02
-Status: Planned — Test 6 recording/search regressions
+Status: In progress — WS-21.1 complete
 
 ## 1. Purpose
 
@@ -67,6 +67,19 @@ Files:
   - `tests/unit/test_assistant_chat.py`
   - `tests/unit/test_transcription_worker.py`
   - `tests/unit/test_telegram_bot.py`
+
+Implementation Notes:
+  - Completed 2026-06-02.
+  - `_has_natural_dream_opening()` now accepts one content word after natural openings and covers
+    gender/number variants such as `мне приснилась рыба`.
+  - Telegram text messages with natural openings call `create_dream` directly and bypass
+    `handle_chat_with_metadata`, pending drafts, and clarification prompts.
+  - Voice transcripts with natural openings now save directly after transcript persistence and
+    report the create result without entering the assistant loop.
+  - Regression evidence:
+    `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py -q --tb=short`
+    -> `94 passed, 1 warning`;
+    `ruff check` and `ruff format --check` passed for touched WS-21.1 files.
 
 ---
 
@@ -185,7 +198,7 @@ Files:
 
 ## 4. Phase Gate
 
-- [ ] Short natural text and voice dreams are saved without clarification.
+- [x] Short natural text and voice dreams are saved without clarification.
 - [ ] Telegram write success/failure messages are honest and hide fallback doc IDs.
 - [ ] Fish/image exact search regression is covered and passes.
 - [ ] Full dream retrieval by title/date works without UUID user input.

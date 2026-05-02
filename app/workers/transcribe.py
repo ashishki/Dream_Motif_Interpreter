@@ -20,8 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.assistant.chat import handle_chat_with_metadata
 from app.assistant.facade import AssistantFacade
+from app.assistant.tools import _has_natural_dream_opening
 from app.assistant.voice_media import store_voice_transcript, update_voice_media_event_status
-from app.telegram.handlers import _maybe_store_pending_dream
+from app.telegram.handlers import _format_create_dream_reply, _maybe_store_pending_dream
 from app.workers.cleanup import delete_local_voice_file
 
 LOGGER = logging.getLogger(__name__)
@@ -63,6 +64,22 @@ async def transcribe_and_reply(
 
     LOGGER.info("Transcription succeeded event_id=%s chars=%s", event_id, len(transcript))
     await store_voice_transcript(session_factory, event_id, transcript)
+
+    if _has_natural_dream_opening(transcript.casefold()):
+        try:
+            created = await facade.create_dream(transcript, chat_id=chat_id)
+        except Exception:
+            LOGGER.exception("create_dream failed after transcription for event_id=%s", event_id)
+            await update_voice_media_event_status(session_factory, event_id, "failed")
+            await _send_telegram_message(telegram_bot_token, chat_id, _TRANSCRIPTION_FAILED_MESSAGE)
+            return
+
+        await update_voice_media_event_status(session_factory, event_id, "done")
+        delete_local_voice_file(local_path)
+        await _send_telegram_message(
+            telegram_bot_token, chat_id, _format_create_dream_reply(created)
+        )
+        return
 
     try:
         result = await handle_chat_with_metadata(

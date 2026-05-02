@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -120,21 +121,28 @@ async def test_transcribe_and_reply_routes_through_handle_chat() -> None:
 
 
 @pytest.mark.asyncio
-async def test_transcribe_and_reply_routes_natural_dream_transcript_through_chat() -> None:
+async def test_transcribe_and_reply_saves_short_natural_dream_transcript_without_chat() -> None:
     event_id = uuid.uuid4()
-    transcript = "сегодня мне приснилось, что я летел над морем"
+    transcript = "сегодня мне приснилось рыба"
     facade = _make_facade()
+    facade.create_dream = AsyncMock(
+        return_value=SimpleNamespace(
+            created=True,
+            written_to_google_doc=True,
+            written_to_doc_name="Dream Archive",
+        )
+    )
     session_factory = _make_session_factory()
 
     with (
         patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
-        patch(
-            "app.workers.transcribe.handle_chat_with_metadata",
-            new=AsyncMock(return_value=ChatResult("saved", [])),
-        ) as mock_chat,
+        patch("app.workers.transcribe.handle_chat_with_metadata", new=AsyncMock()) as mock_chat,
         patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()),
-        patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
-        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
+        patch(
+            "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
+        ) as mock_update,
+        patch("app.workers.transcribe.delete_local_voice_file") as mock_delete,
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as mock_send,
     ):
         await transcribe_and_reply(
             event_id=event_id,
@@ -145,11 +153,14 @@ async def test_transcribe_and_reply_routes_natural_dream_transcript_through_chat
             facade=facade,
         )
 
-    mock_chat.assert_awaited_once_with(
-        transcript,
-        facade,
-        session_factory=session_factory,
-        chat_id=5,
+    mock_chat.assert_not_awaited()
+    facade.create_dream.assert_awaited_once_with(transcript, chat_id=5)
+    mock_update.assert_awaited_with(session_factory, event_id, "done")
+    mock_delete.assert_called_once_with("/tmp/f.ogg")
+    mock_send.assert_awaited_once_with(
+        "TOK",
+        5,
+        "Сон сохранён и добавлен в документ Dream Archive.",
     )
 
 
@@ -250,18 +261,24 @@ async def test_transcribe_and_reply_updates_status_to_done_on_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_transcribe_and_reply_stores_pending_dream_for_confirmation_prompt() -> None:
+async def test_transcribe_and_reply_does_not_store_pending_draft_for_natural_dream() -> None:
     event_id = uuid.uuid4()
-    transcript = "сегодня мне приснилось, что я лечу над морем"
+    transcript = "сегодня мне приснилось рыба"
+    facade = _make_facade()
+    facade.create_dream = AsyncMock(
+        return_value=SimpleNamespace(
+            created=True,
+            written_to_google_doc=True,
+            written_to_doc_name="Dream Archive",
+        )
+    )
 
     with (
         patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
-        patch(
-            "app.workers.transcribe.handle_chat_with_metadata",
-            new=AsyncMock(return_value=ChatResult("Записать этот сон в архив?", [])),
-        ),
+        patch("app.workers.transcribe.handle_chat_with_metadata", new=AsyncMock()),
         patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()),
         patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
+        patch("app.workers.transcribe.delete_local_voice_file"),
         patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
     ):
         await transcribe_and_reply(
@@ -270,10 +287,7 @@ async def test_transcribe_and_reply_stores_pending_dream_for_confirmation_prompt
             chat_id=5,
             telegram_bot_token="TOK",
             session_factory=_make_session_factory(),
-            facade=_make_facade(),
+            facade=facade,
         )
 
-    draft = load_pending_dream_draft(5)
-    assert draft is not None
-    assert draft.raw_text == transcript
-    assert draft.source_kind == "voice_transcript"
+    assert load_pending_dream_draft(5) is None

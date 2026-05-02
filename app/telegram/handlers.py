@@ -132,6 +132,15 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             bot_msg_ids.pop(chat_key, None)
         return
 
+    if chat_id is not None and _has_natural_dream_opening(stripped_text.casefold()):
+        if chat_key is not None:
+            pending_feedback.pop(chat_key, None)
+            bot_msg_ids.pop(chat_key, None)
+        created = await _get_facade(context).create_dream(stripped_text, chat_id=chat_id)
+        clear_pending_dream_draft(chat_id)
+        await message.reply_text(_format_create_dream_reply(created))
+        return
+
     if chat_key is not None:
         pending_feedback.pop(chat_key, None)
         bot_msg_ids.pop(chat_key, None)

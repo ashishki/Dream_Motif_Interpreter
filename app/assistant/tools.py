@@ -859,24 +859,30 @@ def _is_explicit_create_request(request_text: str | None) -> bool:
 _WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
 _NATURAL_DREAM_OPENINGS = (
     "сегодня мне приснилось",
+    "сегодня мне приснилась",
+    "сегодня мне приснился",
+    "сегодня мне приснились",
     "мне приснилось",
+    "мне приснилась",
+    "мне приснился",
+    "мне приснились",
     "мне снилось",
+    "мне снилась",
+    "мне снился",
+    "мне снились",
     "приснился сон",
+    "приснились сны",
     "приснилось, что",
 )
 
 
 def _has_natural_dream_opening(text: str) -> bool:
-    words = _WORD_RE.findall(text)
-    if len(words) < 4:
-        return False
-
     for opening in _NATURAL_DREAM_OPENINGS:
         index = text.find(opening)
         if index < 0:
             continue
         tail = text[index + len(opening) :]
-        if len(_WORD_RE.findall(tail)) >= 2:
+        if len(_WORD_RE.findall(tail)) >= 1:
             return True
 
     return False

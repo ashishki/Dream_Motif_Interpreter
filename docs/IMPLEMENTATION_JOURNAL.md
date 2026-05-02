@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.11
+Version: 1.12
 Last updated: 2026-06-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-06-02 — WS-21.1 — Short Natural Dream Recording
+
+- Scope: `app/assistant/tools.py`, `app/telegram/handlers.py`, `app/workers/transcribe.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_transcription_worker.py`, `docs/tasks_phase21.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Test 6 showed short dreams beginning with natural phrases such as `сегодня мне приснилось` could be routed into clarification and then reported as saved without reliable persistence.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py tests/unit/test_transcription_worker.py -q --tb=short` -> `94 passed, 1 warning`; `ruff check` and matching `ruff format --check` passed for touched WS-21.1 files.
+- Follow-ups: WS-21.2 must make Google Doc write confirmation text truthful and remove fallback document IDs from user-facing success messages.
+- Notes for next agent: natural text and voice transcripts now bypass the assistant loop and call `create_dream` directly when at least one content word follows the opening; pending dream confirmation remains only for already stored drafts.
 
 ### 2026-06-02 — PHASE21-PLAN — Test 6 Recording/Search Regressions
 

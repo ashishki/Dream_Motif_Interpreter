@@ -33,10 +33,8 @@ from app.shared.config import get_settings
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCS_PATH = PROJECT_ROOT / "docs" / "retrieval_eval.md"
 DEFAULT_FIXTURE_PATH = PROJECT_ROOT / "tests" / "fixtures" / "seed_dreams.json"
-EVAL_DATE = "2026-04-13"
 CORPUS_VERSION = "synthetic-20-entries"
 DEFAULT_TASK_ID = "T12"
-EVAL_SOURCE = f"scripts/eval.py against §Evaluation Dataset (10 queries), run {EVAL_DATE}"
 QUERY_SECTION = "## Evaluation Dataset"
 BASELINE_SECTION = "## Baseline Metrics"
 CURRENT_SECTION = "## Current Metrics"
@@ -223,7 +221,9 @@ async def run_evaluation(
     fixture_path: Path = DEFAULT_FIXTURE_PATH,
     write_markdown: bool = True,
     task_id: str = DEFAULT_TASK_ID,
+    run_date: str | None = None,
 ) -> tuple[EvaluationMetrics, list[QueryOutcome]]:
+    effective_run_date = run_date or _eval_date()
     session_factory = await _prepare_seeded_session_factory(fixture_path)
     try:
         queries = load_evaluation_dataset(docs_path)
@@ -242,6 +242,7 @@ async def run_evaluation(
                 metrics=metrics,
                 outcomes=outcomes,
                 task_id=task_id,
+                run_date=effective_run_date,
             )
 
         return metrics, outcomes
@@ -400,14 +401,15 @@ def _write_retrieval_eval_doc(
     metrics: EvaluationMetrics,
     outcomes: list[QueryOutcome],
     task_id: str,
+    run_date: str,
 ) -> None:
     content = docs_path.read_text(encoding="utf-8")
     content = re.sub(
-        r"Last updated: \d{4}-\d{2}-\d{2}", f"Last updated: {EVAL_DATE}", content, count=1
+        r"Last updated: \d{4}-\d{2}-\d{2}", f"Last updated: {run_date}", content, count=1
     )
     content = re.sub(
         r"Changed by: .+",
-        "Changed by: T12 — Retrieval Evaluation Baseline",
+        f"Changed by: {task_id} — Retrieval Evaluation Run",
         content,
         count=1,
     )
@@ -420,7 +422,12 @@ def _write_retrieval_eval_doc(
     content = _replace_section_table(content, BASELINE_SECTION, _baseline_metrics_table(metrics))
     content = _replace_section_table(content, CURRENT_SECTION, _current_metrics_table(metrics))
     content = _replace_section_table(content, NO_ANSWER_SECTION, _no_answer_table(outcomes))
-    content = _append_evaluation_history(content, metrics=metrics, task_id=task_id)
+    content = _append_evaluation_history(
+        content,
+        metrics=metrics,
+        task_id=task_id,
+        run_date=run_date,
+    )
     content = re.sub(
         r"## Regression Notes\n\n.*?\n\n---",
         (
@@ -484,18 +491,31 @@ def _no_answer_table(outcomes: list[QueryOutcome]) -> str:
     return "\n".join(rows)
 
 
-def _append_evaluation_history(markdown: str, *, metrics: EvaluationMetrics, task_id: str) -> str:
+def _append_evaluation_history(
+    markdown: str,
+    *,
+    metrics: EvaluationMetrics,
+    task_id: str,
+    run_date: str | None = None,
+) -> str:
     rows = _extract_table(markdown, HISTORY_SECTION)
-    rows.append(_evaluation_history_row(metrics=metrics, task_id=task_id))
+    rows.append(
+        _evaluation_history_row(metrics=metrics, task_id=task_id, run_date=run_date or _eval_date())
+    )
     return _replace_section_table(markdown, HISTORY_SECTION, _render_history_table(rows))
 
 
-def _evaluation_history_row(metrics: EvaluationMetrics, *, task_id: str) -> dict[str, str]:
+def _evaluation_history_row(
+    metrics: EvaluationMetrics,
+    *,
+    task_id: str,
+    run_date: str,
+) -> dict[str, str]:
     return {
-        "Date": EVAL_DATE,
+        "Date": run_date,
         "Task": task_id,
         "Corpus Version": CORPUS_VERSION,
-        "Eval Source": EVAL_SOURCE,
+        "Eval Source": f"scripts/eval.py against §Evaluation Dataset (10 queries), run {run_date}",
         "hit@3": _fmt(metrics.hit_at_3),
         "MRR": _fmt(metrics.mrr),
         "No-answer acc.": _fmt(metrics.no_answer_accuracy),
@@ -628,6 +648,10 @@ def _mean(values: Any) -> float:
 
 def _fmt(value: float) -> str:
     return f"{value:.2f}"
+
+
+def _eval_date() -> str:
+    return os.getenv("EVAL_DATE") or date.today().isoformat()
 
 
 def _should_use_stub_embeddings() -> bool:

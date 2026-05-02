@@ -29,13 +29,24 @@ def test_eval_history_appends(tmp_path: Path) -> None:
     )
 
     content = docs_path.read_text(encoding="utf-8")
-    content = eval_script._append_evaluation_history(content, metrics=metrics, task_id="T12")
-    content = eval_script._append_evaluation_history(content, metrics=metrics, task_id="T15")
+    content = eval_script._append_evaluation_history(
+        content,
+        metrics=metrics,
+        task_id="T12",
+        run_date="2026-04-13",
+    )
+    content = eval_script._append_evaluation_history(
+        content,
+        metrics=metrics,
+        task_id="T15",
+        run_date="2026-05-02",
+    )
     docs_path.write_text(content, encoding="utf-8")
 
     history = eval_script.load_evaluation_history(docs_path)
 
     assert [row["Task"] for row in history] == ["T12", "T15"]
+    assert [row["Date"] for row in history] == ["2026-04-13", "2026-05-02"]
 
 
 def test_main_passes_no_write_markdown_flag_to_run_evaluation() -> None:

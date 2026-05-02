@@ -1,27 +1,27 @@
 # CODEX_PROMPT.md
 
-Version: 1.59
+Version: 1.60
 Date: 2026-05-02
-Phase: Phase 20 ready — notes placement and emoji feedback polish
+Phase: Phase 20 in progress — notes placement implemented; emoji feedback mapping blocked
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 19 direct title search passed deep review; Phase 20 notes placement and emoji feedback polish is ready.
-- **Baseline:** WS-19.3 assistant title-flow unit slice after deep-review fix: 106 passed; ruff check/format clean for touched assistant files. WS-18.6 synthetic retrieval eval: hit@3=1.00, MRR=1.00, no-answer accuracy=1.00; read-only real archive eval: 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; live hybrid archive eval (`scripts/eval_phase18_real.py --mode live --limit 5`) completed with provider auth and archive-backed evidence for all 6 Phase 18 queries. Full local suite on non-live machine still requires broader live service coverage.
+- **Phase:** Phase 20 WS-20.1 notes placement implemented locally; WS-20.2 emoji semantics is blocked until the user provides emoji meanings.
+- **Baseline:** WS-20.1 Google Docs/facade slice: 54 passed; ruff check/format clean for touched Google Docs/facade/test files. WS-19.3 assistant title-flow unit slice after deep-review fix: 106 passed; ruff check/format clean for touched assistant files. WS-18.6 synthetic retrieval eval: hit@3=1.00, MRR=1.00, no-answer accuracy=1.00; read-only real archive eval: 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode; live hybrid archive eval (`scripts/eval_phase18_real.py --mode live --limit 5`) completed with provider auth and archive-backed evidence for all 6 Phase 18 queries. Full local suite on non-live machine still requires broader live service coverage.
 - **Ruff:** clean (0 violations); format check clean
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-02 (Phase 19 deep review archived; Phase 20 WS-20.1 next)
+- **Last updated:** 2026-05-02 (Phase 20 WS-20.1 implemented; WS-20.2 blocked on emoji mapping)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 16 complete or implemented according to task graphs; Phase 16 completion should be verified by the next implementation agent before coding if CI state matters.
-- **Current planning state:** Phase 19 deep review archived; continue with Phase 20 (`docs/tasks_phase20.md`).
-- **Latest completed implementation task:** WS-19.3 — Full Dream Retrieval by Title Flow.
-- **Current baseline:** WS-19.3 targeted assistant slice passes after deep-review fix (`.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short` -> 106 passed); `ruff check app/assistant/tools.py app/assistant/prompts.py app/assistant/facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py` and matching `ruff format --check` pass. WS-18.6 synthetic retrieval eval passes (`scripts/eval.py --task-id WS-18.6` against disposable `dream_motif_eval` -> hit@3=1.00, MRR=1.00, no-answer accuracy=1.00); read-only real archive eval passes (`scripts/eval_phase18_real.py --limit 5` -> 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode); live hybrid archive eval passes (`scripts/eval_phase18_real.py --mode live --limit 5` with provider keys from `.env` -> 6/6 Phase 18 queries returned archive-backed evidence).
+- **Current planning state:** Phase 20 is active; WS-20.1 is implemented locally, WS-20.2 waits on user-provided emoji list and meanings.
+- **Latest completed implementation task:** WS-20.1 — Place Notes Under the Target Dream in Google Doc.
+- **Current baseline:** WS-20.1 targeted slice passes (`.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py -q --tb=short` -> 54 passed); `ruff check app/services/gdocs_client.py app/assistant/facade.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py` and matching `ruff format --check` pass. WS-19.3 targeted assistant slice passes after deep-review fix (`.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py -q --tb=short` -> 106 passed). WS-18.6 synthetic retrieval eval passes (`scripts/eval.py --task-id WS-18.6` against disposable `dream_motif_eval` -> hit@3=1.00, MRR=1.00, no-answer accuracy=1.00); read-only real archive eval passes (`scripts/eval_phase18_real.py --limit 5` -> 6/6 Phase 18 prayer/religion queries returned archive-backed evidence in FTS-only mode); live hybrid archive eval passes (`scripts/eval_phase18_real.py --mode live --limit 5` with provider keys from `.env` -> 6/6 Phase 18 queries returned archive-backed evidence).
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -32,10 +32,10 @@ Phase: Phase 20 ready — notes placement and emoji feedback polish
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
 - **Mandatory local workflow:** `docs/prompts/ORCHESTRATOR.md`
-- **Active task graph:** `docs/tasks_phase19.md` (direct title search)
-- **Previous task graph:** `docs/tasks_phase17.md` (Phase 17: deterministic dream recording stabilization)
+- **Active task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
+- **Previous task graph:** `docs/tasks_phase19.md` (direct title search)
 - **Previous task graph:** `docs/tasks_phase18.md` (search quality and hallucination suppression)
-- **Upcoming task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
+- **Previous task graph:** `docs/tasks_phase17.md` (Phase 17: deterministic dream recording stabilization)
 - **Previous task graph (Phase 16):** `docs/tasks_phase16.md` (implemented/planning source from Тест 4)
 - **Previous task graph (Phase 15):** `docs/tasks_phase15.md` (complete)
 - **Previous task graph (Phase 14):** `docs/tasks_phase14.md` (complete)
@@ -55,17 +55,22 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 
 ## Next Task
 
-WS-20.1: Place Notes Under the Target Dream in Google Doc.
-Baseline: Phase 19 deep review passed; targeted assistant tests passed (`tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py` -> 106 passed); ruff check/format clean for touched assistant files; WS-18.6 retrieval gate remains passed.
+WS-20.2: Emoji Reaction Semantics.
+Baseline: WS-20.1 Google Docs/facade slice passed (`tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py` -> 54 passed); ruff check/format clean for touched files; WS-18.6 retrieval gate remains passed.
 Goal:
-  Make Google Doc note placement target-aware where possible.
+  Interpret stored Telegram reactions as qualitative feedback after the user provides emoji meanings.
 
 Context refs:
-- `docs/tasks_phase20.md` — active task graph (read §1-3 and WS-20.1 before coding)
-- `app/services/gdocs_client.py`
-- `app/assistant/facade.py`
-- `tests/unit/test_gdocs_client.py`
-- `tests/unit/test_assistant_facade.py`
+- `docs/tasks_phase20.md` — active task graph (read §1-3 and WS-20.2 before coding)
+- `app/models/reaction.py`
+- `app/services/feedback_service.py` or a new reaction feedback service
+- `app/telegram/bot.py`
+- `docs/FEEDBACK_LOOP.md`
+- `tests/unit/test_reaction_model.py`
+- `tests/unit/test_feedback_context.py`
+
+Blocker:
+  User must provide the emoji list and meanings before WS-20.2 can start.
 
 ---
 

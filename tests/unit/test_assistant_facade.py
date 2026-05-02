@@ -604,6 +604,8 @@ async def test_add_dream_note_returns_true_on_success() -> None:
     dream = SimpleNamespace(
         id=dream_id,
         source_doc_id="doc-123",
+        date=date(2026, 4, 21),
+        title="River valley",
         created_at=created_at,
     )
     session = _FakeSession(execute_results=[_FakeResult(scalar=dream)])
@@ -613,19 +615,60 @@ async def test_add_dream_note_returns_true_on_success() -> None:
     )
 
     with patch("app.assistant.facade.GDocsClient") as mock_client_cls:
+        mock_client_cls.return_value.insert_text_under_heading = MagicMock(return_value=True)
         mock_client_cls.return_value.append_text = MagicMock()
 
         success, message = await facade.add_dream_note("remember the red door", chat_id=42)
 
     assert success is True
-    assert message == "Заметка добавлена."
+    assert message == "Заметка добавлена под нужным сном."
     session.add.assert_called_once()
     note = session.add.call_args[0][0]
     assert note.dream_id == dream_id
     assert note.text == "remember the red door"
     assert note.source == "telegram"
     session.commit.assert_awaited_once()
+    mock_client_cls.return_value.insert_text_under_heading.assert_called_once()
+    call_args = mock_client_cls.return_value.insert_text_under_heading.call_args
+    assert call_args.args == ("doc-123",)
+    assert call_args.kwargs["heading"] == "21.04.26 - River valley"
+    assert call_args.kwargs["text"].startswith("[Note ")
+    assert call_args.kwargs["text"].endswith("]: remember the red door")
+    mock_client_cls.return_value.append_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_dream_note_falls_back_to_append_when_heading_missing() -> None:
+    dream_id = uuid4()
+    created_at = datetime(2026, 4, 21, tzinfo=timezone.utc)
+    dream = SimpleNamespace(
+        id=dream_id,
+        source_doc_id="doc-123",
+        date=date(2026, 4, 21),
+        title="River valley",
+        created_at=created_at,
+    )
+    session = _FakeSession(execute_results=[_FakeResult(scalar=dream)])
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with patch("app.assistant.facade.GDocsClient") as mock_client_cls:
+        mock_client_cls.return_value.insert_text_under_heading = MagicMock(return_value=False)
+        mock_client_cls.return_value.append_text = MagicMock()
+
+        success, message = await facade.add_dream_note("remember the red door", chat_id=42)
+
+    assert success is True
+    assert message == "Заметка добавлена в конец Google Doc: заголовок сна не найден."
+    session.commit.assert_awaited_once()
+    mock_client_cls.return_value.insert_text_under_heading.assert_called_once()
     mock_client_cls.return_value.append_text.assert_called_once()
+    assert mock_client_cls.return_value.append_text.call_args.args[0] == "doc-123"
+    assert mock_client_cls.return_value.append_text.call_args.args[1].endswith(
+        "]: remember the red door"
+    )
 
 
 def test_resolve_dream_title_without_title_generates_topic_title() -> None:

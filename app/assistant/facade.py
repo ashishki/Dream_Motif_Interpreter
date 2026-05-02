@@ -639,25 +639,39 @@ class AssistantFacade:
         date_str = datetime.now(timezone.utc).strftime("%d.%m.%y")
         note_line = f"[Note {date_str}]: {normalized_text}"
         target_doc_id = self._resolve_note_doc_id(dream)
+        gdocs_client = GDocsClient()
         try:
-            with tracer.start_as_current_span("assistant.add_dream_note.append_google_doc"):
-                GDocsClient().append_text(target_doc_id, note_line)
+            with tracer.start_as_current_span("assistant.add_dream_note.write_google_doc"):
+                placed = gdocs_client.insert_text_under_heading(
+                    target_doc_id,
+                    heading=_dream_doc_heading(dream),
+                    text=note_line,
+                )
+                if not placed:
+                    logger.info(
+                        "Dream note heading not found; appending to Google Doc",
+                        dream_id=str(dream.id),
+                        doc_id=target_doc_id,
+                    )
+                    gdocs_client.append_text(target_doc_id, note_line)
         except GDocsWriteError:
             logger.warning(
-                "Failed to append dream note to Google Doc",
+                "Failed to write dream note to Google Doc",
                 dream_id=str(dream.id),
                 doc_id=target_doc_id,
             )
             return False, "Заметка сохранена в архиве, но не добавлена в Google Doc."
         except Exception:
             logger.error(
-                "Unexpected error appending dream note to Google Doc",
+                "Unexpected error writing dream note to Google Doc",
                 dream_id=str(dream.id),
                 doc_id=target_doc_id,
             )
             return False, "Заметка сохранена в архиве, но не добавлена в Google Doc."
 
-        return True, "Заметка добавлена."
+        if placed:
+            return True, "Заметка добавлена под нужным сном."
+        return True, "Заметка добавлена в конец Google Doc: заголовок сна не найден."
 
     async def get_theme_history(self, dream_id: uuid.UUID) -> list[ThemeHistoryEntry]:
         async with self._session_factory() as session:
@@ -940,6 +954,13 @@ def _dream_summary_item(dream: DreamEntry, *, theme_names: list[str] | None = No
         raw_text_preview=(dream.raw_text or "")[:400],
         theme_names=theme_names or [],
     )
+
+
+def _dream_doc_heading(dream: DreamEntry) -> str:
+    clean_title = _DATE_PREFIX_RE.sub("", dream.title).strip()
+    if dream.date is None:
+        return clean_title
+    return f"{dream.date.strftime('%d.%m.%y')} - {clean_title}"
 
 
 _DATE_PREFIX_RE = re.compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")

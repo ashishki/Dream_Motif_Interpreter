@@ -198,6 +198,68 @@ class GDocsClient:
                     f"Google Docs batchUpdate failed (HTTP {status_code})"
                 ) from exc
 
+    def insert_text_under_heading(
+        self,
+        doc_id: str,
+        *,
+        heading: str,
+        text: str,
+    ) -> bool:
+        """Insert text immediately below a matching Heading 1 paragraph.
+
+        Returns False when the heading is not found so callers can make an
+        explicit fallback decision.
+        """
+        with self._tracer.start_as_current_span("gdocs.insert_text_under_heading"):
+            logger.info("Attempting targeted Google Docs insert", document_id=doc_id)
+            try:
+                service = self._build_docs_service()
+                document = service.documents().get(documentId=doc_id).execute()
+                insertion_index = _find_heading_end_index(document, heading)
+                if insertion_index is None:
+                    logger.info("Google Docs target heading not found", document_id=doc_id)
+                    return False
+
+                requests = [
+                    {
+                        "insertText": {
+                            "location": {"index": insertion_index},
+                            "text": "\n" + text,
+                        }
+                    }
+                ]
+                service.documents().batchUpdate(
+                    documentId=doc_id,
+                    body={"requests": requests},
+                ).execute()
+                logger.info("Successfully inserted text under heading", document_id=doc_id)
+                return True
+            except RefreshError as exc:
+                logger.warning("Google Docs authentication failed during targeted insert")
+                raise GDocsWriteError("Google Docs authentication failed during write") from exc
+            except HttpError as exc:
+                status_code = _get_status_code(exc)
+                if status_code in {401, 403}:
+                    logger.warning(
+                        "Google Docs write permission denied",
+                        status_code=status_code,
+                        document_id=doc_id,
+                    )
+                    raise GDocsWriteError(
+                        f"Google Docs write permission denied (HTTP {status_code}). "
+                        "Ensure credentials have documents write scope."
+                    ) from exc
+                if status_code == 404:
+                    raise GDocsWriteError(f"Google Docs document not found: {doc_id}") from exc
+                logger.error(
+                    "Google Docs targeted insert failed",
+                    status_code=status_code,
+                    document_id=doc_id,
+                )
+                raise GDocsWriteError(
+                    f"Google Docs targeted insert failed (HTTP {status_code})"
+                ) from exc
+
     def append_dream_entry(self, doc_id: str, date_str: str, title: str, body: str) -> None:
         """Append a dream entry with the title styled as Heading 1."""
         with self._tracer.start_as_current_span("gdocs.append_dream_entry"):
@@ -489,6 +551,32 @@ def _get_status_code(exc: HttpError) -> int | None:
         return int(status) if status is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _find_heading_end_index(document: Mapping[str, Any], heading: str) -> int | None:
+    target = _normalize_doc_text(heading)
+    if not target:
+        return None
+
+    for block in document.get("body", {}).get("content", []):
+        paragraph = block.get("paragraph")
+        if not isinstance(paragraph, dict):
+            continue
+        style = paragraph.get("paragraphStyle", {})
+        if style.get("namedStyleType") != "HEADING_1":
+            continue
+        paragraph_text = "".join(
+            str(element.get("textRun", {}).get("content", ""))
+            for element in paragraph.get("elements", [])
+            if isinstance(element, dict)
+        )
+        if _normalize_doc_text(paragraph_text) == target:
+            return int(block.get("endIndex") or 1)
+    return None
+
+
+def _normalize_doc_text(value: str) -> str:
+    return " ".join(value.casefold().split())
 
 
 def _clean_optional_str(value: Any) -> str | None:

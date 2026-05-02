@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.5
+Version: 1.6
 Last updated: 2026-05-02
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-02 — WS-20.1 — Target-Aware Dream Notes in Google Docs
+
+- Scope: `app/services/gdocs_client.py`, `app/assistant/facade.py`, `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_facade.py`, `docs/tasks_phase20.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 20 needed `add_dream_note` to place notes under the target dream heading in Google Docs when possible instead of always appending to the document end.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py -q --tb=short` -> `54 passed`; `.venv/bin/ruff check app/services/gdocs_client.py app/assistant/facade.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py` -> clean; matching `ruff format --check` -> clean.
+- Follow-ups: WS-20.2 is blocked until the user provides emoji reaction meanings.
+- Notes for next agent: note rows are committed before Google Docs writes; `insert_text_under_heading()` returns `False` for a missing Heading 1 so the facade can append and tell the user that fallback happened.
 
 ### 2026-05-02 — WS-19.3 — Full Dream Retrieval by Title Flow
 

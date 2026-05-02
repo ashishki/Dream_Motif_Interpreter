@@ -1,8 +1,8 @@
 # Task Graph — Dream Motif Interpreter Phase 20
 
 Version: 1.0
-Last updated: 2026-05-01
-Status: Planned — polish backlog from Тест 5
+Last updated: 2026-05-02
+Status: In progress — WS-20.1 implemented locally; WS-20.2 blocked on emoji mapping
 
 ## 1. Purpose
 
@@ -36,6 +36,17 @@ Files:
   - `app/assistant/facade.py`
   - `tests/unit/test_gdocs_client.py`
   - `tests/unit/test_assistant_facade.py`
+
+Implementation Notes:
+  - `GDocsClient.insert_text_under_heading()` searches Heading 1 paragraphs by normalized text
+    and returns `False` without mutating the document when the target heading is missing.
+  - `AssistantFacade.add_dream_note()` saves `dream_notes` first, then attempts targeted Google
+    Doc insertion under `{dd.mm.yy} - {title}` and explicitly falls back to append with a user
+    message when no matching heading is found.
+  - Evidence: `.venv/bin/python -m pytest tests/unit/test_gdocs_client.py
+    tests/unit/test_assistant_facade.py -q --tb=short` -> 54 passed; `.venv/bin/ruff check
+    app/services/gdocs_client.py app/assistant/facade.py tests/unit/test_gdocs_client.py
+    tests/unit/test_assistant_facade.py` -> clean; matching `ruff format --check` -> clean.
 
 ---
 
@@ -94,6 +105,6 @@ Files:
 
 ## 3. Phase Gate
 
-- [ ] Notes placement behavior is target-aware or explicitly falls back.
+- [x] Notes placement behavior is target-aware or explicitly falls back.
 - [ ] Emoji semantics implemented after mapping is provided.
 - [ ] Feedback prompt UX decision documented.

@@ -121,6 +121,44 @@ async def test_transcribe_and_reply_routes_through_handle_chat() -> None:
 
 
 @pytest.mark.asyncio
+async def test_transcribe_and_reply_voice_note_bypasses_chat_and_adds_note() -> None:
+    event_id = uuid.uuid4()
+    transcript = "Добавь заметку к последнему сну, что в нём тоже был какой-то сексуальный подтекст"
+    facade = _make_facade()
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    session_factory = _make_session_factory()
+
+    with (
+        patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value=transcript)),
+        patch("app.workers.transcribe.handle_chat_with_metadata", new=AsyncMock()) as mock_chat,
+        patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()) as mock_store,
+        patch(
+            "app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()
+        ) as mock_update,
+        patch("app.workers.transcribe.delete_local_voice_file") as mock_delete,
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as mock_send,
+    ):
+        await transcribe_and_reply(
+            event_id=event_id,
+            local_path="/tmp/f.ogg",
+            chat_id=5,
+            telegram_bot_token="TOK",
+            session_factory=session_factory,
+            facade=facade,
+        )
+
+    mock_chat.assert_not_awaited()
+    mock_store.assert_awaited_once_with(session_factory, event_id, transcript)
+    facade.add_dream_note.assert_awaited_once_with(
+        "в нём тоже был какой-то сексуальный подтекст",
+        chat_id=5,
+    )
+    mock_update.assert_awaited_with(session_factory, event_id, "done")
+    mock_delete.assert_called_once_with("/tmp/f.ogg")
+    mock_send.assert_awaited_once_with("TOK", 5, "Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.asyncio
 async def test_transcribe_and_reply_saves_short_natural_dream_transcript_without_chat() -> None:
     event_id = uuid.uuid4()
     transcript = "сегодня мне приснилось рыба"

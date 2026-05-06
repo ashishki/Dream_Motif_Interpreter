@@ -19,8 +19,10 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from app.models.dream import DreamChunk, DreamEntry
+from app.models.note import DreamNote
 from app.retrieval.ingestion import DreamEntryValidationError
 from app.retrieval.ingestion import EMBEDDING_DIMENSIONS
+from app.retrieval.query import RagQueryService
 from app.workers.ingest import ingest_document
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -284,3 +286,59 @@ async def test_reingest_is_idempotent_under_normalized_pipeline(
     assert second_new_entries == 0
     assert entry_count == 1
     assert chunk_count == 1
+
+
+@pytest.mark.asyncio
+async def test_user_added_google_doc_note_is_synced_once_and_searchable(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    worker_ctx = _worker_ctx(
+        migrated_session_factory,
+        paragraphs=[
+            "2026-05-01",
+            "I walked through a hallway with red doors.",
+            "[Note 06.05.26]: после пробуждения красная дверь ощущалась важной",
+        ],
+    )
+
+    first_new_entries = await ingest_document(
+        worker_ctx,
+        job_id=uuid.uuid4(),
+        doc_id="doc-user-note-simulation",
+    )
+    second_new_entries = await ingest_document(
+        worker_ctx,
+        job_id=uuid.uuid4(),
+        doc_id="doc-user-note-simulation",
+    )
+
+    search_service = RagQueryService(session_factory=migrated_session_factory)
+    exact_matches = await search_service.exact_search("красная дверь важной")
+
+    async with migrated_session_factory() as session:
+        entry_count = await session.scalar(select(func.count()).select_from(DreamEntry))
+        note_count = await session.scalar(select(func.count()).select_from(DreamNote))
+        chunks = (
+            (
+                await session.execute(
+                    select(DreamChunk).order_by(
+                        DreamChunk.source_kind.asc(),
+                        DreamChunk.chunk_index.asc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        dream = await session.scalar(
+            select(DreamEntry).where(DreamEntry.source_doc_id == "doc-user-note-simulation")
+        )
+
+    assert first_new_entries == 1
+    assert second_new_entries == 0
+    assert entry_count == 1
+    assert note_count == 1
+    assert dream is not None
+    assert "после пробуждения" not in dream.raw_text
+    assert {chunk.source_kind for chunk in chunks} == {"dream_text", "note"}
+    assert any("красная дверь ощущалась важной" in row["chunk_text"] for row in exact_matches)

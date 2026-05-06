@@ -21,6 +21,7 @@ from app.telegram.handlers import (
     FEEDBACK_PROMPT,
     MAX_PENDING_FEEDBACK_REQUESTS,
     VOICE_PROCESSING_ACK,
+    _extract_direct_note_text,
     _remember_feedback_request,
     _format_create_dream_reply,
     chat_guard,
@@ -311,6 +312,25 @@ async def test_text_message_handler_direct_note_bypasses_chat_loop() -> None:
     mock_chat.assert_not_awaited()
     facade.add_dream_note.assert_awaited_once_with("красная дверь важна", chat_id=42)
     message.reply_text.assert_awaited_once_with("Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("заметка: красная дверь важна", "красная дверь важна"),
+        (
+            "Добавь заметку к последнему сну, что в нём был сексуальный подтекст",
+            "в нём был сексуальный подтекст",
+        ),
+        (
+            "Добавь еще заметку к последнему сну: во сне была дача",
+            "во сне была дача",
+        ),
+        ("add note to the latest dream: red door felt important", "red door felt important"),
+    ],
+)
+def test_extract_direct_note_text_from_command_phrases(text: str, expected: str) -> None:
+    assert _extract_direct_note_text(text) == expected
 
 
 @pytest.mark.asyncio

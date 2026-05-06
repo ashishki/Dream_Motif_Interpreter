@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from collections.abc import MutableMapping
 from datetime import date
 from typing import Any
@@ -537,7 +538,51 @@ def _extract_direct_note_text(text: str) -> str | None:
     for prefix in ("note:", "notes:", "заметка:", "заметки:"):
         if lowered.startswith(prefix):
             return text[len(prefix) :].strip()
+
+    russian_match = re.match(
+        r"^(?:добавь|добавить|запиши|записать|сохрани|сохранить)\s+"
+        r"(?:ещ[её]\s+)?заметк[ауи]\b(?P<tail>.*)$",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if russian_match is not None:
+        return _normalize_direct_note_tail(russian_match.group("tail"))
+
+    english_match = re.match(
+        r"^(?:add|save|record)\s+(?:another\s+)?note\b(?P<tail>.*)$",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if english_match is not None:
+        return _normalize_direct_note_tail(english_match.group("tail"))
+
     return None
+
+
+def _normalize_direct_note_tail(text: str) -> str | None:
+    note_text = text.strip(" \t\r\n:—–-,.")
+    note_text = re.sub(
+        r"^(?:к|для)\s+(?:последн(?:ему|ий|его)\s+)?сн[ау]\b",
+        "",
+        note_text,
+        count=1,
+        flags=re.IGNORECASE,
+    ).strip(" \t\r\n:—–-,.")
+    note_text = re.sub(
+        r"^to\s+(?:the\s+)?(?:(?:last|latest|previous)\s+)?dream\b",
+        "",
+        note_text,
+        count=1,
+        flags=re.IGNORECASE,
+    ).strip(" \t\r\n:—–-,.")
+    note_text = re.sub(
+        r"^(?:о\s+том,?\s+)?(?:что|that)\s+",
+        "",
+        note_text,
+        count=1,
+        flags=re.IGNORECASE,
+    ).strip()
+    return note_text or None
 
 
 def _format_create_dream_reply(created: Any) -> str:

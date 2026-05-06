@@ -6,11 +6,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
 import tiktoken
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.dream import DreamChunk, DreamEntry
+from app.models.note import DreamNote
 from app.retrieval.types import (
     DreamEntryCandidate,
     EmbeddingClient,
@@ -62,6 +63,7 @@ class ValidatedDreamEntry:
     segmentation_confidence: str = "low"
     applied_profile: str = "default"
     parse_warnings: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,26 @@ class RagIngestionService:
                     await session.commit()
                 return inserted_rows
 
+    async def index_note(self, note_id: uuid.UUID) -> int:
+        tracer = get_tracer(__name__)
+
+        with tracer.start_as_current_span("rag_ingestion.index_note") as span:
+            span.set_attribute("note_id", str(note_id))
+            span.set_attribute("index_schema_version", INDEX_SCHEMA_VERSION)
+
+            async with self._session_factory() as session:
+                note = await self._load_note(session, note_id)
+                embeddings = await self._embed_chunks(note.dream_id, [_note_chunk_text(note)])
+                inserted_rows = await self._upsert_note_chunk(
+                    session=session,
+                    note=note,
+                    embedding=embeddings[0],
+                )
+
+                with tracer.start_as_current_span("db.query.rag_ingestion.commit_note"):
+                    await session.commit()
+                return inserted_rows
+
     async def _load_dream(self, session: AsyncSession, dream_id: uuid.UUID) -> DreamEntry:
         tracer = get_tracer(__name__)
 
@@ -156,6 +178,18 @@ class RagIngestionService:
             raise ValueError(f"Dream entry {dream_id} does not exist")
 
         return dream_entry
+
+    async def _load_note(self, session: AsyncSession, note_id: uuid.UUID) -> DreamNote:
+        tracer = get_tracer(__name__)
+
+        with tracer.start_as_current_span("db.query.rag_ingestion.load_note") as span:
+            span.set_attribute("note_id", str(note_id))
+            note = await session.get(DreamNote, note_id)
+
+        if note is None:
+            raise ValueError(f"Dream note {note_id} does not exist")
+
+        return note
 
     async def _embed_chunks(self, dream_id: uuid.UUID, chunk_texts: list[str]) -> list[list[float]]:
         tracer = get_tracer(__name__)
@@ -202,6 +236,36 @@ class RagIngestionService:
                 .on_conflict_do_nothing(
                     index_elements=[DreamChunk.dream_id, DreamChunk.chunk_index]
                 )
+                .returning(DreamChunk.id)
+            )
+            result = await session.execute(statement)
+
+        return 1 if result.scalar_one_or_none() is not None else 0
+
+    async def _upsert_note_chunk(
+        self,
+        *,
+        session: AsyncSession,
+        note: DreamNote,
+        embedding: list[float],
+    ) -> int:
+        tracer = get_tracer(__name__)
+
+        with tracer.start_as_current_span("db.query.rag_ingestion.upsert_note_chunk") as span:
+            span.set_attribute("dream_id", str(note.dream_id))
+            span.set_attribute("note_id", str(note.id))
+            chunk_index = await _next_note_chunk_index(session=session, dream_id=note.dream_id)
+            statement = (
+                insert(DreamChunk)
+                .values(
+                    dream_id=note.dream_id,
+                    note_id=note.id,
+                    source_kind="note",
+                    chunk_index=chunk_index,
+                    chunk_text=_note_chunk_text(note),
+                    embedding=_embedding_to_vector_literal(embedding),
+                )
+                .on_conflict_do_nothing(index_elements=[DreamChunk.note_id])
                 .returning(DreamChunk.id)
             )
             result = await session.execute(statement)
@@ -299,6 +363,7 @@ def validate_dream_entry_candidates(
                 segmentation_confidence=candidate.segmentation_confidence,
                 applied_profile=candidate.applied_profile,
                 parse_warnings=list(candidate.parse_warnings),
+                notes=list(candidate.notes),
             )
         )
 
@@ -406,6 +471,23 @@ async def fetch_indexed_chunks(
             .order_by(DreamChunk.chunk_index.asc())
         )
     return list(result.scalars().all())
+
+
+async def _next_note_chunk_index(session: AsyncSession, dream_id: uuid.UUID) -> int:
+    note_chunk_base = 1_000_000_000
+    current_max = await session.scalar(
+        select(func.max(DreamChunk.chunk_index)).where(
+            DreamChunk.dream_id == dream_id,
+            DreamChunk.source_kind == "note",
+        )
+    )
+    if current_max is None:
+        return note_chunk_base
+    return int(current_max) + 1
+
+
+def _note_chunk_text(note: DreamNote) -> str:
+    return f"Заметка к сну: {note.text}"
 
 
 def _batched(items: list[str], batch_size: int) -> list[list[str]]:

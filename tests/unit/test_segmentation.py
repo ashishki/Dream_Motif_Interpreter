@@ -4,7 +4,7 @@ from datetime import date
 from datetime import datetime, timezone
 
 from app.retrieval.types import NormalizedDocument
-from app.services.segmentation import segment_paragraphs
+from app.services.segmentation import parse_dream_entry_candidates, segment_paragraphs
 
 
 def _build_document(paragraphs: list[str]) -> NormalizedDocument:
@@ -78,3 +78,20 @@ def test_raw_text_contains_no_secrets(monkeypatch) -> None:
     assert "sk-secret-value-123456789" not in entries[0].raw_text
     assert "refresh-token-abc123" not in entries[0].raw_text
     assert "AIzaSyASecretLookingKey000000000" not in entries[0].raw_text
+
+
+def test_google_doc_note_lines_are_extracted_from_raw_text() -> None:
+    paragraphs = [
+        "2026-05-01",
+        "I walked through a hallway with red doors.",
+        "[Note 06.05.26]: after waking up the red door felt important",
+        "2026-05-02",
+        "A river crossed the road.",
+    ]
+
+    entries = segment_paragraphs(_build_document(paragraphs))
+    _profile, candidates = parse_dream_entry_candidates(_build_document(paragraphs))
+
+    assert len(entries) == 2
+    assert "after waking" not in entries[0].raw_text
+    assert candidates[0].notes == ["after waking up the red door felt important"]

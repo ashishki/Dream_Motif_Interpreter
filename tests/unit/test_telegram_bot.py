@@ -299,6 +299,21 @@ async def test_text_message_handler_saves_short_natural_dream_without_confirmati
 
 
 @pytest.mark.asyncio
+async def test_text_message_handler_direct_note_bypasses_chat_loop() -> None:
+    update, message = _make_text_message_update("заметка: красная дверь важна", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    context = _make_text_context(facade, 42)
+
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(update, context)
+
+    mock_chat.assert_not_awaited()
+    facade.add_dream_note.assert_awaited_once_with("красная дверь важна", chat_id=42)
+    message.reply_text.assert_awaited_once_with("Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.asyncio
 async def test_text_message_handler_yes_saves_pending_dream() -> None:
     confirm_update, confirm_message = _make_text_message_update("да", chat_id=42)
     created = SimpleNamespace(

@@ -221,13 +221,21 @@ async def test_dream_chunks_schema(migrated_engine: AsyncEngine) -> None:
     assert columns == {
         "id",
         "dream_id",
+        "note_id",
+        "source_kind",
         "chunk_index",
         "chunk_text",
         "embedding",
         "created_at",
     }
-    assert foreign_keys[0]["referred_table"] == "dream_entries"
-    assert foreign_keys[0]["options"]["ondelete"] == "CASCADE"
+    assert any(
+        key["referred_table"] == "dream_entries" and key["options"]["ondelete"] == "CASCADE"
+        for key in foreign_keys
+    )
+    assert any(
+        key["referred_table"] == "dream_notes" and key["options"]["ondelete"] == "CASCADE"
+        for key in foreign_keys
+    )
     assert column_types["embedding"] == "vector(1536)"
     assert any(
         index["indexname"] == "ix_dream_chunks_embedding_hnsw"

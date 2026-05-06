@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from app.assistant.facade import (
+    ArchiveSyncStatus,
     AssistantFacade,
     CreatedDreamItem,
     DreamDetail,
@@ -398,6 +399,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "retry_write_to_google_doc",
         "get_theme_history",
         "trigger_sync",
+        "get_sync_status",
         "create_archive_source_document",
         "search_archive_source_by_title",
         "get_archive_source",
@@ -643,9 +645,11 @@ async def test_add_dream_note_returns_true_on_success() -> None:
         created_at=created_at,
     )
     session = _FakeSession(execute_results=[_FakeResult(scalar=dream)])
+    index_note_callable = AsyncMock(return_value=1)
     facade = AssistantFacade(
         session_factory=_FakeSessionFactory(session),
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        index_note_callable=index_note_callable,
     )
 
     with patch("app.assistant.facade.GDocsClient") as mock_client_cls:
@@ -662,6 +666,7 @@ async def test_add_dream_note_returns_true_on_success() -> None:
     assert note.text == "remember the red door"
     assert note.source == "telegram"
     session.commit.assert_awaited_once()
+    index_note_callable.assert_awaited_once_with(note.id)
     mock_client_cls.return_value.insert_text_under_heading.assert_called_once()
     call_args = mock_client_cls.return_value.insert_text_under_heading.call_args
     assert call_args.args == ("doc-123",)
@@ -683,9 +688,11 @@ async def test_add_dream_note_falls_back_to_append_when_heading_missing() -> Non
         created_at=created_at,
     )
     session = _FakeSession(execute_results=[_FakeResult(scalar=dream)])
+    index_note_callable = AsyncMock(return_value=1)
     facade = AssistantFacade(
         session_factory=_FakeSessionFactory(session),
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        index_note_callable=index_note_callable,
     )
 
     with patch("app.assistant.facade.GDocsClient") as mock_client_cls:
@@ -697,12 +704,81 @@ async def test_add_dream_note_falls_back_to_append_when_heading_missing() -> Non
     assert success is True
     assert message == "Заметка добавлена в конец Google Doc: заголовок сна не найден."
     session.commit.assert_awaited_once()
+    index_note_callable.assert_awaited_once()
     mock_client_cls.return_value.insert_text_under_heading.assert_called_once()
     mock_client_cls.return_value.append_text.assert_called_once()
     assert mock_client_cls.return_value.append_text.call_args.args[0] == "doc-123"
     assert mock_client_cls.return_value.append_text.call_args.args[1].endswith(
         "]: remember the red door"
     )
+
+
+@pytest.mark.asyncio
+async def test_add_dream_note_without_id_targets_latest_archive_dream() -> None:
+    dream = SimpleNamespace(
+        id=uuid4(),
+        source_doc_id="doc-123",
+        date=date(2026, 5, 3),
+        title="Manual Google Doc dream",
+        created_at=datetime(2026, 5, 4, tzinfo=timezone.utc),
+    )
+    session = _FakeSession(execute_results=[_FakeResult(scalar=dream)])
+    index_note_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        index_note_callable=index_note_callable,
+    )
+
+    with patch("app.assistant.facade.GDocsClient") as mock_client_cls:
+        mock_client_cls.return_value.insert_text_under_heading = MagicMock(return_value=True)
+
+        success, _message = await facade.add_dream_note(
+            "после пробуждения было тревожно",
+            chat_id=42,
+        )
+
+    assert success is True
+    statement_sql = str(session.executed_statements[0].compile())
+    assert " WHERE " not in statement_sql
+    assert "ORDER BY dream_entries.date DESC NULLS LAST" in statement_sql
+    note = session.add.call_args[0][0]
+    assert note.dream_id == dream.id
+    index_note_callable.assert_awaited_once_with(note.id)
+
+
+@pytest.mark.asyncio
+async def test_get_sync_status_reads_auto_sync_state_from_enqueuer() -> None:
+    class _Enqueuer:
+        async def get_auto_sync_status(self, doc_id: str) -> object:
+            assert doc_id == "doc-123"
+            return SimpleNamespace(
+                last_sync_status="synced",
+                last_checked_at="2026-05-06T10:00:00+00:00",
+                last_sync_started_at=None,
+                last_synced_at="2026-05-06T09:59:00+00:00",
+                last_sync_job_id="job-1",
+            )
+
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(_FakeSession()),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        sync_job_enqueuer=_Enqueuer(),
+    )
+
+    result = await facade.get_sync_status("doc-123")
+
+    assert result == [
+        ArchiveSyncStatus(
+            doc_id="doc-123",
+            status="synced",
+            last_checked_at="2026-05-06T10:00:00+00:00",
+            last_sync_started_at=None,
+            last_synced_at="2026-05-06T09:59:00+00:00",
+            last_sync_job_id="job-1",
+            is_stale_running=False,
+        )
+    ]
 
 
 def test_resolve_dream_title_without_title_generates_topic_title() -> None:

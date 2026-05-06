@@ -19,6 +19,7 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy import text
 
 from app.models.dream import DreamEntry
+from app.models.note import DreamNote
 from app.retrieval.ingestion import EMBEDDING_DIMENSIONS, RagIngestionService, fetch_indexed_chunks
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -80,6 +81,54 @@ def _dream_text(word_count: int) -> str:
 def _vector_length(vector_literal: str | None) -> int:
     assert vector_literal is not None
     return len(vector_literal.strip("[]").split(","))
+
+
+class StubEmbeddingClient:
+    async def embed(self, texts: list[str], *, dream_id: str | None = None) -> list[list[float]]:
+        del dream_id
+        return [[0.125] * EMBEDDING_DIMENSIONS for _ in texts]
+
+
+@pytest.mark.asyncio
+async def test_index_note_creates_searchable_note_chunk(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with migrated_session_factory() as session:
+        dream = DreamEntry(
+            source_doc_id="doc-rag-note",
+            date=None,
+            title="Note indexing dream",
+            raw_text="A red door stood in the hallway.",
+            word_count=7,
+            content_hash=f"rag-note-hash-{uuid.uuid4()}",
+            segmentation_confidence="high",
+        )
+        session.add(dream)
+        await session.flush()
+        note = DreamNote(
+            dream_id=dream.id,
+            text="after waking the red door felt important",
+            source="telegram",
+        )
+        session.add(note)
+        await session.commit()
+
+    service = RagIngestionService(
+        session_factory=migrated_session_factory,
+        embedding_client=StubEmbeddingClient(),
+    )
+    first_inserted = await service.index_note(note.id)
+    second_inserted = await service.index_note(note.id)
+
+    async with migrated_session_factory() as session:
+        chunks = await fetch_indexed_chunks(session, dream.id)
+
+    assert first_inserted == 1
+    assert second_inserted == 0
+    assert len(chunks) == 1
+    assert chunks[0].source_kind == "note"
+    assert chunks[0].note_id == note.id
+    assert "red door felt important" in chunks[0].chunk_text
 
 
 @pytest.mark.skipif(

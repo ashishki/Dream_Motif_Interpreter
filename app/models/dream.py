@@ -87,6 +87,10 @@ class DreamChunk(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "dream_chunks"
     __table_args__ = (
         UniqueConstraint("dream_id", "chunk_index", name="uq_dream_chunks_dream_id_chunk_index"),
+        CheckConstraint(
+            "source_kind IN ('dream_text', 'note')",
+            name="ck_dream_chunks_source_kind",
+        ),
     )
 
     dream_id: Mapped[uuid.UUID] = mapped_column(
@@ -94,6 +98,18 @@ class DreamChunk(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("dream_entries.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+    note_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("dream_notes.id", ondelete="CASCADE"),
+        nullable=True,
+        unique=True,
+    )
+    source_kind: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'dream_text'"),
+        default="dream_text",
     )
     chunk_index: Mapped[int] = mapped_column(Integer(), nullable=False)
     chunk_text: Mapped[str] = mapped_column(Text(), nullable=False)

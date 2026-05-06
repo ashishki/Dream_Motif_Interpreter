@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1148,7 +1148,10 @@ async def test_execute_tool_trigger_sync_formats_single_ref() -> None:
         facade,
     )
 
-    assert result == f"Sync job queued: {job_id} (doc_id=doc-123, status=queued)"
+    assert result == (
+        f"Синхронизация запущена: …doc-123. job_id={job_id}, status=queued. "
+        "Когда она завершится, бот отправит сообщение."
+    )
     facade.trigger_sync.assert_awaited_once_with("doc-123", chat_id=None)
 
 
@@ -1166,10 +1169,37 @@ async def test_execute_tool_trigger_sync_formats_multiple_refs() -> None:
         facade,
     )
 
-    assert "Sync jobs queued (2 sources):" in result
-    assert "  - doc-a: job_id=" in result
-    assert "  - doc-b: job_id=" in result
+    assert "Синхронизация запущена для источников: 2." in result
+    assert "…doc-a: job_id=" in result
+    assert "…doc-b: job_id=" in result
     facade.trigger_sync.assert_awaited_once_with("", chat_id=None)
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_get_sync_status_formats_statuses() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_sync_status.return_value = [
+        SimpleNamespace(
+            doc_id="doc-123",
+            status="running",
+            last_checked_at="2026-05-06T10:00:00+00:00",
+            last_sync_started_at=datetime(2026, 5, 6, 9, 59, tzinfo=timezone.utc).isoformat(),
+            last_synced_at=None,
+            last_sync_job_id="job-1",
+            is_stale_running=False,
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "get_sync_status",
+        {"doc_id": "doc-123"},
+        facade,
+    )
+
+    assert "Состояние синхронизации:" in result
+    assert "…doc-123: идёт синхронизация" in result
+    assert "последняя проверка: 06.05.26 10:00" in result
+    facade.get_sync_status.assert_awaited_once_with("doc-123")
 
 
 @pytest.mark.asyncio

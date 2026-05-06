@@ -132,6 +132,18 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             bot_msg_ids.pop(chat_key, None)
         return
 
+    direct_note_text = _extract_direct_note_text(stripped_text)
+    if chat_id is not None and direct_note_text is not None:
+        if chat_key is not None:
+            pending_feedback.pop(chat_key, None)
+            bot_msg_ids.pop(chat_key, None)
+        _success, reply = await _get_facade(context).add_dream_note(
+            direct_note_text,
+            chat_id=chat_id,
+        )
+        await message.reply_text(reply)
+        return
+
     if chat_id is not None and _has_natural_dream_opening(stripped_text.casefold()):
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
@@ -518,6 +530,14 @@ def _is_positive_confirmation(text: str) -> bool:
 
 def _is_negative_confirmation(text: str) -> bool:
     return text in {"нет", "не надо", "не нужно"}
+
+
+def _extract_direct_note_text(text: str) -> str | None:
+    lowered = text.casefold()
+    for prefix in ("note:", "notes:", "заметка:", "заметки:"):
+        if lowered.startswith(prefix):
+            return text[len(prefix) :].strip()
+    return None
 
 
 def _format_create_dream_reply(created: Any) -> str:

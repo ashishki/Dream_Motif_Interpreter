@@ -477,6 +477,7 @@ async def test_ingest_calls_motif_service_when_flag_is_true() -> None:
             analysis_service=MagicMock(),
             motif_service=motif_service_mock,
             pipeline_targets=[target],
+            note_ids=[],
         )
 
     motif_service_mock.run.assert_called_once()
@@ -509,6 +510,7 @@ async def test_ingest_skips_motif_service_when_flag_is_false() -> None:
             analysis_service=MagicMock(),
             motif_service=motif_service_mock,
             pipeline_targets=[target],
+            note_ids=[],
         )
 
     motif_service_mock.run.assert_not_called()
@@ -555,6 +557,7 @@ async def test_ingest_commits_after_motif_service_run_returns() -> None:
             analysis_service=MagicMock(),
             motif_service=motif_service_mock,
             pipeline_targets=[target],
+            note_ids=[],
         )
 
     assert call_order == ["run", "commit"]

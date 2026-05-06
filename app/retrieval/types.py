@@ -60,6 +60,7 @@ class DreamEntryCandidate:
     segmentation_confidence: str = "low"
     applied_profile: str = "default"
     parse_warnings: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

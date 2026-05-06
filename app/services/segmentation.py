@@ -31,6 +31,7 @@ _SECRET_PATTERNS = (
     re.compile(r"\b(?:oauth|api|access|refresh)[-_ ]?token\s*[:=]\s*\S+", re.IGNORECASE),
     re.compile(r"\bclient[_-]?secret\s*[:=]\s*\S+", re.IGNORECASE),
 )
+_NOTE_LINE_RE = re.compile(r"^\[Note(?:\s+[^\]]+)?\]\s*:\s*(?P<text>.+)$", re.IGNORECASE)
 _AUTODETECT_CONFIDENCE_THRESHOLD = 0.6
 _HEADING_WORD_LIMIT = 8
 _HEADING_CHAR_LIMIT = 80
@@ -44,6 +45,7 @@ class _SegmentDraft:
     paragraphs: list[str]
     segmentation_confidence: str
     parse_warnings: list[str]
+    notes: list[str]
 
 
 @dataclass(frozen=True)
@@ -136,6 +138,7 @@ def parse_dream_entry_candidates(
             segmentation_confidence=candidate.segmentation_confidence,
             applied_profile=resolved_profile.profile_name,
             parse_warnings=[*resolved_profile.parse_warnings, *candidate.parse_warnings],
+            notes=list(candidate.notes),
         )
         for candidate in candidates
     ]
@@ -237,19 +240,21 @@ def _detect_heading_based_profile(document: NormalizedDocument) -> ParserProfile
 
 def _parse_default_profile(document: NormalizedDocument) -> list[DreamEntryCandidate]:
     paragraphs = _sanitize_document_sections(document)
-    raw_text = "\n\n".join(paragraphs).strip()
+    body_paragraphs, notes = _split_note_paragraphs(paragraphs)
+    raw_text = "\n\n".join(body_paragraphs).strip()
     if not raw_text:
         return []
 
     return [
         DreamEntryCandidate(
             source_doc_id=document.external_id,
-            title=_build_title(paragraphs),
+            title=_build_title(body_paragraphs),
             raw_text=raw_text,
             word_count=_word_count(raw_text),
             content_hash=_content_hash(raw_text),
             segmentation_confidence="low",
             applied_profile="default",
+            notes=notes,
         )
     ]
 
@@ -288,6 +293,7 @@ def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntr
         body = [
             paragraph for paragraph in paragraphs[start_index + 1 : end_index] if paragraph.strip()
         ]
+        body, notes = _split_note_paragraphs(body)
         if not body:
             drafts.append(
                 _SegmentDraft(
@@ -298,6 +304,7 @@ def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntr
                     parse_warnings=[
                         f"Heading '{title}' had no body paragraphs; stored as single-paragraph entry."
                     ],
+                    notes=notes,
                 )
             )
             continue
@@ -308,6 +315,7 @@ def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntr
                 paragraphs=body,
                 segmentation_confidence="high",
                 parse_warnings=[],
+                notes=notes,
             )
         )
 
@@ -330,6 +338,7 @@ def _segment_by_date_headers(
         body = [
             paragraph for paragraph in paragraphs[start_index + 1 : end_index] if paragraph.strip()
         ]
+        body, notes = _split_note_paragraphs(body)
         if not body:
             continue
         drafts.append(
@@ -339,6 +348,7 @@ def _segment_by_date_headers(
                 paragraphs=body,
                 segmentation_confidence="high",
                 parse_warnings=[],
+                notes=notes,
             )
         )
     return drafts
@@ -361,6 +371,7 @@ def _draft_to_candidate(
         segmentation_confidence=draft.segmentation_confidence,
         applied_profile=applied_profile,
         parse_warnings=list(draft.parse_warnings),
+        notes=list(draft.notes),
     )
 
 
@@ -386,6 +397,20 @@ def _sanitize_document_sections(document: NormalizedDocument) -> list[str]:
         for sanitized in [_sanitize_paragraph(paragraph)]
         if sanitized
     ]
+
+
+def _split_note_paragraphs(paragraphs: list[str]) -> tuple[list[str], list[str]]:
+    body: list[str] = []
+    notes: list[str] = []
+    for paragraph in paragraphs:
+        match = _NOTE_LINE_RE.fullmatch(paragraph.strip())
+        if match is None:
+            body.append(paragraph)
+            continue
+        note_text = match.group("text").strip()
+        if note_text:
+            notes.append(note_text)
+    return body, notes
 
 
 def _explicit_profile_name_from_metadata(document: NormalizedDocument) -> str | None:

@@ -26,5 +26,13 @@ async def index_dream(ctx: dict[str, Any], *, dream_id: uuid.UUID) -> int:
         return await service.index_dream(dream_id)
 
 
+async def index_note(ctx: dict[str, Any], *, note_id: uuid.UUID) -> int:
+    tracer = get_tracer(__name__)
+    service = build_index_service(ctx)
+    with tracer.start_as_current_span("worker.index_note") as span:
+        span.set_attribute("note_id", str(note_id))
+        return await service.index_note(note_id)
+
+
 class WorkerSettings:
-    functions = [index_dream]
+    functions = [index_dream, index_note]

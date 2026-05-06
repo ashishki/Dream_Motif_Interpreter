@@ -153,6 +153,17 @@ class SyncJobRef:
     doc_id: str
 
 
+@dataclass(frozen=True)
+class ArchiveSyncStatus:
+    doc_id: str
+    status: str
+    last_checked_at: str | None
+    last_sync_started_at: str | None
+    last_synced_at: str | None
+    last_sync_job_id: str | None
+    is_stale_running: bool = False
+
+
 class SyncJobEnqueuer(Protocol):
     async def enqueue_ingest(
         self,
@@ -175,6 +186,7 @@ class AssistantFacade:
         analysis_service: AnalysisService | None = None,
         research_service: ResearchService | None = None,
         index_dream_callable: Callable[[uuid.UUID], Awaitable[int]] | None = None,
+        index_note_callable: Callable[[uuid.UUID], Awaitable[int]] | None = None,
         motif_service: MotifService | None = None,
     ) -> None:
         self._session_factory = session_factory
@@ -185,6 +197,7 @@ class AssistantFacade:
         self._analysis_service = analysis_service or AnalysisService()
         self._research_service = research_service or ResearchService()
         self._index_dream_callable = index_dream_callable or self._build_index_dream_callable()
+        self._index_note_callable = index_note_callable or self._build_index_note_callable()
         self._motif_service = motif_service or MotifService()
 
     async def search_dreams(self, query: str) -> SearchResult:
@@ -637,6 +650,8 @@ class AssistantFacade:
             with tracer.start_as_current_span("assistant.add_dream_note.commit"):
                 await session.commit()
 
+        await self._index_note_callable(note.id)
+
         date_str = datetime.now(timezone.utc).strftime("%d.%m.%y")
         note_line = f"[Note {date_str}]: {normalized_text}"
         target_doc_id = self._resolve_note_doc_id(dream)
@@ -744,6 +759,32 @@ class AssistantFacade:
             refs.append(SyncJobRef(job_id=job_id, status="queued", doc_id=resolved_doc_id))
         return refs
 
+    async def get_sync_status(self, doc_id: str = "") -> list[ArchiveSyncStatus]:
+        from app.shared.config import get_all_doc_ids
+
+        if self._sync_job_enqueuer is None:
+            raise RuntimeError("AssistantFacade get_sync_status requires a sync job enqueuer")
+        status_getter = getattr(self._sync_job_enqueuer, "get_auto_sync_status", None)
+        if status_getter is None:
+            raise RuntimeError("Sync status is unavailable in this runtime")
+
+        doc_ids = [doc_id] if doc_id.strip() else get_all_doc_ids()
+        statuses: list[ArchiveSyncStatus] = []
+        for resolved_doc_id in doc_ids:
+            state = await status_getter(resolved_doc_id)
+            statuses.append(
+                ArchiveSyncStatus(
+                    doc_id=resolved_doc_id,
+                    status=state.last_sync_status,
+                    last_checked_at=state.last_checked_at,
+                    last_sync_started_at=state.last_sync_started_at,
+                    last_synced_at=state.last_synced_at,
+                    last_sync_job_id=state.last_sync_job_id,
+                    is_stale_running=_sync_state_looks_stale(state),
+                )
+            )
+        return statuses
+
     def create_archive_source_document(self, title: str) -> dict[str, str]:
         """Create a new Google Doc, share with owner if configured, return {id, name, url}."""
         from app.shared.config import register_doc_name
@@ -826,6 +867,14 @@ class AssistantFacade:
 
         return _index
 
+    def _build_index_note_callable(self) -> Callable[[uuid.UUID], Awaitable[int]]:
+        async def _index(note_id: uuid.UUID) -> int:
+            from app.workers.index import index_note
+
+            return await index_note({"session_factory": self._session_factory}, note_id=note_id)
+
+        return _index
+
     async def _resolve_note_target_dream(
         self,
         session: AsyncSession,
@@ -837,9 +886,10 @@ class AssistantFacade:
             return await session.get(DreamEntry, dream_id)
 
         stmt = select(DreamEntry)
-        if chat_id is not None:
-            stmt = stmt.where(DreamEntry.source_doc_id == f"telegram:{chat_id}")
-        stmt = stmt.order_by(DreamEntry.created_at.desc()).limit(1)
+        stmt = stmt.order_by(
+            DreamEntry.date.desc().nullslast(),
+            DreamEntry.created_at.desc(),
+        ).limit(1)
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -1062,6 +1112,22 @@ def _sanitize_write_error(error: str) -> str:
     sanitized = re.sub(r"[\r\n\t]+", " ", error).strip()
     sanitized = re.sub(r"(token|secret|key)=\S+", r"\1=<redacted>", sanitized, flags=re.IGNORECASE)
     return sanitized[:300]
+
+
+def _sync_state_looks_stale(state: Any) -> bool:
+    if getattr(state, "last_sync_status", None) != "running":
+        return False
+    started_at_raw = getattr(state, "last_sync_started_at", None)
+    if not started_at_raw:
+        return True
+    try:
+        started_at = datetime.fromisoformat(started_at_raw)
+    except ValueError:
+        return True
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    stale_after_seconds = max(get_settings().AUTO_SYNC_INTERVAL_SECONDS * 2, 600)
+    return (datetime.now(timezone.utc) - started_at).total_seconds() > stale_after_seconds
 
 
 def _resolve_dream_title(

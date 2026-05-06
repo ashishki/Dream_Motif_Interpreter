@@ -336,6 +336,11 @@ class LocalAsyncJobEnqueuer:
         except Exception:
             logger.exception("sync.ingest_job_failed", job_id=str(job_id))
 
+    async def get_auto_sync_status(self, doc_id: str):
+        from app.services.auto_sync import read_auto_sync_state
+
+        return await read_auto_sync_state(self._redis_client, doc_id)
+
 
 @lru_cache(maxsize=1)
 def _get_job_enqueuer() -> JobEnqueuer:

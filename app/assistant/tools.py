@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 import re
 import uuid
 from typing import Any
@@ -210,6 +210,27 @@ _BASE_TOOLS: list[dict[str, Any]] = [
                 "doc_id": {
                     "type": "string",
                     "description": "Optional Google Docs document ID to sync. Omit to sync all configured sources.",
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_sync_status",
+        "description": (
+            "Show the current Google Docs archive sync state. Use when the user asks whether "
+            "sync is running, why a manually added dream is not visible yet, or what the archive "
+            "refresh status is."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "doc_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional Google Docs document ID. Omit to show all configured sources."
+                    ),
                 },
             },
             "required": [],
@@ -603,10 +624,27 @@ async def execute_tool(
             return f"Sync unavailable: {exc}"
         if len(refs) == 1:
             ref = refs[0]
-            return f"Sync job queued: {ref.job_id} (doc_id={ref.doc_id}, status={ref.status})"
-        lines = [f"Sync jobs queued ({len(refs)} sources):"]
+            return (
+                f"Синхронизация запущена: {get_doc_name(ref.doc_id)}. "
+                f"job_id={ref.job_id}, status={ref.status}. "
+                "Когда она завершится, бот отправит сообщение."
+            )
+        lines = [f"Синхронизация запущена для источников: {len(refs)}."]
         for ref in refs:
-            lines.append(f"  - {ref.doc_id}: job_id={ref.job_id} ({ref.status})")
+            lines.append(f"  {get_doc_name(ref.doc_id)}: job_id={ref.job_id}, status={ref.status}")
+        return "\n".join(lines)
+
+    if tool_name == "get_sync_status":
+        doc_id = str(tool_input.get("doc_id", "")).strip()
+        try:
+            statuses = await facade.get_sync_status(doc_id)
+        except RuntimeError as exc:
+            return f"Sync status unavailable: {exc}"
+        if not statuses:
+            return "Нет подключённых Google Docs для синхронизации."
+        lines = ["Состояние синхронизации:"]
+        for index, status in enumerate(statuses, 1):
+            lines.append(_format_sync_status_line(index, status))
         return "\n".join(lines)
 
     if tool_name == "manage_archive_source":
@@ -821,6 +859,42 @@ def _parse_tool_date(raw_date: str) -> date:
     if len(year_raw) == 2:
         year += 2000
     return date(year, month, day)
+
+
+def _format_sync_status_line(index: int, status: Any) -> str:
+    doc_label = get_doc_name(status.doc_id)
+    if status.status == "running" and status.is_stale_running:
+        state_text = (
+            "предыдущая синхронизация выглядит зависшей; следующий автоцикл перезапустит её"
+        )
+    elif status.status == "running":
+        state_text = "идёт синхронизация"
+    elif status.status == "synced":
+        state_text = "синхронизировано"
+    elif status.status == "failed":
+        state_text = "последняя синхронизация завершилась ошибкой"
+    elif status.status == "never":
+        state_text = "ещё не синхронизировалось"
+    else:
+        state_text = status.status
+
+    details: list[str] = []
+    if status.last_synced_at:
+        details.append(f"последний успех: {_format_sync_timestamp(status.last_synced_at)}")
+    if status.last_checked_at:
+        details.append(f"последняя проверка: {_format_sync_timestamp(status.last_checked_at)}")
+    if status.last_sync_job_id:
+        details.append(f"job_id={status.last_sync_job_id}")
+    suffix = f" ({'; '.join(details)})" if details else ""
+    return f"{index}. {doc_label}: {state_text}{suffix}"
+
+
+def _format_sync_timestamp(value: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    return parsed.strftime("%d.%m.%y %H:%M")
 
 
 def _format_search_result_payload(item: Any) -> list[str]:

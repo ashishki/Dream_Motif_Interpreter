@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -94,7 +95,8 @@ async def test_run_auto_sync_once_runs_ingest_when_marker_changes() -> None:
             return_value=SimpleNamespace(AUTO_SYNC_ENABLED=True),
         ),
         patch(
-            "app.services.auto_sync.ingest_document", new=AsyncMock(return_value=1)
+            "app.services.auto_sync.ingest_document",
+            new=AsyncMock(return_value=1),
         ) as mock_ingest,
     ):
         result = await run_auto_sync_once(
@@ -109,6 +111,56 @@ async def test_run_auto_sync_once_runs_ingest_when_marker_changes() -> None:
     assert state.last_seen_marker == "rev-2"
     assert state.last_sync_status == "synced"
     assert state.last_sync_job_id is not None
+
+
+@pytest.mark.asyncio
+async def test_run_auto_sync_once_self_heals_stale_running_state() -> None:
+    redis = _FakeRedis()
+    old_started_at = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    await write_auto_sync_state(
+        redis,
+        "doc-123",
+        AutoSyncState(
+            last_seen_marker="rev-2",
+            last_sync_started_at=old_started_at,
+            last_sync_status="running",
+        ),
+    )
+    gdocs_client = SimpleNamespace(
+        fetch_document_metadata=lambda: GoogleDocMetadata(
+            document_id="doc-123",
+            title="Dream Journal",
+            updated_at=None,
+            version="2",
+            head_revision_id="rev-2",
+        )
+    )
+
+    with (
+        patch(
+            "app.services.auto_sync.get_settings",
+            return_value=SimpleNamespace(
+                AUTO_SYNC_ENABLED=True,
+                AUTO_SYNC_INTERVAL_SECONDS=300,
+            ),
+        ),
+        patch(
+            "app.services.auto_sync.ingest_document",
+            new=AsyncMock(return_value=1),
+        ) as mock_ingest,
+    ):
+        result = await run_auto_sync_once(
+            redis_client=redis,
+            session_factory=object(),
+            gdocs_client=gdocs_client,
+        )
+
+    assert result.action == "synced"
+    mock_ingest.assert_awaited_once()
+    state = await read_auto_sync_state(redis, "doc-123")
+    assert state.last_seen_marker == "rev-2"
+    assert state.last_sync_started_at is None
+    assert state.last_sync_status == "synced"
 
 
 @pytest.mark.asyncio

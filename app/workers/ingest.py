@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.dreams import SyncJobState, get_and_delete_sync_notify, write_sync_job_state
 from app.models.dream import DreamChunk, DreamEntry
+from app.models.note import DreamNote
 from app.models.theme import DreamTheme
 from app.retrieval.ingestion import fetch_source_documents, process_source_document
 from app.retrieval.types import FetchedSourceDocument, SourceConnector
@@ -20,7 +21,7 @@ from app.services.gdocs_client import GDocsAuthError, GDocsClient
 from app.services.motif_service import MotifService
 from app.shared.config import get_doc_name, get_settings
 from app.shared.tracing import get_logger, get_tracer
-from app.workers.index import index_dream
+from app.workers.index import index_dream, index_note
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,7 @@ class SupportsFetchDocument(Protocol):
 class StoredDreamEntries:
     new_entries: int
     dream_ids: list[uuid.UUID]
+    note_ids: list[uuid.UUID]
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,7 @@ async def ingest_document(ctx: dict[str, Any], *, job_id: uuid.UUID, doc_id: str
                 analysis_service=analysis_service,
                 motif_service=motif_service,
                 pipeline_targets=pipeline_targets,
+                note_ids=stored_entries.note_ids,
             )
         except GDocsAuthError:
             logger.warning("worker.ingest_document_auth_failed", job_id=str(job_id))
@@ -158,6 +161,7 @@ async def ingest_source_container(
 
             total_new_entries = 0
             dream_ids: list[uuid.UUID] = []
+            note_ids: list[uuid.UUID] = []
             for fetched_document in fetched_documents:
                 stored_entries = await _store_entries(
                     session_factory=session_factory,
@@ -166,6 +170,7 @@ async def ingest_source_container(
                 )
                 total_new_entries += stored_entries.new_entries
                 dream_ids.extend(stored_entries.dream_ids)
+                note_ids.extend(stored_entries.note_ids)
 
             pipeline_targets = await _collect_pipeline_targets(
                 session_factory=session_factory,
@@ -177,6 +182,7 @@ async def ingest_source_container(
                 analysis_service=analysis_service,
                 motif_service=motif_service,
                 pipeline_targets=pipeline_targets,
+                note_ids=note_ids,
             )
     except GDocsAuthError:
         await write_sync_job_state(redis_client, job_id, SyncJobState(status="failed"))
@@ -279,6 +285,7 @@ async def _store_entries(
 
     inserted_rows = 0
     dream_ids: list[uuid.UUID] = []
+    note_ids: list[uuid.UUID] = []
 
     async with session_factory() as session:
         for entry in pipeline.validated_entries:
@@ -324,11 +331,20 @@ async def _store_entries(
             dream_ids.append(dream_id)
             if inserted:
                 inserted_rows += 1
+            for note_text in entry.notes:
+                note_id = await _upsert_dream_note(
+                    session=session,
+                    dream_id=dream_id,
+                    note_text=note_text,
+                    source="google_doc",
+                )
+                if note_id is not None:
+                    note_ids.append(note_id)
 
         with tracer.start_as_current_span("db.query.worker_ingest.commit"):
             await session.commit()
 
-    return StoredDreamEntries(new_entries=inserted_rows, dream_ids=dream_ids)
+    return StoredDreamEntries(new_entries=inserted_rows, dream_ids=dream_ids, note_ids=note_ids)
 
 
 async def _load_existing_dream_id(
@@ -358,6 +374,37 @@ async def _load_existing_dream_id(
         )
 
 
+async def _upsert_dream_note(
+    *,
+    session: AsyncSession,
+    dream_id: uuid.UUID,
+    note_text: str,
+    source: str,
+) -> uuid.UUID | None:
+    normalized_text = note_text.strip()
+    if not normalized_text:
+        return None
+
+    existing_id = await session.scalar(
+        select(DreamNote.id).where(
+            DreamNote.dream_id == dream_id,
+            DreamNote.text == normalized_text,
+        )
+    )
+    if existing_id is not None:
+        return existing_id
+
+    note = DreamNote(
+        id=uuid.uuid4(),
+        dream_id=dream_id,
+        text=normalized_text,
+        source=source,
+    )
+    session.add(note)
+    await session.flush()
+    return note.id
+
+
 async def _collect_pipeline_targets(
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -374,7 +421,10 @@ async def _collect_pipeline_targets(
             )
         with tracer.start_as_current_span("db.query.worker_ingest.load_chunk_targets"):
             chunk_result = await session.execute(
-                select(DreamChunk.dream_id).where(DreamChunk.dream_id.in_(dream_ids))
+                select(DreamChunk.dream_id).where(
+                    DreamChunk.dream_id.in_(dream_ids),
+                    DreamChunk.source_kind == "dream_text",
+                )
             )
 
     dream_ids_with_themes = set(theme_result.scalars().all())
@@ -397,6 +447,7 @@ async def _run_post_store_pipeline(
     analysis_service: AnalysisService,
     motif_service: MotifService,
     pipeline_targets: list[PipelineTarget],
+    note_ids: list[uuid.UUID],
 ) -> None:
     tracer = get_tracer(__name__)
     index_worker_ctx = {
@@ -424,6 +475,8 @@ async def _run_post_store_pipeline(
                             "db.query.worker_ingest.commit_motif_inductions"
                         ):
                             await session.commit()
+        for note_id in dict.fromkeys(note_ids):
+            await index_note(index_worker_ctx, note_id=note_id)
 
 
 class WorkerSettings:

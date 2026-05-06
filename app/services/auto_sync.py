@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 class AutoSyncState:
     last_seen_marker: str | None = None
     last_checked_at: str | None = None
+    last_sync_started_at: str | None = None
     last_synced_at: str | None = None
     last_sync_job_id: str | None = None
     last_sync_status: str = "never"
@@ -49,13 +50,14 @@ async def run_auto_sync_once(
     state = await read_auto_sync_state(redis_client, metadata.document_id)
     now = _utcnow().isoformat()
 
-    if state.last_seen_marker == marker:
+    if state.last_seen_marker == marker and not _is_stale_running_state(state):
         await write_auto_sync_state(
             redis_client,
             metadata.document_id,
             AutoSyncState(
                 last_seen_marker=state.last_seen_marker,
                 last_checked_at=now,
+                last_sync_started_at=state.last_sync_started_at,
                 last_synced_at=state.last_synced_at,
                 last_sync_job_id=state.last_sync_job_id,
                 last_sync_status=state.last_sync_status,
@@ -70,6 +72,7 @@ async def run_auto_sync_once(
         AutoSyncState(
             last_seen_marker=state.last_seen_marker,
             last_checked_at=now,
+            last_sync_started_at=now,
             last_synced_at=state.last_synced_at,
             last_sync_job_id=job_id,
             last_sync_status="running",
@@ -93,6 +96,7 @@ async def run_auto_sync_once(
             AutoSyncState(
                 last_seen_marker=state.last_seen_marker,
                 last_checked_at=now,
+                last_sync_started_at=None,
                 last_synced_at=state.last_synced_at,
                 last_sync_job_id=job_id,
                 last_sync_status="failed",
@@ -107,6 +111,7 @@ async def run_auto_sync_once(
         AutoSyncState(
             last_seen_marker=marker,
             last_checked_at=now,
+            last_sync_started_at=None,
             last_synced_at=synced_at,
             last_sync_job_id=job_id,
             last_sync_status="synced",
@@ -156,6 +161,7 @@ async def read_auto_sync_state(redis_client: Any, document_id: str) -> AutoSyncS
     return AutoSyncState(
         last_seen_marker=data.get("last_seen_marker"),
         last_checked_at=data.get("last_checked_at"),
+        last_sync_started_at=data.get("last_sync_started_at"),
         last_synced_at=data.get("last_synced_at"),
         last_sync_job_id=data.get("last_sync_job_id"),
         last_sync_status=str(data.get("last_sync_status") or "never"),
@@ -181,6 +187,7 @@ def build_auto_sync_state_from_metadata(
     return AutoSyncState(
         last_seen_marker=metadata.change_marker,
         last_checked_at=last_checked_at,
+        last_sync_started_at=None,
         last_synced_at=last_synced_at,
         last_sync_job_id=last_sync_job_id,
         last_sync_status=last_sync_status,
@@ -193,3 +200,21 @@ def _auto_sync_key(document_id: str) -> str:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _is_stale_running_state(state: AutoSyncState) -> bool:
+    if state.last_sync_status != "running":
+        return False
+    if not state.last_sync_started_at:
+        return True
+
+    try:
+        started_at = datetime.fromisoformat(state.last_sync_started_at)
+    except ValueError:
+        return True
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+
+    settings = get_settings()
+    stale_after_seconds = max(settings.AUTO_SYNC_INTERVAL_SECONDS * 2, 600)
+    return (_utcnow() - started_at).total_seconds() > stale_after_seconds

@@ -331,7 +331,7 @@ def validate_dream_entry_candidates(
     validated_entries: list[ValidatedDreamEntry] = []
     seen_content_hashes: set[str] = set()
 
-    for candidate in candidates:
+    for index, candidate in enumerate(candidates):
         if not candidate.source_doc_id.strip():
             raise DreamEntryValidationError("Dream entry candidate source_doc_id is required")
         if not candidate.title.strip():
@@ -347,9 +347,13 @@ def validate_dream_entry_candidates(
                 "Dream entry candidate segmentation_confidence must be 'high' or 'low'"
             )
         if candidate.content_hash in seen_content_hashes:
-            raise DreamEntryValidationError(
-                "Dream entry candidates must not duplicate content_hash values within one document"
+            logger.warning(
+                "ingestion.duplicate_candidate_skipped",
+                content_hash=candidate.content_hash,
+                source_doc_id=candidate.source_doc_id,
+                duplicate_index=index,
             )
+            continue
 
         seen_content_hashes.add(candidate.content_hash)
         validated_entries.append(
@@ -362,12 +366,23 @@ def validate_dream_entry_candidates(
                 date=candidate.date,
                 segmentation_confidence=candidate.segmentation_confidence,
                 applied_profile=candidate.applied_profile,
-                parse_warnings=list(candidate.parse_warnings),
+                parse_warnings=[
+                    *candidate.parse_warnings,
+                    *(
+                        ["Duplicate content hash candidates skipped during validation."]
+                        if _has_duplicate_content_hash(candidates, candidate.content_hash)
+                        else []
+                    ),
+                ],
                 notes=list(candidate.notes),
             )
         )
 
     return validated_entries
+
+
+def _has_duplicate_content_hash(candidates: list[DreamEntryCandidate], content_hash: str) -> bool:
+    return sum(1 for candidate in candidates if candidate.content_hash == content_hash) > 1
 
 
 def process_source_document(

@@ -1,7 +1,7 @@
 # Evidence Index — Dream Motif Interpreter
 
-Version: 1.0
-Last updated: 2026-04-14
+Version: 1.1
+Last updated: 2026-05-09
 Status: append-only
 
 ---
@@ -25,6 +25,11 @@ Lookup table for proof artifacts across review cycles, retrieval evaluations, an
 | EV-007 | test-coverage | T13 | 2026-04-13 | `tests/unit/test_tracing.py::test_log_fields_present_and_no_pii` | Request logs include trace metadata and exclude `raw_text` PII | Active |
 | EV-008 | test-coverage | T18 | 2026-04-14 | `tests/integration/test_patterns_api.py::test_patterns_include_disclaimer` | Pattern endpoints include the required computational-pattern disclaimer and generation timestamp | Active |
 | EV-009 | test-coverage | T20 | 2026-04-14 | `tests/integration/test_e2e.py::test_full_ingestion_to_search_flow` | Sync, analysis, search, curation approval, pattern APIs, rollback, and cleanup all interoperate in one end-to-end workflow | Active |
+| EV-010 | live-audit | Phase 22 planning | 2026-05-09 | `docs/tasks_phase22.md §1`, `docs/IMPLEMENTATION_JOURNAL.md §2026-05-09 — Phase 22 Planning` | Primary Google Doc auto-sync is failing because duplicate parsed content aborts ingestion; last successful sync was 2026-04-26 | Active |
+| EV-011 | live-audit | Phase 22 planning | 2026-05-09 | `docs/tasks_phase22.md §WS-22.3` | Google Doc contains `5.11.24 запретная рыба`, but the DB/search index does not until sync is repaired | Active |
+| EV-012 | planning | Phase 22 planning | 2026-05-09 | `docs/tasks_phase22.md` | Development loop, task order, acceptance criteria, and verification plan for Test 7/8 are documented before implementation | Active |
+| EV-013 | live-check | Phase 22 implementation | 2026-05-09 | `docs/retrieval_eval.md §Phase 22 Manual Google Doc Freshness Regression` | Live sync recovered to `synced`; DB/search now finds `5.11.24 запретная рыба` for `сон с рыбой` | Active |
+| EV-014 | review | Phase 22 implementation | 2026-05-09 | `docs/archive/PHASE22_REVIEW.md` | Deep review findings, verification commands, live checks, and residual risks for Test 7/8 closure | Active |
 
 ---
 

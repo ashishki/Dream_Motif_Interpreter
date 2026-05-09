@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.llm.client import AnthropicLLMClient, LLMClientError
 from app.models.dream import DreamEntry
 from app.models.motif import MotifInduction
 from app.models.note import DreamNote
@@ -164,6 +165,26 @@ class ArchiveSyncStatus:
     is_stale_running: bool = False
 
 
+@dataclass(frozen=True)
+class DreamInterpretationRequest:
+    dream_id: uuid.UUID
+    title: str
+    prompt: str
+
+
+@dataclass(frozen=True)
+class DreamInterpretationResult:
+    dream_id: uuid.UUID
+    title: str
+    text: str
+
+
+@dataclass(frozen=True)
+class DreamRecordingInput:
+    raw_text: str
+    title: str | None
+
+
 class SyncJobEnqueuer(Protocol):
     async def enqueue_ingest(
         self,
@@ -188,6 +209,7 @@ class AssistantFacade:
         index_dream_callable: Callable[[uuid.UUID], Awaitable[int]] | None = None,
         index_note_callable: Callable[[uuid.UUID], Awaitable[int]] | None = None,
         motif_service: MotifService | None = None,
+        interpretation_llm_client: Any | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._rag_query_service = rag_query_service
@@ -199,6 +221,7 @@ class AssistantFacade:
         self._index_dream_callable = index_dream_callable or self._build_index_dream_callable()
         self._index_note_callable = index_note_callable or self._build_index_note_callable()
         self._motif_service = motif_service or MotifService()
+        self._interpretation_llm_client = interpretation_llm_client or AnthropicLLMClient()
 
     async def search_dreams(self, query: str) -> SearchResult:
         result = await self._rag_query_service.retrieve(query)
@@ -373,7 +396,8 @@ class AssistantFacade:
         dream_date: date | None = None,
         chat_id: int | None = None,
     ) -> CreatedDreamItem:
-        normalized_text = raw_text.strip()
+        prepared_input = _prepare_dream_recording_input(raw_text, title=title)
+        normalized_text = prepared_input.raw_text
         if not normalized_text:
             raise ValueError("Dream text must not be empty")
 
@@ -382,7 +406,7 @@ class AssistantFacade:
         )
         resolved_title = _resolve_dream_title(
             normalized_text,
-            title=title,
+            title=prepared_input.title,
             dream_date=resolved_dream_date,
         )
         source_doc_id = f"telegram:{chat_id}" if chat_id is not None else "telegram:manual"
@@ -665,11 +689,10 @@ class AssistantFacade:
                 )
                 if not placed:
                     logger.info(
-                        "Dream note heading not found; appending to Google Doc",
+                        "Dream note heading not found; Google Doc was not updated",
                         dream_id=str(dream.id),
                         doc_id=target_doc_id,
                     )
-                    gdocs_client.append_text(target_doc_id, note_line)
         except GDocsWriteError:
             logger.warning(
                 "Failed to write dream note to Google Doc",
@@ -687,7 +710,60 @@ class AssistantFacade:
 
         if placed:
             return True, "Заметка добавлена под нужным сном."
-        return True, "Заметка добавлена в конец Google Doc: заголовок сна не найден."
+        return (
+            True,
+            "Заметка сохранена в архиве, но не добавлена в Google Doc: заголовок сна не найден.",
+        )
+
+    async def prepare_dream_interpretation_request(
+        self,
+        *,
+        dream_id: uuid.UUID | None = None,
+        user_request: str = "",
+        chat_id: int | None = None,
+    ) -> DreamInterpretationRequest | None:
+        async with self._session_factory() as session:
+            dream = await self._resolve_note_target_dream(
+                session,
+                dream_id=dream_id,
+                chat_id=chat_id,
+            )
+            if dream is None:
+                return None
+
+        prompt = _build_dream_interpretation_prompt(dream, user_request=user_request)
+        return DreamInterpretationRequest(
+            dream_id=dream.id,
+            title=dream.title,
+            prompt=prompt,
+        )
+
+    async def interpret_dream_with_prompt(
+        self,
+        *,
+        dream_id: uuid.UUID,
+        prompt: str,
+    ) -> DreamInterpretationResult | None:
+        async with self._session_factory() as session:
+            dream = await session.get(DreamEntry, dream_id)
+            if dream is None:
+                return None
+
+        try:
+            interpretation = await self._interpretation_llm_client.complete(
+                _DREAM_INTERPRETATION_SYSTEM_PROMPT,
+                prompt,
+                max_tokens=1200,
+            )
+        except LLMClientError:
+            logger.warning("Dream interpretation LLM failed", dream_id=str(dream_id))
+            raise
+
+        return DreamInterpretationResult(
+            dream_id=dream.id,
+            title=dream.title,
+            text=interpretation.strip(),
+        )
 
     async def get_theme_history(self, dream_id: uuid.UUID) -> list[ThemeHistoryEntry]:
         async with self._session_factory() as session:
@@ -1016,7 +1092,29 @@ def _dream_doc_heading(dream: DreamEntry) -> str:
 
 _DATE_PREFIX_RE = re.compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")
 _WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
+_INLINE_TITLE_PATTERNS = (
+    re.compile(
+        r"(?is)(?:^|[\n\r.!?]\s*)(?:название|title)\s*[:\-–—]\s*"
+        r"[\"«“]?(?P<title>[^.\n\r!?\"»”]+)[\"»”]?[.!?]?\s*"
+    ),
+    re.compile(
+        r"(?is)(?:^|[\n\r.!?]\s*)(?:назови\s+(?:его|сон)|с\s+названием)\s+"
+        r"[\"«“]?(?P<title>[^.\n\r!?\"»”]+)[\"»”]?[.!?]?\s*"
+    ),
+)
+_DREAM_RECORD_COMMAND_PREFIX_RE = re.compile(
+    r"(?is)^\s*(?:пожалуйста[,\s]+)?"
+    r"(?:запиши|сохрани|добавь|занеси|записать|сохранить|добавить|занести)"
+    r"(?:\s+(?:мой|этот|новый))?\s+сон"
+    r"(?:\s+в\s+архив)?[\s:;,.!?–—-]*"
+)
 _DEFAULT_APPLICATION_TIMEZONE = "Asia/Tbilisi"
+_DREAM_INTERPRETATION_SYSTEM_PROMPT = (
+    "You interpret dreams for a private archive. Write in Russian. "
+    "Use only the supplied dream text and the user's approved request. "
+    "Separate direct observations from hypotheses. Do not diagnose, do not claim certainty, "
+    "and avoid instructions that replace professional help."
+)
 _TITLE_STOPWORDS = {
     "today",
     "dream",
@@ -1049,6 +1147,12 @@ _TITLE_STOPWORDS = {
     "который",
     "которая",
     "которые",
+    "запиши",
+    "сохрани",
+    "добавь",
+    "занеси",
+    "название",
+    "назови",
 }
 
 
@@ -1128,6 +1232,61 @@ def _sync_state_looks_stale(state: Any) -> bool:
         started_at = started_at.replace(tzinfo=timezone.utc)
     stale_after_seconds = max(get_settings().AUTO_SYNC_INTERVAL_SECONDS * 2, 600)
     return (datetime.now(timezone.utc) - started_at).total_seconds() > stale_after_seconds
+
+
+def _prepare_dream_recording_input(
+    raw_text: str, *, title: str | None = None
+) -> DreamRecordingInput:
+    normalized_text = raw_text.strip()
+    extracted_title: str | None = None
+
+    for pattern in _INLINE_TITLE_PATTERNS:
+        match = pattern.search(normalized_text)
+        if match is None:
+            continue
+        extracted_title = _clean_inline_title(match.group("title"))
+        normalized_text = f"{normalized_text[: match.start()]} {normalized_text[match.end() :]}"
+        break
+
+    normalized_text = _DREAM_RECORD_COMMAND_PREFIX_RE.sub("", normalized_text, count=1)
+    normalized_text = _normalize_recording_text(normalized_text)
+    prepared_title = extracted_title or (title.strip() if title and title.strip() else None)
+    return DreamRecordingInput(raw_text=normalized_text, title=prepared_title)
+
+
+def _clean_inline_title(value: str) -> str | None:
+    title = " ".join(value.strip(" \t\r\n\"'«»“”").split())
+    if not title:
+        return None
+    return _strip_date_prefix(title)
+
+
+def _normalize_recording_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).lstrip(" \t\r\n:;,.!?–—-").rstrip()
+
+
+def _build_dream_interpretation_prompt(dream: DreamEntry, *, user_request: str) -> str:
+    date_text = dream.date.isoformat() if dream.date is not None else "unknown"
+    request_text = user_request.strip() or "Дай бережную интерпретацию этого сна."
+    return "\n".join(
+        [
+            "Пользователь должен подтвердить именно этот запрос перед запуском LLM.",
+            f"Запрос пользователя: {request_text}",
+            "",
+            "Сон для интерпретации:",
+            f"id: {dream.id}",
+            f"date: {date_text}",
+            f"title: {dream.title or 'без названия'}",
+            "raw_text:",
+            dream.raw_text or "",
+            "",
+            "Формат ответа:",
+            "- краткая сводка образов;",
+            "- возможные темы и напряжения;",
+            "- 2-4 осторожные гипотезы;",
+            "- вопросы для самонаблюдения.",
+        ]
+    )
 
 
 def _resolve_dream_title(

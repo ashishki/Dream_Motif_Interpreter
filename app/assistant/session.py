@@ -24,6 +24,8 @@ MAX_HISTORY_MESSAGES = 20
 HISTORY_TTL_DAYS = 7
 PENDING_DREAM_TTL_MINUTES = 30
 MAX_PENDING_DREAM_DRAFTS = 10_000
+PENDING_INTERPRETATION_TTL_MINUTES = 30
+MAX_PENDING_INTERPRETATION_REQUESTS = 10_000
 
 
 @dataclass(slots=True)
@@ -36,7 +38,16 @@ class PendingDreamDraft:
     created_at: datetime
 
 
+@dataclass(slots=True)
+class PendingInterpretationRequest:
+    dream_id: str
+    prompt: str
+    source_message_id: int | None
+    created_at: datetime
+
+
 _pending_dream_drafts: dict[int, PendingDreamDraft] = {}
+_pending_interpretation_requests: dict[int, PendingInterpretationRequest] = {}
 
 
 async def load_history(
@@ -134,6 +145,43 @@ def clear_pending_dream_draft(chat_id: int) -> None:
     _pending_dream_drafts.pop(chat_id, None)
 
 
+def save_pending_interpretation_request(
+    chat_id: int,
+    *,
+    dream_id: str,
+    prompt: str,
+    source_message_id: int | None = None,
+) -> PendingInterpretationRequest:
+    """Store an ephemeral pending interpretation request for yes/no confirmation."""
+    _evict_expired_pending_interpretation_requests()
+    request = PendingInterpretationRequest(
+        dream_id=dream_id,
+        prompt=prompt.strip(),
+        source_message_id=source_message_id,
+        created_at=datetime.now(tz=timezone.utc),
+    )
+    _pending_interpretation_requests[chat_id] = request
+    _evict_excess_pending_interpretation_requests()
+    return request
+
+
+def load_pending_interpretation_request(chat_id: int) -> PendingInterpretationRequest | None:
+    """Return the current pending interpretation request for chat_id, if still fresh."""
+    _evict_expired_pending_interpretation_requests()
+    return _pending_interpretation_requests.get(chat_id)
+
+
+def pop_pending_interpretation_request(chat_id: int) -> PendingInterpretationRequest | None:
+    """Return and remove the current pending interpretation request for chat_id."""
+    _evict_expired_pending_interpretation_requests()
+    return _pending_interpretation_requests.pop(chat_id, None)
+
+
+def clear_pending_interpretation_request(chat_id: int) -> None:
+    """Remove any pending interpretation request for chat_id."""
+    _pending_interpretation_requests.pop(chat_id, None)
+
+
 def _evict_expired_pending_dream_drafts(*, now: datetime | None = None) -> None:
     current = now or datetime.now(tz=timezone.utc)
     ttl = timedelta(minutes=PENDING_DREAM_TTL_MINUTES)
@@ -146,6 +194,18 @@ def _evict_expired_pending_dream_drafts(*, now: datetime | None = None) -> None:
         _pending_dream_drafts.pop(chat_id, None)
 
 
+def _evict_expired_pending_interpretation_requests(*, now: datetime | None = None) -> None:
+    current = now or datetime.now(tz=timezone.utc)
+    ttl = timedelta(minutes=PENDING_INTERPRETATION_TTL_MINUTES)
+    expired_chat_ids = [
+        chat_id
+        for chat_id, request in _pending_interpretation_requests.items()
+        if current - request.created_at > ttl
+    ]
+    for chat_id in expired_chat_ids:
+        _pending_interpretation_requests.pop(chat_id, None)
+
+
 def _evict_excess_pending_dream_drafts() -> None:
     excess = len(_pending_dream_drafts) - MAX_PENDING_DREAM_DRAFTS
     if excess <= 0:
@@ -156,3 +216,15 @@ def _evict_excess_pending_dream_drafts() -> None:
     )[:excess]
     for chat_id in oldest_chat_ids:
         _pending_dream_drafts.pop(chat_id, None)
+
+
+def _evict_excess_pending_interpretation_requests() -> None:
+    excess = len(_pending_interpretation_requests) - MAX_PENDING_INTERPRETATION_REQUESTS
+    if excess <= 0:
+        return
+    oldest_chat_ids = sorted(
+        _pending_interpretation_requests,
+        key=lambda chat_id: _pending_interpretation_requests[chat_id].created_at,
+    )[:excess]
+    for chat_id in oldest_chat_ids:
+        _pending_interpretation_requests.pop(chat_id, None)

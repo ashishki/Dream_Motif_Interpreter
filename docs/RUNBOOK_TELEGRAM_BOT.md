@@ -1,6 +1,6 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-06-02 (Phase 21 Test 6 smoke checks)
+Last updated: 2026-05-09 (Phase 22 Test 7/8 smoke checks)
 
 ## 1. Purpose
 
@@ -83,6 +83,60 @@ Automated regression slice:
 
 ## 6. Common Failure Modes
 
+## 6. Test 7/8 Sync, Notes, Titles, Interpretation Checklist
+
+Run this checklist after deployments that touch Google Docs sync, note writing, title intake, or
+interpretation.
+
+1. Check service state:
+
+```bash
+systemctl is-active dream-motif-api.service dream-motif-auto-sync.service dream-motif-telegram.service
+```
+
+2. Inspect auto-sync state for the primary doc and confirm `last_sync_status` is `synced` or an
+honest recent failure, not a stale `running` state.
+3. Trigger one sync and verify the bot tells the user it will notify when sync completes or fails.
+4. Verify the current Google Doc can contain duplicate parsed candidates without aborting the
+whole sync.
+5. Verify `dream_entries` contains `5.11.24 запретная рыба`.
+6. Ask `найди сон с рыбой`; verify the first result is `5.11.24 запретная рыба` with exact fish
+evidence.
+7. Add a note to the latest dream; inspect Google Doc and verify the note is at the end of that
+dream section, before the next dream heading.
+8. Save a dream with `Название — Пирог с фруктовой начинкой`; verify the stored title is exactly
+that title and `raw_text` does not include the recording command.
+9. Ask for an interpretation; verify the bot shows the pending prompt and does not interpret until
+the user replies `да`. Reply `нет` in a separate run and verify it cancels.
+
+Auto-sync Redis inspection helper:
+
+```bash
+.venv/bin/python - <<'PY'
+import asyncio
+from redis import asyncio as aioredis
+from app.services.auto_sync import read_auto_sync_state
+from app.shared.config import get_effective_google_doc_id, get_settings
+
+async def main():
+    redis = aioredis.from_url(get_settings().REDIS_URL)
+    try:
+        print(await read_auto_sync_state(redis, get_effective_google_doc_id()))
+    finally:
+        await redis.aclose()
+
+asyncio.run(main())
+PY
+```
+
+Automated Phase 22 regression slice:
+
+```bash
+.venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_rag_ingestion.py tests/unit/test_segmentation.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short
+```
+
+## 7. Common Failure Modes
+
 ### Bot starts but receives nothing
 
 Check:
@@ -118,7 +172,7 @@ Check:
 - `ASSISTANT_MODEL` is a valid model ID
 - bounded tool-use loop hit MAX_TOOL_ROUNDS=5 without an end_turn response (log will show this)
 
-## 7. Voice Failure Diagnostics
+## 8. Voice Failure Diagnostics
 
 Voice messages go through a two-stage pipeline: the handler persists + downloads, then a background task transcribes and replies.
 
@@ -157,7 +211,7 @@ Log pattern: `Voice download failed for message_id=... event_id=...`
 
 Check disk space and `VOICE_MEDIA_DIR` permissions. User will have already received "Could not download your voice message."
 
-## 8. Session State Diagnostics
+## 9. Session State Diagnostics
 
 Chat history is persisted in the `bot_sessions` table (one row per `chat_id`).
 
@@ -187,11 +241,11 @@ UPDATE bot_sessions SET history_json = '[]', updated_at = now()
 WHERE chat_id = <chat_id>;
 ```
 
-## 9. Safety Rule
+## 10. Safety Rule
 
 If chat-driven mutation tools are not in the approved phase scope, disable or omit them entirely.
 
-## 10. Logging Rules
+## 11. Logging Rules
 
 Use identifiers and statuses.
 Do not log raw dream text, transcript text, or secrets.

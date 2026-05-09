@@ -1,9 +1,9 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 2.5
-Last updated: 2026-04-25 (Phases 13–15 complete — multi-source docs, write flow, doc-name clarity)
+Version: 2.7
+Last updated: 2026-05-09 (Phase 22 implemented — Test 7/8 sync, notes, titles, interpretation approval)
 
-## 1. Current Status: Phases 1–15 Complete; Phase 16 Planning
+## 1. Current Status: Phases 1–22 Complete
 
 **Phases 1–5** — Backend platform complete:
 
@@ -43,6 +43,28 @@ Execution graph:
 - [docs/tasks_phase14.md](tasks_phase14.md) — historical Phase 14 graph (write to Google Docs)
 - [docs/tasks_phase15.md](tasks_phase15.md) — historical Phase 15 graph (write flow fixes, doc-name clarity)
 - [docs/tasks_phase16.md](tasks_phase16.md) — **planning** Phase 16 graph (search quality, hallucination, UX)
+- [docs/tasks_phase17.md](tasks_phase17.md) — historical Phase 17 graph (deterministic dream recording stabilization)
+- [docs/tasks_phase18.md](tasks_phase18.md) — historical Phase 18 graph (search quality and hallucination suppression)
+- [docs/tasks_phase19.md](tasks_phase19.md) — historical Phase 19 graph (direct title search)
+- [docs/tasks_phase20.md](tasks_phase20.md) — historical Phase 20 graph (notes placement and emoji feedback polish)
+- [docs/tasks_phase21.md](tasks_phase21.md) — historical Phase 21 graph (Test 6 recording/search regressions)
+- [docs/tasks_phase22.md](tasks_phase22.md) — historical Phase 22 graph (Test 7/8 sync, notes, titles, interpretation approval)
+
+## 1.1 Phase 22 — Test 7/8 Reliability Loop
+
+Phase 22 was the development loop after the 2026-05-09 live audit. It was intentionally ordered
+from data freshness to user-facing features:
+
+1. Make Google Docs ingestion fail-soft on duplicate parsed entries.
+2. Repair sync state transparency and notifications.
+3. Re-sync/reindex current Google Doc content and prove `сон с рыбой` finds `5.11.24 запретная рыба`.
+4. Place notes at the end of the target dream body.
+5. Extract explicit titles cleanly and generate useful fallback titles.
+6. Add user-approved whole-dream LLM interpretation.
+7. Close with regression docs, live checklist, and deep review.
+
+The canonical task graph is [docs/tasks_phase22.md](tasks_phase22.md). Deep review is archived at
+[docs/archive/PHASE22_REVIEW.md](archive/PHASE22_REVIEW.md).
 
 ## 2. Planning Principle
 

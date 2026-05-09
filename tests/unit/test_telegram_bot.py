@@ -13,7 +13,9 @@ from app.assistant.chat import ChatResult
 from app.assistant.facade import AssistantFacade
 from app.assistant.session import (
     clear_pending_dream_draft,
+    clear_pending_interpretation_request,
     load_pending_dream_draft,
+    save_pending_interpretation_request,
     save_pending_dream_draft,
 )
 from app.telegram.bot import handle_message_reaction
@@ -79,11 +81,19 @@ def _clear_pending_drafts() -> None:
     clear_pending_dream_draft(55)
     clear_pending_dream_draft(77)
     clear_pending_dream_draft(100)
+    clear_pending_interpretation_request(42)
+    clear_pending_interpretation_request(55)
+    clear_pending_interpretation_request(77)
+    clear_pending_interpretation_request(100)
     yield
     clear_pending_dream_draft(42)
     clear_pending_dream_draft(55)
     clear_pending_dream_draft(77)
     clear_pending_dream_draft(100)
+    clear_pending_interpretation_request(42)
+    clear_pending_interpretation_request(55)
+    clear_pending_interpretation_request(77)
+    clear_pending_interpretation_request(100)
 
 
 @pytest.mark.asyncio
@@ -312,6 +322,31 @@ async def test_text_message_handler_direct_note_bypasses_chat_loop() -> None:
     mock_chat.assert_not_awaited()
     facade.add_dream_note.assert_awaited_once_with("красная дверь важна", chat_id=42)
     message.reply_text.assert_awaited_once_with("Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_runs_pending_interpretation_after_approval() -> None:
+    update, message = _make_text_message_update("да", chat_id=42)
+    dream_id = "11111111-1111-4111-8111-111111111111"
+    save_pending_interpretation_request(
+        42,
+        dream_id=dream_id,
+        prompt="approved prompt",
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.interpret_dream_with_prompt = AsyncMock(
+        return_value=SimpleNamespace(text="Осторожная интерпретация.")
+    )
+    context = _make_text_context(facade, 42)
+
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(update, context)
+
+    mock_chat.assert_not_awaited()
+    facade.interpret_dream_with_prompt.assert_awaited_once()
+    assert str(facade.interpret_dream_with_prompt.call_args.kwargs["dream_id"]) == dream_id
+    assert facade.interpret_dream_with_prompt.call_args.kwargs["prompt"] == "approved prompt"
+    message.reply_text.assert_awaited_once_with("Осторожная интерпретация.")
 
 
 @pytest.mark.parametrize(

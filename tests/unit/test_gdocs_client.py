@@ -184,13 +184,14 @@ def test_append_text_calls_batch_update_with_correct_payload() -> None:
     )
 
 
-def test_insert_text_under_heading_places_text_after_matching_heading() -> None:
+def test_insert_text_under_heading_places_text_at_section_end_before_next_heading() -> None:
     client = GDocsClient(settings=_build_settings())
     mocked_service = Mock()
     mocked_service.documents.return_value.get.return_value.execute.return_value = {
         "body": {
             "content": [
                 {
+                    "startIndex": 1,
                     "endIndex": 25,
                     "paragraph": {
                         "paragraphStyle": {"namedStyleType": "HEADING_1"},
@@ -198,10 +199,158 @@ def test_insert_text_under_heading_places_text_after_matching_heading() -> None:
                     },
                 },
                 {
+                    "startIndex": 25,
                     "endIndex": 80,
                     "paragraph": {
                         "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
                         "elements": [{"textRun": {"content": "Dream body\n"}}],
+                    },
+                },
+                {
+                    "startIndex": 80,
+                    "endIndex": 105,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "22.04.26 - Next dream\n"}}],
+                    },
+                },
+            ]
+        }
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        placed = client.insert_text_under_heading(
+            "doc-123",
+            heading="21.04.26 - River valley",
+            text="[Note 02.05.26]: note text",
+        )
+
+    assert placed is True
+    mocked_service.documents.return_value.batchUpdate.assert_called_once_with(
+        documentId="doc-123",
+        body={
+            "requests": [
+                {
+                    "insertText": {
+                        "location": {"index": 79},
+                        "text": "\n[Note 02.05.26]: note text",
+                    }
+                }
+            ]
+        },
+    )
+
+
+def test_insert_text_under_heading_places_text_at_last_section_end() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1,
+                    "endIndex": 25,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "21.04.26 - River valley\n"}}],
+                    },
+                },
+                {
+                    "startIndex": 25,
+                    "endIndex": 80,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                        "elements": [{"textRun": {"content": "Dream body\n"}}],
+                    },
+                },
+            ]
+        }
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        placed = client.insert_text_under_heading(
+            "doc-123",
+            heading="21.04.26 - River valley",
+            text="[Note 02.05.26]: note text",
+        )
+
+    assert placed is True
+    mocked_service.documents.return_value.batchUpdate.assert_called_once_with(
+        documentId="doc-123",
+        body={
+            "requests": [
+                {
+                    "insertText": {
+                        "location": {"index": 79},
+                        "text": "\n[Note 02.05.26]: note text",
+                    }
+                }
+            ]
+        },
+    )
+
+
+def test_insert_text_under_heading_handles_heading_without_body() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1,
+                    "endIndex": 25,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "21.04.26 - River valley\n"}}],
+                    },
+                },
+                {
+                    "startIndex": 25,
+                    "endIndex": 50,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "22.04.26 - Next dream\n"}}],
+                    },
+                },
+            ]
+        }
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        placed = client.insert_text_under_heading(
+            "doc-123",
+            heading="21.04.26 - River valley",
+            text="[Note 02.05.26]: note text",
+        )
+
+    assert placed is True
+    mocked_service.documents.return_value.batchUpdate.assert_called_once_with(
+        documentId="doc-123",
+        body={
+            "requests": [
+                {
+                    "insertText": {
+                        "location": {"index": 25},
+                        "text": "\n[Note 02.05.26]: note text",
+                    }
+                }
+            ]
+        },
+    )
+
+
+def test_insert_text_under_heading_handles_last_heading_without_body() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1,
+                    "endIndex": 25,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "21.04.26 - River valley\n"}}],
                     },
                 },
             ]

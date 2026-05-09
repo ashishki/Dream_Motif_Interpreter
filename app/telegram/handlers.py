@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 import re
+import uuid
 from collections.abc import MutableMapping
 from datetime import date
 from typing import Any
@@ -16,14 +17,18 @@ from telegram.ext import ApplicationHandlerStop, ContextTypes
 from app.assistant.chat import ChatResult, handle_chat_with_metadata
 from app.assistant.facade import AssistantFacade
 from app.assistant.session import (
+    clear_pending_interpretation_request,
     clear_pending_dream_draft,
+    load_pending_interpretation_request,
     load_pending_dream_draft,
+    pop_pending_interpretation_request,
     pop_pending_dream_draft,
     save_pending_dream_draft,
 )
 from app.assistant.tools import _has_natural_dream_opening, _is_explicit_create_request
 from app.assistant.voice_media import create_voice_media_event
 from app.assistant.voice_media import get_voice_transcript_for_message
+from app.llm.client import LLMClientError
 from app.services.feedback_service import FeedbackService
 from app.telegram.voice import download_voice_file
 
@@ -123,6 +128,17 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     if chat_id is not None and await _handle_pending_dream_confirmation(
+        message,
+        stripped_text,
+        chat_id=chat_id,
+        facade=_get_facade(context),
+    ):
+        if chat_key is not None:
+            pending_feedback.pop(chat_key, None)
+            bot_msg_ids.pop(chat_key, None)
+        return
+
+    if chat_id is not None and await _handle_pending_interpretation_confirmation(
         message,
         stripped_text,
         chat_id=chat_id,
@@ -444,6 +460,48 @@ async def _handle_pending_dream_confirmation(
         chat_id=chat_id,
     )
     await message.reply_text(_format_create_dream_reply(created))
+    return True
+
+
+async def _handle_pending_interpretation_confirmation(
+    message: Any,
+    text: str,
+    *,
+    chat_id: int,
+    facade: AssistantFacade,
+) -> bool:
+    normalized = _normalize_confirmation_text(text)
+    if not normalized:
+        return False
+
+    if _is_negative_confirmation(normalized):
+        if load_pending_interpretation_request(chat_id) is None:
+            return False
+        clear_pending_interpretation_request(chat_id)
+        await message.reply_text("Хорошо, не запускаю интерпретацию.")
+        return True
+
+    if not _is_positive_confirmation(normalized):
+        return False
+
+    pending = pop_pending_interpretation_request(chat_id)
+    if pending is None:
+        return False
+
+    try:
+        result = await facade.interpret_dream_with_prompt(
+            dream_id=uuid.UUID(pending.dream_id),
+            prompt=pending.prompt,
+        )
+    except (ValueError, LLMClientError):
+        await message.reply_text("Не удалось запустить интерпретацию сна.")
+        return True
+
+    if result is None:
+        await message.reply_text("Сон для интерпретации не найден.")
+        return True
+
+    await message.reply_text(result.text)
     return True
 
 

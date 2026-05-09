@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.16
-Last updated: 2026-06-02
+Version: 1.18
+Last updated: 2026-05-09
 Status: append-only
 
 ---
@@ -22,6 +22,24 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-09 — Phase 22 Planning — Test 7/8 Sync, Notes, Titles, Interpretation
+
+- Scope: `docs/tasks_phase22.md`, `docs/CODEX_PROMPT.md`, `docs/PHASE_PLAN.md`, `docs/DECISION_LOG.md`, `docs/EVIDENCE_INDEX.md`
+- Why this work happened: user Test 7/8 reported broken notes to the latest dream, opaque/stuck Google Docs sync, missing fish search for a manually added dream, poor title extraction/generation, and a new request for approved LLM dream interpretation.
+- Decisions applied: D-018, D-019.
+- Evidence collected: live audit on 2026-05-09 confirmed all services active, Redis auto-sync state `failed`, last successful sync `2026-04-26T10:16:43.458320+00:00`, journal logs repeating `auto_sync.loop_iteration_failed`, live Google Doc parse failure `DreamEntryValidationError: Dream entry candidates must not duplicate content_hash values within one document`, duplicate candidate `25.04.26 - подвальчик в Тбилиси`, Google Doc candidate `5.11.24 запретная рыба` absent from DB, and recent title regressions such as `о запиши название пирог`.
+- Follow-ups: start `docs/tasks_phase22.md` with WS-22.1; do not attempt fish-search or latest-dream-note validation until sync can ingest the current Google Doc.
+- Notes for next agent: the main user-visible failures are downstream of sync freshness; fix duplicate fail-soft ingestion first, then prove sync state is `synced` and only then validate search/notes against current Google Doc content.
+
+### 2026-05-09 — Phase 22 Implementation — Test 7/8 Closure
+
+- Scope: `app/retrieval/ingestion.py`, `app/assistant/{facade,prompts,session,tools}.py`, `app/services/gdocs_client.py`, `app/telegram/handlers.py`, Phase 22 unit tests, user/runbook/retrieval docs.
+- Why this work happened: Test 7/8 runtime failures required sync freshness recovery, honest sync UX, exact fish recall from manually added Google Doc material, note placement at the end of dreams, robust title intake, and an approved LLM interpretation flow.
+- Decisions applied: D-018, D-019.
+- Evidence collected: targeted WS suites passed; live auto-sync completed with `last_sync_status='synced'`; DB contains `5.11.24 запретная рыба`; `search_dreams` returns that entry first for `сон с рыбой`; Phase 22 deep review archived in `docs/archive/PHASE22_REVIEW.md`.
+- Follow-ups: provider-dependent LLM title generation was not added; deterministic title cleanup is active. Interpretation persistence remains out of scope.
+- Notes for next agent: no migration was required. Restart `dream-motif-telegram.service` and `dream-motif-auto-sync.service` after deployment so in-memory pending-state and prompt/tool changes are live.
 
 ### 2026-06-02 — WS-21.5 — Regression Gate and Deep Review
 

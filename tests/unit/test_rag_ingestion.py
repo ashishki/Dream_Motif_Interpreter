@@ -12,6 +12,7 @@ import tiktoken
 
 from app.retrieval import ingestion
 from app.retrieval.ingestion import chunk_dream_text
+from app.retrieval.types import DreamEntryCandidate, FetchedSourceDocument
 
 
 def _paragraph(token: str, count: int) -> str:
@@ -106,6 +107,70 @@ def test_tiktoken_in_requirements() -> None:
     requirements_path = Path(__file__).resolve().parents[2] / "requirements.txt"
 
     assert "tiktoken" in requirements_path.read_text(encoding="utf-8")
+
+
+def test_validate_dream_entry_candidates_skips_duplicate_hashes() -> None:
+    candidates = [
+        DreamEntryCandidate(
+            source_doc_id="doc-123",
+            title="First duplicate",
+            raw_text="I walked through a hallway.",
+            word_count=5,
+            content_hash="same-hash",
+            segmentation_confidence="high",
+        ),
+        DreamEntryCandidate(
+            source_doc_id="doc-123",
+            title="Second duplicate",
+            raw_text="I walked through a hallway.",
+            word_count=5,
+            content_hash="same-hash",
+            segmentation_confidence="high",
+        ),
+        DreamEntryCandidate(
+            source_doc_id="doc-123",
+            title="Unique",
+            raw_text="A river crossed the road.",
+            word_count=5,
+            content_hash="unique-hash",
+            segmentation_confidence="high",
+        ),
+    ]
+
+    validated = ingestion.validate_dream_entry_candidates(candidates)
+
+    assert [entry.content_hash for entry in validated] == ["same-hash", "unique-hash"]
+    assert validated[0].parse_warnings == [
+        "Duplicate content hash candidates skipped during validation."
+    ]
+
+
+def test_process_source_document_dedupes_duplicate_heading_sections() -> None:
+    document = FetchedSourceDocument(
+        source_type="google_doc",
+        external_id="doc-123",
+        title="Dream Journal",
+        source_path="documents/doc-123",
+        updated_at=None,
+        raw_contents=[
+            "Repeated dream",
+            "I walked through a hallway with red doors.",
+            "Repeated dream",
+            "I walked through a hallway with red doors.",
+            "Unique dream",
+            "A river crossed the road.",
+        ],
+    )
+
+    pipeline = ingestion.process_source_document(document)
+
+    assert [entry.title for entry in pipeline.validated_entries] == [
+        "Repeated dream",
+        "Unique dream",
+    ]
+    assert pipeline.validated_entries[0].parse_warnings == [
+        "Duplicate content hash candidates skipped during validation."
+    ]
 
 
 @pytest.mark.asyncio

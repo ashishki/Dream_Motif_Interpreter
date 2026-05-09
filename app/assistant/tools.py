@@ -7,6 +7,7 @@ from typing import Any
 
 from app.assistant.facade import AssistantFacade, SearchResultItem
 from app.assistant.facade import _resolve_relative_dream_date
+from app.assistant.session import save_pending_interpretation_request
 from app.retrieval.query import extract_concrete_image_query
 from app.shared.config import extract_google_doc_id, get_doc_name
 
@@ -145,6 +146,29 @@ _BASE_TOOLS: list[dict[str, Any]] = [
                 },
             },
             "required": ["dream_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "prepare_dream_interpretation",
+        "description": (
+            "Prepare an LLM interpretation request for a dream, but do not run interpretation yet. "
+            "Use when the user asks to interpret/analyse/explain a dream. The user must approve "
+            "the generated request before interpretation runs."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "dream_id": {
+                    "type": "string",
+                    "description": "UUID of the dream entry. Optional; latest dream is used if omitted.",
+                },
+                "request": {
+                    "type": "string",
+                    "description": "The user's requested interpretation angle or question.",
+                },
+            },
+            "required": [],
             "additionalProperties": False,
         },
     },
@@ -565,6 +589,37 @@ async def execute_tool(
             return f"Dream not found: {raw_id}"
         return _format_dream_detail_payload(detail)
 
+    if tool_name == "prepare_dream_interpretation":
+        raw_id = str(tool_input.get("dream_id", "")).strip()
+        dream_id = None
+        if raw_id:
+            try:
+                dream_id = uuid.UUID(raw_id)
+            except ValueError:
+                return f"Invalid dream_id: {raw_id!r}"
+        interpretation_request = await facade.prepare_dream_interpretation_request(
+            dream_id=dream_id,
+            user_request=str(tool_input.get("request", "")).strip() or request_text,
+            chat_id=chat_id,
+        )
+        if interpretation_request is None:
+            return "Не найден сон для интерпретации."
+        if chat_id is not None:
+            save_pending_interpretation_request(
+                chat_id,
+                dream_id=str(interpretation_request.dream_id),
+                prompt=interpretation_request.prompt,
+            )
+        return "\n".join(
+            [
+                f"Подготовлен запрос на интерпретацию сна «{interpretation_request.title}».",
+                "Я запущу LLM-интерпретацию только после подтверждения.",
+                "Если формулировка подходит, ответьте «да». Если нет — «нет».",
+                "",
+                interpretation_request.prompt,
+            ]
+        )
+
     if tool_name == "list_recent_dreams":
         limit = _bounded_int(tool_input.get("limit", 10), default=10, minimum=1, maximum=20)
         dreams = await facade.list_recent_dreams(limit=limit)
@@ -627,11 +682,12 @@ async def execute_tool(
             return (
                 f"Синхронизация запущена: {get_doc_name(ref.doc_id)}. "
                 f"job_id={ref.job_id}, status={ref.status}. "
-                "Когда она завершится, бот отправит сообщение."
+                f"{_sync_completion_notice()}"
             )
         lines = [f"Синхронизация запущена для источников: {len(refs)}."]
         for ref in refs:
             lines.append(f"  {get_doc_name(ref.doc_id)}: job_id={ref.job_id}, status={ref.status}")
+        lines.append(_sync_completion_notice())
         return "\n".join(lines)
 
     if tool_name == "get_sync_status":
@@ -672,6 +728,7 @@ async def execute_tool(
                 refs = await facade.trigger_sync(doc_id, chat_id=chat_id)
                 if refs:
                     lines.append(f"Sync job queued: {refs[0].job_id}")
+                    lines.append(_sync_completion_notice())
             except RuntimeError:
                 lines.append("Note: sync could not be started automatically.")
             return "\n".join(lines)
@@ -706,6 +763,7 @@ async def execute_tool(
                     refs = await facade.trigger_sync(doc_id, chat_id=chat_id)
                     if refs:
                         lines.append(f"Sync job queued: {refs[0].job_id}")
+                        lines.append(_sync_completion_notice())
                 except RuntimeError:
                     lines.append("Note: sync could not be started automatically.")
                 return "\n".join(lines)
@@ -750,6 +808,7 @@ async def execute_tool(
                 refs = await facade.trigger_sync(new_doc_id, chat_id=chat_id)
                 if refs:
                     lines.append(f"Sync job queued: {refs[0].job_id}")
+                    lines.append(_sync_completion_notice())
             except RuntimeError:
                 lines.append("Note: sync could not be started automatically.")
             return "\n".join(lines)
@@ -865,14 +924,18 @@ def _format_sync_status_line(index: int, status: Any) -> str:
     doc_label = get_doc_name(status.doc_id)
     if status.status == "running" and status.is_stale_running:
         state_text = (
-            "предыдущая синхронизация выглядит зависшей; следующий автоцикл перезапустит её"
+            "предыдущая синхронизация выглядит зависшей; новые записи из Google Docs "
+            "могут быть недоступны до успешного завершения"
         )
     elif status.status == "running":
         state_text = "идёт синхронизация"
     elif status.status == "synced":
         state_text = "синхронизировано"
     elif status.status == "failed":
-        state_text = "последняя синхронизация завершилась ошибкой"
+        state_text = (
+            "последняя синхронизация завершилась ошибкой; новые записи из Google Docs "
+            "могут быть недоступны до следующего успешного запуска"
+        )
     elif status.status == "never":
         state_text = "ещё не синхронизировалось"
     else:
@@ -887,6 +950,10 @@ def _format_sync_status_line(index: int, status: Any) -> str:
         details.append(f"job_id={status.last_sync_job_id}")
     suffix = f" ({'; '.join(details)})" if details else ""
     return f"{index}. {doc_label}: {state_text}{suffix}"
+
+
+def _sync_completion_notice() -> str:
+    return "Когда синхронизация завершится или упадёт с ошибкой, бот отправит сообщение."
 
 
 def _format_sync_timestamp(value: str) -> str:

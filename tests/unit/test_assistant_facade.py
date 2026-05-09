@@ -410,6 +410,8 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
         "remove_archive_source",
         "get_dream_motifs",
         "research_motif_parallels",
+        "prepare_dream_interpretation_request",
+        "interpret_dream_with_prompt",
     }
 
 
@@ -634,6 +636,61 @@ async def test_create_dream_defaults_date_and_title_deterministically() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_dream_extracts_inline_title_and_strips_record_command() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 5, 1)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        result = await facade.create_dream(
+            "Запиши сон. Название — Пирог с фруктовой начинкой. "
+            "Мне приснилось, что я пеку пирог на даче.",
+            title="о запиши название пирог",
+            chat_id=42,
+        )
+
+    assert result.title == "Пирог с фруктовой начинкой"
+    added = session.add.call_args[0][0]
+    assert added.raw_text == "Мне приснилось, что я пеку пирог на даче."
+    assert added.title == "Пирог с фруктовой начинкой"
+
+
+@pytest.mark.asyncio
+async def test_create_dream_generated_title_ignores_record_command_words() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 5, 1)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        result = await facade.create_dream(
+            "Сохрани сон: вчера мне приснилось море мост башня",
+            chat_id=42,
+        )
+
+    assert result.title == "о море мост башня"
+    added = session.add.call_args[0][0]
+    assert added.raw_text == "вчера мне приснилось море мост башня"
+
+
+@pytest.mark.asyncio
 async def test_add_dream_note_returns_true_on_success() -> None:
     dream_id = uuid4()
     created_at = datetime(2026, 4, 21, tzinfo=timezone.utc)
@@ -677,7 +734,7 @@ async def test_add_dream_note_returns_true_on_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_add_dream_note_falls_back_to_append_when_heading_missing() -> None:
+async def test_add_dream_note_reports_google_doc_not_updated_when_heading_missing() -> None:
     dream_id = uuid4()
     created_at = datetime(2026, 4, 21, tzinfo=timezone.utc)
     dream = SimpleNamespace(
@@ -702,15 +759,14 @@ async def test_add_dream_note_falls_back_to_append_when_heading_missing() -> Non
         success, message = await facade.add_dream_note("remember the red door", chat_id=42)
 
     assert success is True
-    assert message == "Заметка добавлена в конец Google Doc: заголовок сна не найден."
+    assert (
+        message
+        == "Заметка сохранена в архиве, но не добавлена в Google Doc: заголовок сна не найден."
+    )
     session.commit.assert_awaited_once()
     index_note_callable.assert_awaited_once()
     mock_client_cls.return_value.insert_text_under_heading.assert_called_once()
-    mock_client_cls.return_value.append_text.assert_called_once()
-    assert mock_client_cls.return_value.append_text.call_args.args[0] == "doc-123"
-    assert mock_client_cls.return_value.append_text.call_args.args[1].endswith(
-        "]: remember the red door"
-    )
+    mock_client_cls.return_value.append_text.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -745,6 +801,62 @@ async def test_add_dream_note_without_id_targets_latest_archive_dream() -> None:
     note = session.add.call_args[0][0]
     assert note.dream_id == dream.id
     index_note_callable.assert_awaited_once_with(note.id)
+
+
+@pytest.mark.asyncio
+async def test_prepare_dream_interpretation_request_uses_latest_dream_when_id_omitted() -> None:
+    dream_id = uuid4()
+    dream = SimpleNamespace(
+        id=dream_id,
+        source_doc_id="doc-123",
+        date=date(2026, 5, 3),
+        title="Запретная рыба",
+        raw_text="Рыба черного цвета, она очень красивая.",
+        created_at=datetime(2026, 5, 4, tzinfo=timezone.utc),
+    )
+    session = _FakeSession(execute_results=[_FakeResult(scalar=dream)])
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    request = await facade.prepare_dream_interpretation_request(
+        user_request="что значит рыба?",
+        chat_id=42,
+    )
+
+    assert request is not None
+    assert request.dream_id == dream_id
+    assert request.title == "Запретная рыба"
+    assert "что значит рыба?" in request.prompt
+    assert "Рыба черного цвета" in request.prompt
+
+
+@pytest.mark.asyncio
+async def test_interpret_dream_with_prompt_calls_llm_client() -> None:
+    dream_id = uuid4()
+    dream = SimpleNamespace(
+        id=dream_id,
+        title="Запретная рыба",
+    )
+    session = _FakeSession(get_result=dream)
+    llm_client = SimpleNamespace(complete=AsyncMock(return_value="Осторожная интерпретация."))
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        interpretation_llm_client=llm_client,
+    )
+
+    result = await facade.interpret_dream_with_prompt(
+        dream_id=dream_id,
+        prompt="approved prompt",
+    )
+
+    assert result is not None
+    assert result.title == "Запретная рыба"
+    assert result.text == "Осторожная интерпретация."
+    llm_client.complete.assert_awaited_once()
+    assert llm_client.complete.call_args.args[1] == "approved prompt"
 
 
 @pytest.mark.asyncio

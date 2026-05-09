@@ -205,7 +205,7 @@ class GDocsClient:
         heading: str,
         text: str,
     ) -> bool:
-        """Insert text immediately below a matching Heading 1 paragraph.
+        """Insert text at the end of a matching Heading 1 section.
 
         Returns False when the heading is not found so callers can make an
         explicit fallback decision.
@@ -215,7 +215,7 @@ class GDocsClient:
             try:
                 service = self._build_docs_service()
                 document = service.documents().get(documentId=doc_id).execute()
-                insertion_index = _find_heading_end_index(document, heading)
+                insertion_index = _find_heading_section_end_index(document, heading)
                 if insertion_index is None:
                     logger.info("Google Docs target heading not found", document_id=doc_id)
                     return False
@@ -232,7 +232,7 @@ class GDocsClient:
                     documentId=doc_id,
                     body={"requests": requests},
                 ).execute()
-                logger.info("Successfully inserted text under heading", document_id=doc_id)
+                logger.info("Successfully inserted text at heading section end", document_id=doc_id)
                 return True
             except RefreshError as exc:
                 logger.warning("Google Docs authentication failed during targeted insert")
@@ -553,12 +553,13 @@ def _get_status_code(exc: HttpError) -> int | None:
         return None
 
 
-def _find_heading_end_index(document: Mapping[str, Any], heading: str) -> int | None:
+def _find_heading_section_end_index(document: Mapping[str, Any], heading: str) -> int | None:
     target = _normalize_doc_text(heading)
     if not target:
         return None
 
-    for block in document.get("body", {}).get("content", []):
+    blocks = document.get("body", {}).get("content", [])
+    for index, block in enumerate(blocks):
         paragraph = block.get("paragraph")
         if not isinstance(paragraph, dict):
             continue
@@ -571,7 +572,25 @@ def _find_heading_end_index(document: Mapping[str, Any], heading: str) -> int | 
             if isinstance(element, dict)
         )
         if _normalize_doc_text(paragraph_text) == target:
-            return int(block.get("endIndex") or 1)
+            heading_end_index = int(block.get("endIndex") or 1)
+            if index == len(blocks) - 1:
+                return heading_end_index
+            for following_block in blocks[index + 1 :]:
+                following_paragraph = following_block.get("paragraph")
+                if not isinstance(following_paragraph, dict):
+                    continue
+                following_style = following_paragraph.get("paragraphStyle", {})
+                if following_style.get("namedStyleType") == "HEADING_1":
+                    next_start_index = int(
+                        following_block.get("startIndex")
+                        or following_block.get("endIndex")
+                        or heading_end_index
+                    )
+                    return max(heading_end_index, next_start_index - 1)
+
+            if blocks:
+                return max(1, int(blocks[-1].get("endIndex") or heading_end_index) - 1)
+            return heading_end_index
     return None
 
 

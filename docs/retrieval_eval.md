@@ -42,8 +42,8 @@ A passing answer-quality check with declining retrieval metrics is a warning sig
 ---
 
 Version: 2
-Last updated: 2026-06-02
-Changed by: WS-21.3 — Test 6 fish/image exact recall regression
+Last updated: 2026-05-09
+Changed by: WS-22.3 — Test 8 fish/manual Google Doc sync regression
 
 ---
 
@@ -147,6 +147,25 @@ False-negative policy:
 | P21-Q01 | сон с рыбой | concrete-image-exact | Dream containing `рыба` / same-stem fish word in evidence_text | Fails if no exact fish evidence is returned |
 | P21-Q02 | найди рыбу | concrete-image-exact | Same fish dream evidence | Fails if query routing skips exact recall |
 | P21-Q03 | сны где есть рыба | concrete-image-exact | Same fish dream evidence | Fails if semantic threshold suppresses exact fish evidence |
+
+---
+
+## Phase 22 Manual Google Doc Freshness Regression
+
+This focused live check captures Test 8 from 2026-05-09: the Google Doc had a manually added
+entry `5.11.24 запретная рыба`, but bot search could not find it because auto-sync had been
+failing since 2026-04-26 on a duplicate parsed candidate.
+
+Eval Source: live primary Google Doc parse plus read-only DB/search checks, run 2026-05-09.
+
+| Check | Result | Evidence |
+|-------|--------|----------|
+| Duplicate source candidate no longer aborts parse | Pass | Current Google Doc validated 83 entries; duplicate `content_hash` candidate was skipped with non-PII warning |
+| Auto-sync state after one live run | Pass | `AutoSyncResult(action='synced', marker='1878', job_id='771be95e-b101-44d1-9c91-89261bac9773')`; Redis state `last_sync_status='synced'`, `last_synced_at='2026-05-09T15:25:30.000120+00:00'` |
+| DB freshness for Test 8 fish dream | Pass | `dream_entries` contains title `5.11.24 запретная рыба` after sync |
+| Exact recall for `рыба` | Pass | `RagQueryService.exact_search('рыба')` returned 2 rows, including `5.11.24 запретная рыба` |
+| Assistant search for `сон с рыбой` | Pass | `search_dreams` returned `5.11.24 запретная рыба` first with evidence text `Рыба черного цвета, она очень красивая` |
+| Regression suite | Pass | `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short` -> 98 passed, 1 warning |
 
 ---
 

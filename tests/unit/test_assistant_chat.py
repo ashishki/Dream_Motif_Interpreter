@@ -22,6 +22,10 @@ from app.assistant.facade import (
     SearchResultItem,
 )
 from app.assistant.prompts import SYSTEM_PROMPT
+from app.assistant.session import (
+    clear_pending_interpretation_request,
+    load_pending_interpretation_request,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1090,6 +1094,11 @@ def test_system_prompt_routes_title_lookup_to_title_search_first() -> None:
     assert "do not guess" in SYSTEM_PROMPT
 
 
+def test_system_prompt_requires_honest_failed_sync_status() -> None:
+    assert "Do not describe a failed sync as merely unfinished." in SYSTEM_PROMPT
+    assert "new material may not be visible until a successful sync completes" in SYSTEM_PROMPT
+
+
 @pytest.mark.asyncio
 async def test_execute_tool_get_dream_motifs_includes_motif_uuid() -> None:
     dream_id = uuid.uuid4()
@@ -1150,7 +1159,7 @@ async def test_execute_tool_trigger_sync_formats_single_ref() -> None:
 
     assert result == (
         f"Синхронизация запущена: …doc-123. job_id={job_id}, status=queued. "
-        "Когда она завершится, бот отправит сообщение."
+        "Когда синхронизация завершится или упадёт с ошибкой, бот отправит сообщение."
     )
     facade.trigger_sync.assert_awaited_once_with("doc-123", chat_id=None)
 
@@ -1172,6 +1181,7 @@ async def test_execute_tool_trigger_sync_formats_multiple_refs() -> None:
     assert "Синхронизация запущена для источников: 2." in result
     assert "…doc-a: job_id=" in result
     assert "…doc-b: job_id=" in result
+    assert "Когда синхронизация завершится или упадёт с ошибкой" in result
     facade.trigger_sync.assert_awaited_once_with("", chat_id=None)
 
 
@@ -1200,6 +1210,58 @@ async def test_execute_tool_get_sync_status_formats_statuses() -> None:
     assert "…doc-123: идёт синхронизация" in result
     assert "последняя проверка: 06.05.26 10:00" in result
     facade.get_sync_status.assert_awaited_once_with("doc-123")
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_get_sync_status_formats_failed_status_honestly() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_sync_status.return_value = [
+        SimpleNamespace(
+            doc_id="doc-123",
+            status="failed",
+            last_checked_at="2026-05-09T14:44:44+00:00",
+            last_sync_started_at=None,
+            last_synced_at="2026-04-26T10:16:43+00:00",
+            last_sync_job_id="job-1",
+            is_stale_running=False,
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "get_sync_status",
+        {"doc_id": "doc-123"},
+        facade,
+    )
+
+    assert "последняя синхронизация завершилась ошибкой" in result
+    assert "новые записи из Google Docs могут быть недоступны" in result
+    assert "последний успех: 26.04.26 10:16" in result
+    assert "последняя проверка: 09.05.26 14:44" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_get_sync_status_formats_stale_running_status() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_sync_status.return_value = [
+        SimpleNamespace(
+            doc_id="doc-123",
+            status="running",
+            last_checked_at="2026-05-09T14:44:44+00:00",
+            last_sync_started_at="2026-05-09T12:00:00+00:00",
+            last_synced_at=None,
+            last_sync_job_id="job-1",
+            is_stale_running=True,
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "get_sync_status",
+        {"doc_id": "doc-123"},
+        facade,
+    )
+
+    assert "предыдущая синхронизация выглядит зависшей" in result
+    assert "новые записи из Google Docs могут быть недоступны" in result
 
 
 @pytest.mark.asyncio
@@ -1240,17 +1302,24 @@ async def test_execute_tool_manage_archive_source_list_formats_connected_docs() 
 async def test_execute_tool_manage_archive_source_add_returns_updated_list() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     facade.add_archive_source.return_value = ["doc-primary", "doc-extra"]
+    facade.trigger_sync.return_value = [
+        SimpleNamespace(job_id=uuid.uuid4(), doc_id="doc-extra", status="queued")
+    ]
 
     result = await tools_module.execute_tool(
         "manage_archive_source",
         {"action": "add", "doc_id": "doc-extra"},
         facade,
+        chat_id=42,
     )
 
     assert result.startswith("Archive source added. Sync started. Updated list:")
     assert "(doc-primary)" in result
     assert "(doc-extra)" in result
+    assert "Sync job queued:" in result
+    assert "Когда синхронизация завершится или упадёт с ошибкой" in result
     facade.add_archive_source.assert_called_once_with("doc-extra")
+    facade.trigger_sync.assert_awaited_once_with("doc-extra", chat_id=42)
 
 
 @pytest.mark.asyncio
@@ -1298,3 +1367,45 @@ async def test_execute_tool_add_dream_note_empty_text_returns_error() -> None:
 
     assert result == "note_text is required."
     facade.add_dream_note.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_prepare_dream_interpretation_stores_pending_request() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.prepare_dream_interpretation_request.return_value = SimpleNamespace(
+        dream_id=dream_id,
+        title="Запретная рыба",
+        prompt="approved prompt",
+    )
+    clear_pending_interpretation_request(42)
+
+    result = await tools_module.execute_tool(
+        "prepare_dream_interpretation",
+        {"request": "что значит рыба?"},
+        facade,
+        chat_id=42,
+    )
+
+    assert "Подготовлен запрос на интерпретацию сна «Запретная рыба»." in result
+    assert "ответьте «да»" in result
+    pending = load_pending_interpretation_request(42)
+    assert pending is not None
+    assert pending.dream_id == str(dream_id)
+    assert pending.prompt == "approved prompt"
+    clear_pending_interpretation_request(42)
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_prepare_dream_interpretation_without_dream_returns_message() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.prepare_dream_interpretation_request.return_value = None
+
+    result = await tools_module.execute_tool(
+        "prepare_dream_interpretation",
+        {},
+        facade,
+        chat_id=42,
+    )
+
+    assert result == "Не найден сон для интерпретации."

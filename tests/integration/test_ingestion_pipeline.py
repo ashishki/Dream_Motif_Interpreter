@@ -59,7 +59,8 @@ class StaticGDocsClient:
         self._paragraphs = paragraphs
         self._order_log = order_log
 
-    def fetch_document(self) -> list[str]:
+    def fetch_document(self, document_id: str | None = None) -> list[str]:
+        del document_id
         if self._order_log is not None:
             self._order_log.append("source_connector")
         return list(self._paragraphs)

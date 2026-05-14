@@ -680,13 +680,14 @@ async def execute_tool(
         if len(refs) == 1:
             ref = refs[0]
             return (
-                f"Синхронизация запущена: {get_doc_name(ref.doc_id)}. "
-                f"job_id={ref.job_id}, status={ref.status}. "
+                f"Запустил обновление архива: {get_doc_name(ref.doc_id)}. "
+                "Обычно это занимает 1-2 минуты. "
                 f"{_sync_completion_notice()}"
             )
-        lines = [f"Синхронизация запущена для источников: {len(refs)}."]
+        lines = [f"Запустил обновление архива по документам: {len(refs)}."]
         for ref in refs:
-            lines.append(f"  {get_doc_name(ref.doc_id)}: job_id={ref.job_id}, status={ref.status}")
+            lines.append(f"- {get_doc_name(ref.doc_id)}")
+        lines.append("Обычно это занимает 1-2 минуты на документ.")
         lines.append(_sync_completion_notice())
         return "\n".join(lines)
 
@@ -698,7 +699,7 @@ async def execute_tool(
             return f"Sync status unavailable: {exc}"
         if not statuses:
             return "Нет подключённых Google Docs для синхронизации."
-        lines = ["Состояние синхронизации:"]
+        lines = ["Статус архива:"]
         for index, status in enumerate(statuses, 1):
             lines.append(_format_sync_status_line(index, status))
         return "\n".join(lines)
@@ -727,7 +728,7 @@ async def execute_tool(
             try:
                 refs = await facade.trigger_sync(doc_id, chat_id=chat_id)
                 if refs:
-                    lines.append(f"Sync job queued: {refs[0].job_id}")
+                    lines.append(f"Обновление «{get_doc_name(refs[0].doc_id)}» запущено.")
                     lines.append(_sync_completion_notice())
             except RuntimeError:
                 lines.append("Note: sync could not be started automatically.")
@@ -762,7 +763,7 @@ async def execute_tool(
                 try:
                     refs = await facade.trigger_sync(doc_id, chat_id=chat_id)
                     if refs:
-                        lines.append(f"Sync job queued: {refs[0].job_id}")
+                        lines.append(f"Обновление «{get_doc_name(refs[0].doc_id)}» запущено.")
                         lines.append(_sync_completion_notice())
                 except RuntimeError:
                     lines.append("Note: sync could not be started automatically.")
@@ -807,7 +808,7 @@ async def execute_tool(
             try:
                 refs = await facade.trigger_sync(new_doc_id, chat_id=chat_id)
                 if refs:
-                    lines.append(f"Sync job queued: {refs[0].job_id}")
+                    lines.append(f"Обновление «{get_doc_name(refs[0].doc_id)}» запущено.")
                     lines.append(_sync_completion_notice())
             except RuntimeError:
                 lines.append("Note: sync could not be started automatically.")
@@ -924,20 +925,29 @@ def _format_sync_status_line(index: int, status: Any) -> str:
     doc_label = get_doc_name(status.doc_id)
     if status.status == "running" and status.is_stale_running:
         state_text = (
-            "предыдущая синхронизация выглядит зависшей; новые записи из Google Docs "
-            "могут быть недоступны до успешного завершения"
+            "похоже зависла; новые сны из этого документа пока могут не находиться. "
+            "Можно перезапустить синхронизацию"
         )
     elif status.status == "running":
-        state_text = "идёт синхронизация"
+        started_suffix = _format_started_suffix(status.last_sync_started_at)
+        state_text = f"синхронизируется{started_suffix}; обычно это занимает 1-2 минуты"
     elif status.status == "synced":
-        state_text = "синхронизировано"
+        added_count = getattr(status, "last_added_count", None)
+        if added_count is None:
+            state_text = "готово"
+        elif added_count == 0:
+            state_text = "готово; новых снов не найдено"
+        else:
+            state_text = f"готово; добавлено {added_count} новых снов"
     elif status.status == "failed":
+        error = getattr(status, "last_sync_error", None)
+        error_suffix = f": {error}" if error else ""
         state_text = (
-            "последняя синхронизация завершилась ошибкой; новые записи из Google Docs "
-            "могут быть недоступны до следующего успешного запуска"
+            f"последняя синхронизация завершилась ошибкой{error_suffix}; новые сны "
+            "из Google Docs могут пока не находиться"
         )
     elif status.status == "never":
-        state_text = "ещё не синхронизировалось"
+        state_text = "ещё не проверялся"
     else:
         state_text = status.status
 
@@ -946,14 +956,12 @@ def _format_sync_status_line(index: int, status: Any) -> str:
         details.append(f"последний успех: {_format_sync_timestamp(status.last_synced_at)}")
     if status.last_checked_at:
         details.append(f"последняя проверка: {_format_sync_timestamp(status.last_checked_at)}")
-    if status.last_sync_job_id:
-        details.append(f"job_id={status.last_sync_job_id}")
     suffix = f" ({'; '.join(details)})" if details else ""
     return f"{index}. {doc_label}: {state_text}{suffix}"
 
 
 def _sync_completion_notice() -> str:
-    return "Когда синхронизация завершится или упадёт с ошибкой, бот отправит сообщение."
+    return "Я напишу, когда документ будет готов или если синхронизация не получится."
 
 
 def _format_sync_timestamp(value: str) -> str:
@@ -962,6 +970,22 @@ def _format_sync_timestamp(value: str) -> str:
     except ValueError:
         return value
     return parsed.strftime("%d.%m.%y %H:%M")
+
+
+def _format_started_suffix(value: str | None) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return ""
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.now().astimezone().tzinfo)
+    elapsed_seconds = max(0, int((datetime.now(parsed.tzinfo) - parsed).total_seconds()))
+    if elapsed_seconds < 60:
+        return " меньше минуты"
+    minutes = max(1, elapsed_seconds // 60)
+    return f" {minutes} мин назад"
 
 
 def _format_search_result_payload(item: Any) -> list[str]:

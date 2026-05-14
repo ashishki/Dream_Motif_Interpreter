@@ -45,3 +45,21 @@ P3 risk: Google Docs insertion indexes are covered by unit fixtures for middle, 
 - No database migration required.
 - Restart `dream-motif-telegram.service` so new tool schemas, prompt rules, and pending interpretation state are live.
 - Restart `dream-motif-auto-sync.service` so duplicate fail-soft ingestion is active in the scheduled loop.
+
+## 2026-05-14 Follow-up
+
+User feedback after the first Phase 22 release showed the remaining sync pain was operational
+clarity across multiple Google Docs. The follow-up made sync state per-document and more readable:
+
+- `GDocsClient.fetch_document()` accepts an optional document ID.
+- `ingest_document` passes the target `doc_id`, so manual sync of a non-primary source reads the
+  intended Google Doc.
+- The auto-sync loop checks every connected Google Doc from `get_all_doc_ids()`.
+- Manual sync updates the same Redis auto-sync state that `get_sync_status` reads.
+- User-facing sync messages hide `job_id`, name the document, explain 1-2 minute normal timing,
+  and distinguish `added N`, `new dreams not found`, `failed`, and `stale`.
+
+Verification:
+
+- `.venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/integration/test_workers.py -q --tb=short` -> 152 passed, 1 warning.
+- Ruff check/format clean for touched files.

@@ -155,6 +155,8 @@ SYSTEM_PROMPT = (
     "dream is not visible yet, call get_sync_status before answering. "
     "If sync is running, stale, failed, or never completed, say that new material may not be "
     "visible until a successful sync completes. Do not describe a failed sync as merely unfinished. "
+    "Do not show job_id or raw Google Doc IDs unless the user explicitly asks for technical details. "
+    "Use the document names and explain what the status means for what the user can do next. "
     "When the user wants to add or create a Google Doc archive source:\n"
     "- If they give a URL or bare ID: call manage_archive_source action='add' with doc_id.\n"
     "- If they give a document name and it likely already exists: call action='find' with title.\n"

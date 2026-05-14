@@ -59,8 +59,8 @@ class GDocsClient:
         self._settings = settings or get_settings()
         self._tracer = get_tracer(__name__)
 
-    def fetch_document(self) -> list[str]:
-        document = self.fetch_document_resource()
+    def fetch_document(self, document_id: str | None = None) -> list[str]:
+        document = self.fetch_document_resource(document_id)
         paragraphs = _extract_paragraphs(document)
         logger.info("Fetched Google Docs document")
         return paragraphs

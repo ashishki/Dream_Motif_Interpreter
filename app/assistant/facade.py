@@ -163,6 +163,9 @@ class ArchiveSyncStatus:
     last_synced_at: str | None
     last_sync_job_id: str | None
     is_stale_running: bool = False
+    last_sync_error: str | None = None
+    last_added_count: int | None = None
+    last_sync_stage: str | None = None
 
 
 @dataclass(frozen=True)
@@ -857,6 +860,9 @@ class AssistantFacade:
                     last_synced_at=state.last_synced_at,
                     last_sync_job_id=state.last_sync_job_id,
                     is_stale_running=_sync_state_looks_stale(state),
+                    last_sync_error=getattr(state, "last_sync_error", None),
+                    last_added_count=getattr(state, "last_added_count", None),
+                    last_sync_stage=getattr(state, "last_sync_stage", None),
                 )
             )
         return statuses
@@ -1230,7 +1236,7 @@ def _sync_state_looks_stale(state: Any) -> bool:
         return True
     if started_at.tzinfo is None:
         started_at = started_at.replace(tzinfo=timezone.utc)
-    stale_after_seconds = max(get_settings().AUTO_SYNC_INTERVAL_SECONDS * 2, 600)
+    stale_after_seconds = max(get_settings().AUTO_SYNC_INTERVAL_SECONDS * 2, 300)
     return (datetime.now(timezone.utc) - started_at).total_seconds() > stale_after_seconds
 
 

@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.18
-Last updated: 2026-05-09
+Version: 1.19
+Last updated: 2026-05-14
 Status: append-only
 
 ---
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-14 — Phase 22 Follow-up — Multi-Doc Sync UX
+
+- Scope: `app/services/auto_sync.py`, `app/api/dreams.py`, `app/workers/ingest.py`, `app/services/gdocs_client.py`, `app/assistant/{facade,prompts,tools}.py`, sync tests and docs.
+- Why this work happened: user feedback on 2026-05-10 showed sync still felt opaque and frustrating when multiple Google Docs were involved; manual restart could report a document finished with 0 entries while the user could not tell whether the correct file was actually processed.
+- Decisions applied: D-018.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/integration/test_workers.py -q --tb=short` -> 152 passed, 1 warning; ruff check/format clean for touched files; services restarted and active.
+- Follow-ups: run a live smoke against a non-primary connected Google Doc after the next manual source edit.
+- Notes for next agent: `GDocsClient.fetch_document(document_id)` now accepts an optional document ID; `ingest_document` must pass the target `doc_id`. Normal user sync copy must not expose `job_id` unless the user asks for technical detail.
 
 ### 2026-05-09 — Phase 22 Planning — Test 7/8 Sync, Notes, Titles, Interpretation
 

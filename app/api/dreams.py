@@ -5,6 +5,7 @@ import hmac
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Protocol
 
@@ -313,6 +314,7 @@ class LocalAsyncJobEnqueuer:
     ) -> None:
         from app.workers.ingest import ingest_document
 
+        await write_sync_job_state(self._redis_client, job_id, SyncJobState(status="queued"))
         if chat_id is not None:
             await set_sync_notify(self._redis_client, job_id, chat_id)
 
@@ -323,17 +325,76 @@ class LocalAsyncJobEnqueuer:
         task.add_done_callback(self._tasks.discard)
 
     async def _run_ingest_job(self, *, job_id: uuid.UUID, doc_id: str, ingest_document) -> None:
+        from app.services.auto_sync import AutoSyncState, read_auto_sync_state
+        from app.services.auto_sync import write_auto_sync_state
+
+        started_at = _utcnow_iso()
+        previous_state = await read_auto_sync_state(self._redis_client, doc_id)
+        gdocs_client = GDocsClient()
+        await write_auto_sync_state(
+            self._redis_client,
+            doc_id,
+            AutoSyncState(
+                last_seen_marker=previous_state.last_seen_marker,
+                last_checked_at=started_at,
+                last_sync_started_at=started_at,
+                last_synced_at=previous_state.last_synced_at,
+                last_sync_job_id=str(job_id),
+                last_sync_status="running",
+                last_sync_error=None,
+                last_added_count=None,
+                last_sync_stage="store",
+            ),
+        )
         try:
-            await ingest_document(
+            added_count = await ingest_document(
                 {
                     "redis": self._redis_client,
                     "session_factory": self._session_factory,
-                    "gdocs_client": GDocsClient(),
+                    "gdocs_client": gdocs_client,
                 },
                 job_id=job_id,
                 doc_id=doc_id,
             )
+            try:
+                metadata = await asyncio.to_thread(gdocs_client.fetch_document_metadata, doc_id)
+                last_seen_marker = metadata.change_marker
+            except Exception:
+                logger.warning("sync.metadata_refresh_failed", doc_id=doc_id, exc_info=True)
+                last_seen_marker = previous_state.last_seen_marker
+            synced_at = _utcnow_iso()
+            await write_auto_sync_state(
+                self._redis_client,
+                doc_id,
+                AutoSyncState(
+                    last_seen_marker=last_seen_marker,
+                    last_checked_at=synced_at,
+                    last_sync_started_at=None,
+                    last_synced_at=synced_at,
+                    last_sync_job_id=str(job_id),
+                    last_sync_status="synced",
+                    last_sync_error=None,
+                    last_added_count=added_count,
+                    last_sync_stage="done",
+                ),
+            )
         except Exception:
+            failed_at = _utcnow_iso()
+            await write_auto_sync_state(
+                self._redis_client,
+                doc_id,
+                AutoSyncState(
+                    last_seen_marker=previous_state.last_seen_marker,
+                    last_checked_at=failed_at,
+                    last_sync_started_at=None,
+                    last_synced_at=previous_state.last_synced_at,
+                    last_sync_job_id=str(job_id),
+                    last_sync_status="failed",
+                    last_sync_error="Внутренняя ошибка синхронизации",
+                    last_added_count=None,
+                    last_sync_stage="failed",
+                ),
+            )
             logger.exception("sync.ingest_job_failed", job_id=str(job_id))
 
     async def get_auto_sync_status(self, doc_id: str):
@@ -371,6 +432,10 @@ def _get_redis_client():
     if _REDIS_CLIENT is None:
         _REDIS_CLIENT = _build_redis_client()
     return _REDIS_CLIENT
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _sync_job_key(job_id: uuid.UUID) -> str:

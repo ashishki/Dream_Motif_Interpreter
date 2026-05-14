@@ -1,7 +1,7 @@
 # Evidence Index — Dream Motif Interpreter
 
-Version: 1.1
-Last updated: 2026-05-09
+Version: 1.2
+Last updated: 2026-05-14
 Status: append-only
 
 ---
@@ -30,6 +30,7 @@ Lookup table for proof artifacts across review cycles, retrieval evaluations, an
 | EV-012 | planning | Phase 22 planning | 2026-05-09 | `docs/tasks_phase22.md` | Development loop, task order, acceptance criteria, and verification plan for Test 7/8 are documented before implementation | Active |
 | EV-013 | live-check | Phase 22 implementation | 2026-05-09 | `docs/retrieval_eval.md §Phase 22 Manual Google Doc Freshness Regression` | Live sync recovered to `synced`; DB/search now finds `5.11.24 запретная рыба` for `сон с рыбой` | Active |
 | EV-014 | review | Phase 22 implementation | 2026-05-09 | `docs/archive/PHASE22_REVIEW.md` | Deep review findings, verification commands, live checks, and residual risks for Test 7/8 closure | Active |
+| EV-015 | test-coverage | Phase 22 follow-up | 2026-05-14 | `tests/unit/test_auto_sync.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_ingest_notify.py`, `tests/integration/test_workers.py` | Multi-doc sync fetches the requested Google Doc ID; sync status hides `job_id`, explains stale/failed/zero-entry states, and notifications use user-readable copy | Active |
 
 ---
 

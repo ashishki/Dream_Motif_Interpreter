@@ -1,6 +1,6 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-05-09 (Phase 22 Test 7/8 smoke checks)
+Last updated: 2026-05-14 (multi-doc sync UX and stale-status checks)
 
 ## 1. Purpose
 
@@ -94,9 +94,10 @@ interpretation.
 systemctl is-active dream-motif-api.service dream-motif-auto-sync.service dream-motif-telegram.service
 ```
 
-2. Inspect auto-sync state for the primary doc and confirm `last_sync_status` is `synced` or an
-honest recent failure, not a stale `running` state.
-3. Trigger one sync and verify the bot tells the user it will notify when sync completes or fails.
+2. Inspect auto-sync state for every connected Google Doc and confirm `last_sync_status` is
+   `synced`, `running`, `failed`, or `never` with honest timestamps.
+3. Trigger one sync and verify the bot says it normally takes 1-2 minutes, will notify on
+   completion/failure, and does not expose `job_id` in the user-facing message.
 4. Verify the current Google Doc can contain duplicate parsed candidates without aborting the
 whole sync.
 5. Verify `dream_entries` contains `5.11.24 запретная рыба`.
@@ -116,18 +117,35 @@ Auto-sync Redis inspection helper:
 import asyncio
 from redis import asyncio as aioredis
 from app.services.auto_sync import read_auto_sync_state
-from app.shared.config import get_effective_google_doc_id, get_settings
+from app.shared.config import get_all_doc_ids, get_settings
 
 async def main():
     redis = aioredis.from_url(get_settings().REDIS_URL)
     try:
-        print(await read_auto_sync_state(redis, get_effective_google_doc_id()))
+        for doc_id in get_all_doc_ids():
+            print(doc_id, await read_auto_sync_state(redis, doc_id))
     finally:
         await redis.aclose()
 
 asyncio.run(main())
 PY
 ```
+
+Expected user-facing sync copy:
+
+- Running: `синхронизируется ... обычно это занимает 1-2 минуты`.
+- Stale: `похоже зависла; новые сны из этого документа пока могут не находиться`.
+- Synced with entries: `готово; добавлено N новых снов`.
+- Synced with zero entries: `готово; новых снов не найдено`.
+- Failed: names the error and says new Google Docs dreams may not be findable yet.
+
+Manual multi-doc sync smoke:
+
+1. Add or edit a dream in a non-primary connected Google Doc.
+2. Trigger `обнови архив` or wait for auto-sync.
+3. Verify logs/Redis show sync state for that exact document ID.
+4. Verify `ingest_document` fetched that document, not the primary document.
+5. Ask `какой статус синхронизации?`; verify the reply uses document names and hides raw `job_id`.
 
 Automated Phase 22 regression slice:
 

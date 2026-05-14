@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.services.gdocs_client import GDocsClient, GoogleDocMetadata
-from app.shared.config import get_settings
+from app.shared.config import get_all_doc_ids, get_settings
 from app.shared.tracing import get_logger
 from app.workers.ingest import ingest_document
 
@@ -25,6 +25,9 @@ class AutoSyncState:
     last_synced_at: str | None = None
     last_sync_job_id: str | None = None
     last_sync_status: str = "never"
+    last_sync_error: str | None = None
+    last_added_count: int | None = None
+    last_sync_stage: str | None = None
 
 
 @dataclass(frozen=True)
@@ -39,13 +42,14 @@ async def run_auto_sync_once(
     redis_client: Any,
     session_factory: async_sessionmaker[AsyncSession],
     gdocs_client: GDocsClient | None = None,
+    doc_id: str | None = None,
 ) -> AutoSyncResult:
     settings = get_settings()
     if not settings.AUTO_SYNC_ENABLED:
         return AutoSyncResult(action="disabled", marker="")
 
     client = gdocs_client or GDocsClient(settings=settings)
-    metadata = await asyncio.to_thread(client.fetch_document_metadata)
+    metadata = await asyncio.to_thread(client.fetch_document_metadata, doc_id)
     marker = metadata.change_marker
     state = await read_auto_sync_state(redis_client, metadata.document_id)
     now = _utcnow().isoformat()
@@ -61,6 +65,9 @@ async def run_auto_sync_once(
                 last_synced_at=state.last_synced_at,
                 last_sync_job_id=state.last_sync_job_id,
                 last_sync_status=state.last_sync_status,
+                last_sync_error=state.last_sync_error,
+                last_added_count=state.last_added_count,
+                last_sync_stage=state.last_sync_stage,
             ),
         )
         return AutoSyncResult(action="no_change", marker=marker, job_id=state.last_sync_job_id)
@@ -76,11 +83,14 @@ async def run_auto_sync_once(
             last_synced_at=state.last_synced_at,
             last_sync_job_id=job_id,
             last_sync_status="running",
+            last_sync_error=None,
+            last_added_count=None,
+            last_sync_stage="store",
         ),
     )
 
     try:
-        await ingest_document(
+        added_count = await ingest_document(
             {
                 "redis": redis_client,
                 "session_factory": session_factory,
@@ -100,6 +110,9 @@ async def run_auto_sync_once(
                 last_synced_at=state.last_synced_at,
                 last_sync_job_id=job_id,
                 last_sync_status="failed",
+                last_sync_error="Внутренняя ошибка синхронизации",
+                last_added_count=None,
+                last_sync_stage="failed",
             ),
         )
         raise
@@ -115,6 +128,9 @@ async def run_auto_sync_once(
             last_synced_at=synced_at,
             last_sync_job_id=job_id,
             last_sync_status="synced",
+            last_sync_error=None,
+            last_added_count=added_count,
+            last_sync_stage="done",
         ),
     )
     return AutoSyncResult(action="synced", marker=marker, job_id=job_id)
@@ -134,20 +150,23 @@ async def run_auto_sync_loop(
 
     logger.info("auto_sync.loop_started", interval_seconds=settings.AUTO_SYNC_INTERVAL_SECONDS)
     while True:
-        try:
-            result = await run_auto_sync_once(
-                redis_client=redis_client,
-                session_factory=session_factory,
-                gdocs_client=gdocs_client,
-            )
-            logger.info(
-                "auto_sync.loop_iteration_completed",
-                action=result.action,
-                marker=result.marker,
-                job_id=result.job_id,
-            )
-        except Exception:
-            logger.exception("auto_sync.loop_iteration_failed")
+        for doc_id in get_all_doc_ids():
+            try:
+                result = await run_auto_sync_once(
+                    redis_client=redis_client,
+                    session_factory=session_factory,
+                    gdocs_client=gdocs_client,
+                    doc_id=doc_id,
+                )
+                logger.info(
+                    "auto_sync.loop_iteration_completed",
+                    doc_id=doc_id,
+                    action=result.action,
+                    marker=result.marker,
+                    job_id=result.job_id,
+                )
+            except Exception:
+                logger.exception("auto_sync.loop_iteration_failed", doc_id=doc_id)
 
         await asyncio.sleep(settings.AUTO_SYNC_INTERVAL_SECONDS)
 
@@ -165,6 +184,9 @@ async def read_auto_sync_state(redis_client: Any, document_id: str) -> AutoSyncS
         last_synced_at=data.get("last_synced_at"),
         last_sync_job_id=data.get("last_sync_job_id"),
         last_sync_status=str(data.get("last_sync_status") or "never"),
+        last_sync_error=data.get("last_sync_error"),
+        last_added_count=data.get("last_added_count"),
+        last_sync_stage=data.get("last_sync_stage"),
     )
 
 
@@ -191,6 +213,9 @@ def build_auto_sync_state_from_metadata(
         last_synced_at=last_synced_at,
         last_sync_job_id=last_sync_job_id,
         last_sync_status=last_sync_status,
+        last_sync_error=None,
+        last_added_count=None,
+        last_sync_stage=None,
     )
 
 
@@ -216,5 +241,5 @@ def _is_stale_running_state(state: AutoSyncState) -> bool:
         started_at = started_at.replace(tzinfo=timezone.utc)
 
     settings = get_settings()
-    stale_after_seconds = max(settings.AUTO_SYNC_INTERVAL_SECONDS * 2, 600)
+    stale_after_seconds = max(settings.AUTO_SYNC_INTERVAL_SECONDS * 2, 300)
     return (_utcnow() - started_at).total_seconds() > stale_after_seconds

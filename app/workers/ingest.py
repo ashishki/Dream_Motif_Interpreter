@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 
 class SupportsFetchDocument(Protocol):
-    def fetch_document(self) -> list[str]: ...
+    def fetch_document(self, document_id: str | None = None) -> list[str]: ...
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,7 @@ async def ingest_document(ctx: dict[str, Any], *, job_id: uuid.UUID, doc_id: str
         try:
             with tracer.start_as_current_span("worker.ingest_document.fetch_source") as fetch_span:
                 fetch_span.set_attribute("doc_id", doc_id)
-                paragraphs = await asyncio.to_thread(gdocs_client.fetch_document)
+                paragraphs = await asyncio.to_thread(gdocs_client.fetch_document, doc_id)
             fetched_document = FetchedSourceDocument(
                 source_type="google_doc",
                 external_id=doc_id,
@@ -240,9 +240,20 @@ async def _notify_sync_complete(
 
         doc_label = get_doc_name(doc_id)
         if error is None:
-            text = f"Синхронизация завершена: {doc_label}. Добавлено {count} записей."
+            if count == 0:
+                text = (
+                    f"Синхронизация «{doc_label}» завершена. Новых снов не найдено. "
+                    "Если вы точно добавляли новые сны, возможно, бот не распознал их формат."
+                )
+            else:
+                text = (
+                    f"Готово: добавлено {count} новых снов из «{doc_label}». Можно с ними работать."
+                )
         else:
-            text = f"Синхронизация не удалась: {error}."
+            text = (
+                f"Синхронизация «{doc_label}» не удалась: {error}. "
+                "Новые сны из этого документа пока могут не находиться."
+            )
 
         with tracer.start_as_current_span("http.telegram.send_sync_notification") as span:
             span.set_attribute("job_id", str(job_id))

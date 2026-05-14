@@ -1,8 +1,8 @@
 # CODEX_PROMPT.md
 
-Version: 1.72
-Date: 2026-05-09
-Phase: Phase 22 implemented — Test 7/8 sync, notes, titles, interpretation approval
+Version: 1.73
+Date: 2026-05-14
+Phase: Phase 22 follow-up implemented — multi-doc sync UX and status clarity
 
 ---
 
@@ -11,18 +11,19 @@ Phase: Phase 22 implemented — Test 7/8 sync, notes, titles, interpretation app
 - **Phase:** Phase 22 is implemented from Test 7 (2025-05-06) and Test 8 (2026-05-09); see `docs/tasks_phase22.md` and `docs/archive/PHASE22_REVIEW.md`.
 - **Live audit baseline:** On 2026-05-09 all three services were active, but Google Docs auto-sync was failing every cycle. Redis state for the primary doc reported `last_sync_status=failed`, `last_synced_at=2026-04-26T10:16:43.458320+00:00`, and logs showed `DreamEntryValidationError: Dream entry candidates must not duplicate content_hash values within one document`.
 - **Phase 22 live result:** duplicate parsed candidates are skipped fail-soft, one live auto-sync completed with `last_sync_status=synced`, and `сон с рыбой` returns `5.11.24 запретная рыба` first with exact archive evidence.
+- **Phase 22 follow-up:** manual and automatic sync now track richer per-document state, hide `job_id` from normal user messages, explain zero-new-entry syncs, consider stale running syncs after 5 minutes, and fetch/sync the requested Google Doc ID instead of always reading the primary document.
 - **Ruff:** previous Phase 21 touched-code state was clean; rerun before any Phase 22 implementation.
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-09 (Phase 22 implementation and deep review)
+- **Last updated:** 2026-05-14 (multi-doc sync UX follow-up)
 
 ---
 
 ## Summary State
 
 - **Phases completed:** Phase 1 through Phase 22 have task graphs and completion notes.
-- **Current planning state:** Phase 22 closed; next work should start from a new task graph unless it is a small hotfix.
-- **Latest completed implementation task:** WS-22.7 — regression gate, docs, deep review.
-- **Current baseline:** Phase 22 combined gate passed (`.venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_rag_ingestion.py tests/unit/test_segmentation.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short` -> 225 passed, 1 warning); `ruff check app tests` and `ruff format --check app tests` clean.
+- **Current planning state:** Phase 22 is closed plus one follow-up hotfix for multi-doc sync UX.
+- **Latest completed implementation task:** Phase 22 follow-up — multi-doc sync status and user-facing clarity.
+- **Current baseline:** Follow-up gate passed (`.venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/integration/test_workers.py -q --tb=short` -> 152 passed, 1 warning); ruff check/format clean for touched files.
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -33,7 +34,7 @@ Phase: Phase 22 implemented — Test 7/8 sync, notes, titles, interpretation app
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
 - **Mandatory local workflow:** `docs/prompts/ORCHESTRATOR.md`
-- **Active task graph:** `docs/tasks_phase22.md` (Test 7/8 sync, notes, title extraction, interpretation approval)
+- **Latest task graph:** `docs/tasks_phase22.md` (Test 7/8 sync, notes, title extraction, interpretation approval)
 - **Previous task graph:** `docs/tasks_phase21.md` (Test 6 recording/search regressions)
 - **Previous task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
 - **Previous task graph:** `docs/tasks_phase19.md` (direct title search)
@@ -61,7 +62,7 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 Next phase: TBD.
 Baseline: Phase 22 closed after fixing duplicate-source sync failures, sync transparency,
 fish/manual Google Doc recall, note placement, title intake cleanup, and user-approved dream
-interpretation.
+interpretation. Follow-up on 2026-05-14 fixed multi-doc sync and clearer status UX.
 Goal:
   Choose the next task from new user feedback or a dedicated planning pass. Do not treat Phase 22
   as still open except for explicitly listed residual follow-ups.
@@ -267,25 +268,22 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (58 Closed, 
 - RAG Status: ON
 - Active corpora: dream_entries (full pipeline implemented — ingestion, chunking, embedding, pgvector indexing complete at T10; hybrid query pipeline complete at T11; HNSW index live)
 - Retrieval baseline: synthetic-20-entries baseline established at T12 (`hit@3=1.00`, `MRR=1.00`, `no-answer accuracy=1.00`)
-- Open retrieval findings: Phase 22 P0 — Google Docs auto-sync has failed since the last successful
-  sync on 2026-04-26, so manually added Google Doc entries are missing from the DB/index. The
-  concrete Test 8 fish regression (`5.11.24 запретная рыба`) is expected to resolve only after
-  WS-22.1/WS-22.3 repair sync and reindex current Google Doc content.
+- Open retrieval findings: none from Phase 22. Duplicate-source sync failure and the concrete Test 8
+  fish regression (`5.11.24 запретная рыба`) are resolved. Follow-up fixed multi-doc sync so
+  manual sync of a non-primary document fetches that document ID.
 - Index schema version: v1 (implemented in ingestion.py; HNSW index migration 006 applied)
 - Pending reindex actions: none
-- Retrieval-related next tasks: `docs/tasks_phase22.md` WS-22.1 and WS-22.3
-- Retrieval-driven tasks: fail-soft duplicate handling, live reindex, fish/manual-sync regression eval
+- Retrieval-related next tasks: none currently assigned
+- Retrieval-driven tasks: monitor multi-doc sync smoke after deployment
 
 ---
 
 ## Tool-Use State
 
 - Tool-Use Profile: ON (bounded)
-- Registered tool schemas: `search_dreams`, `search_dreams_exact`, `search_dreams_by_title`, `get_dream`, `list_recent_dreams`, `get_patterns`, `get_theme_history`, `trigger_sync`, `create_dream`, `add_dream_note`, `retry_write_to_google_doc`, `manage_archive_source`; optional `get_dream_motifs` and `research_motif_parallels` are feature-flag gated.
-- Unsafe-action guardrails: `create_dream` requires explicit current-message save intent; `research_motif_parallels` requires explicit user confirmation; title-search ambiguity is presented as options, not guessed.
-- Open tool findings: Phase 22 P0 — `add_dream_note` currently inserts under the heading rather
-  than at the end of the target dream body; whole-dream LLM interpretation with explicit user
-  approval is not yet implemented.
+- Registered tool schemas: `search_dreams`, `search_dreams_exact`, `search_dreams_by_title`, `get_dream`, `prepare_dream_interpretation`, `list_recent_dreams`, `get_patterns`, `get_theme_history`, `trigger_sync`, `create_dream`, `add_dream_note`, `retry_write_to_google_doc`, `manage_archive_source`; optional `get_dream_motifs` and `research_motif_parallels` are feature-flag gated.
+- Unsafe-action guardrails: `create_dream` requires explicit current-message save intent; `prepare_dream_interpretation` requires approval before LLM interpretation; `research_motif_parallels` requires explicit user confirmation; title-search ambiguity is presented as options, not guessed.
+- Open tool findings: none from Phase 22. Normal sync messages hide `job_id`/raw doc IDs and explain what the status means for user action.
 
 ---
 

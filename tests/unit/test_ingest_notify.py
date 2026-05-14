@@ -61,10 +61,36 @@ async def test_notify_sync_complete_sends_message_on_success() -> None:
         "https://api.telegram.org/botbot-token/sendMessage",
         json={
             "chat_id": 12345,
-            "text": "Синхронизация завершена: Сны Николая. Добавлено 3 записей.",
+            "text": "Готово: добавлено 3 новых снов из «Сны Николая». Можно с ними работать.",
         },
     )
     response.raise_for_status.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_notify_sync_complete_explains_zero_new_entries() -> None:
+    job_id = uuid4()
+    redis_client = AsyncMock()
+    settings = SimpleNamespace(TELEGRAM_BOT_TOKEN="bot-token")
+    response = MagicMock()
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.__aexit__.return_value = False
+    client.post.return_value = response
+
+    with (
+        patch("app.workers.ingest.get_and_delete_sync_notify", AsyncMock(return_value=12345)),
+        patch("app.workers.ingest.get_settings", return_value=settings),
+        patch("app.workers.ingest.get_doc_name", return_value="Сны Николая"),
+        patch("httpx.AsyncClient", return_value=client),
+    ):
+        await _notify_sync_complete(redis_client, job_id, count=0, doc_id="doc-123", error=None)
+
+    client.post.assert_awaited_once()
+    assert client.post.call_args.kwargs["json"]["text"] == (
+        "Синхронизация «Сны Николая» завершена. Новых снов не найдено. "
+        "Если вы точно добавляли новые сны, возможно, бот не распознал их формат."
+    )
 
 
 @pytest.mark.asyncio

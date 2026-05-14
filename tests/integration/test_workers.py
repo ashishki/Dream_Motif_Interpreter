@@ -76,12 +76,14 @@ class StaticGDocsClient:
     def __init__(self, paragraphs: list[str]) -> None:
         self._paragraphs = paragraphs
 
-    def fetch_document(self) -> list[str]:
+    def fetch_document(self, document_id: str | None = None) -> list[str]:
+        del document_id
         return list(self._paragraphs)
 
 
 class AuthFailingGDocsClient:
-    def fetch_document(self) -> list[str]:
+    def fetch_document(self, document_id: str | None = None) -> list[str]:
+        del document_id
         raise GDocsAuthError("Google Docs authentication failed")
 
 

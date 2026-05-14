@@ -1158,9 +1158,11 @@ async def test_execute_tool_trigger_sync_formats_single_ref() -> None:
     )
 
     assert result == (
-        f"Синхронизация запущена: …doc-123. job_id={job_id}, status=queued. "
-        "Когда синхронизация завершится или упадёт с ошибкой, бот отправит сообщение."
+        "Запустил обновление архива: …doc-123. "
+        "Обычно это занимает 1-2 минуты. "
+        "Я напишу, когда документ будет готов или если синхронизация не получится."
     )
+    assert str(job_id) not in result
     facade.trigger_sync.assert_awaited_once_with("doc-123", chat_id=None)
 
 
@@ -1178,10 +1180,11 @@ async def test_execute_tool_trigger_sync_formats_multiple_refs() -> None:
         facade,
     )
 
-    assert "Синхронизация запущена для источников: 2." in result
-    assert "…doc-a: job_id=" in result
-    assert "…doc-b: job_id=" in result
-    assert "Когда синхронизация завершится или упадёт с ошибкой" in result
+    assert "Запустил обновление архива по документам: 2." in result
+    assert "- …doc-a" in result
+    assert "- …doc-b" in result
+    assert "job_id" not in result
+    assert "Я напишу, когда документ будет готов" in result
     facade.trigger_sync.assert_awaited_once_with("", chat_id=None)
 
 
@@ -1197,6 +1200,9 @@ async def test_execute_tool_get_sync_status_formats_statuses() -> None:
             last_synced_at=None,
             last_sync_job_id="job-1",
             is_stale_running=False,
+            last_sync_error=None,
+            last_added_count=None,
+            last_sync_stage="store",
         )
     ]
 
@@ -1206,9 +1212,11 @@ async def test_execute_tool_get_sync_status_formats_statuses() -> None:
         facade,
     )
 
-    assert "Состояние синхронизации:" in result
-    assert "…doc-123: идёт синхронизация" in result
+    assert "Статус архива:" in result
+    assert "…doc-123: синхронизируется" in result
+    assert "обычно это занимает 1-2 минуты" in result
     assert "последняя проверка: 06.05.26 10:00" in result
+    assert "job_id" not in result
     facade.get_sync_status.assert_awaited_once_with("doc-123")
 
 
@@ -1224,6 +1232,9 @@ async def test_execute_tool_get_sync_status_formats_failed_status_honestly() -> 
             last_synced_at="2026-04-26T10:16:43+00:00",
             last_sync_job_id="job-1",
             is_stale_running=False,
+            last_sync_error="Внутренняя ошибка синхронизации",
+            last_added_count=None,
+            last_sync_stage="failed",
         )
     ]
 
@@ -1234,9 +1245,38 @@ async def test_execute_tool_get_sync_status_formats_failed_status_honestly() -> 
     )
 
     assert "последняя синхронизация завершилась ошибкой" in result
-    assert "новые записи из Google Docs могут быть недоступны" in result
+    assert "новые сны из Google Docs могут пока не находиться" in result
+    assert "Внутренняя ошибка синхронизации" in result
     assert "последний успех: 26.04.26 10:16" in result
     assert "последняя проверка: 09.05.26 14:44" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_get_sync_status_explains_zero_new_entries() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_sync_status.return_value = [
+        SimpleNamespace(
+            doc_id="doc-123",
+            status="synced",
+            last_checked_at="2026-05-09T14:44:44+00:00",
+            last_sync_started_at=None,
+            last_synced_at="2026-05-09T14:44:44+00:00",
+            last_sync_job_id="job-1",
+            is_stale_running=False,
+            last_sync_error=None,
+            last_added_count=0,
+            last_sync_stage="done",
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "get_sync_status",
+        {"doc_id": "doc-123"},
+        facade,
+    )
+
+    assert "готово; новых снов не найдено" in result
+    assert "job_id" not in result
 
 
 @pytest.mark.asyncio
@@ -1251,6 +1291,9 @@ async def test_execute_tool_get_sync_status_formats_stale_running_status() -> No
             last_synced_at=None,
             last_sync_job_id="job-1",
             is_stale_running=True,
+            last_sync_error=None,
+            last_added_count=None,
+            last_sync_stage="store",
         )
     ]
 
@@ -1260,8 +1303,9 @@ async def test_execute_tool_get_sync_status_formats_stale_running_status() -> No
         facade,
     )
 
-    assert "предыдущая синхронизация выглядит зависшей" in result
-    assert "новые записи из Google Docs могут быть недоступны" in result
+    assert "похоже зависла" in result
+    assert "новые сны из этого документа пока могут не находиться" in result
+    assert "Можно перезапустить синхронизацию" in result
 
 
 @pytest.mark.asyncio
@@ -1316,8 +1360,9 @@ async def test_execute_tool_manage_archive_source_add_returns_updated_list() -> 
     assert result.startswith("Archive source added. Sync started. Updated list:")
     assert "(doc-primary)" in result
     assert "(doc-extra)" in result
-    assert "Sync job queued:" in result
-    assert "Когда синхронизация завершится или упадёт с ошибкой" in result
+    assert "Обновление" in result
+    assert "job_id" not in result
+    assert "Я напишу, когда документ будет готов" in result
     facade.add_archive_source.assert_called_once_with("doc-extra")
     facade.trigger_sync.assert_awaited_once_with("doc-extra", chat_id=42)
 

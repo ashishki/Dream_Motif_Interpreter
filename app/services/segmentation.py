@@ -20,9 +20,22 @@ from app.retrieval.types import (
 from app.shared.tracing import get_tracer
 
 _DATE_PATTERNS = (
-    ("%Y-%m-%d", re.compile(r"^(?P<value>\d{4}-\d{2}-\d{2})$")),
-    ("%d.%m.%Y", re.compile(r"^(?P<value>\d{2}\.\d{2}\.\d{4})$")),
+    ("%Y-%m-%d", re.compile(r"^(?P<value>\d{4}-\d{1,2}-\d{1,2})$")),
+    ("%d.%m.%y", re.compile(r"^(?P<value>\d{1,2}\.\d{1,2}\.\d{2})$")),
+    ("%d.%m.%Y", re.compile(r"^(?P<value>\d{1,2}\.\d{1,2}\.\d{4})$")),
     ("%B %d, %Y", re.compile(r"^(?P<value>[A-Za-z]+ \d{1,2}, \d{4})$")),
+    ("%m/%d/%y", re.compile(r"^(?P<value>\d{1,2}/\d{1,2}/\d{2})$")),
+    ("%m/%d/%Y", re.compile(r"^(?P<value>\d{1,2}/\d{1,2}/\d{4})$")),
+    ("%d/%m/%y", re.compile(r"^(?P<value>\d{1,2}/\d{1,2}/\d{2})$")),
+    ("%d/%m/%Y", re.compile(r"^(?P<value>\d{1,2}/\d{1,2}/\d{4})$")),
+)
+_HEADING_DATE_TITLE_PATTERNS = (
+    re.compile(
+        r"^(?P<date>\d{1,2}\.\d{1,2}\.(?:\d{2}|\d{4}))\s*[-–—]\s*(?P<title>.+)$"
+    ),
+    re.compile(r"^(?P<date>\d{4}-\d{1,2}-\d{1,2})\s*[-–—]\s*(?P<title>.+)$"),
+    re.compile(r"^(?P<date>\d{1,2}/\d{1,2}/(?:\d{2}|\d{4}))\s*[-–—]\s*(?P<title>.+)$"),
+    re.compile(r"^(?P<date>[A-Za-z]+ \d{1,2}, \d{4})\s*[-–—]\s*(?P<title>.+)$"),
 )
 _SECRET_PATTERNS = (
     re.compile(r"\bAIza[0-9A-Za-z_-]{20,}\b"),
@@ -289,7 +302,9 @@ def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntr
             if position + 1 < len(heading_indexes)
             else len(paragraphs)
         )
-        title = paragraphs[start_index].strip()
+        heading = paragraphs[start_index].strip()
+        heading_date, heading_title = _parse_heading_date_title(heading)
+        title = heading_title or heading
         body = [
             paragraph for paragraph in paragraphs[start_index + 1 : end_index] if paragraph.strip()
         ]
@@ -297,7 +312,7 @@ def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntr
         if not body:
             drafts.append(
                 _SegmentDraft(
-                    date=None,
+                    date=heading_date,
                     title=title,
                     paragraphs=[title],
                     segmentation_confidence="low",
@@ -310,7 +325,7 @@ def _parse_heading_based_profile(document: NormalizedDocument) -> list[DreamEntr
             continue
         drafts.append(
             _SegmentDraft(
-                date=None,
+                date=heading_date,
                 title=title,
                 paragraphs=body,
                 segmentation_confidence="high",
@@ -447,8 +462,23 @@ def _parse_date_header(paragraph: str) -> date | None:
         match = pattern.fullmatch(value)
         if match is None:
             continue
-        return datetime.strptime(match.group("value"), date_format).date()
+        try:
+            return datetime.strptime(match.group("value"), date_format).date()
+        except ValueError:
+            continue
     return None
+
+
+def _parse_heading_date_title(paragraph: str) -> tuple[date | None, str | None]:
+    value = paragraph.strip()
+    for pattern in _HEADING_DATE_TITLE_PATTERNS:
+        match = pattern.fullmatch(value)
+        if match is None:
+            continue
+        parsed_date = _parse_date_header(match.group("date"))
+        title = match.group("title").strip()
+        return parsed_date, title or None
+    return None, None
 
 
 def _sanitize_paragraph(paragraph: str) -> str:

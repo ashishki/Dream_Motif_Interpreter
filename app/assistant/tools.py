@@ -1080,7 +1080,7 @@ def _format_dream_detail_payload(detail: Any) -> str:
         f"Title: {detail.title}\n"
         f"Words: {detail.word_count}\n"
         f"Themes: {theme_names}\n"
-        f"Text: {raw_text_clean[:2000]}"
+        f"Text: {raw_text_clean}"
     ]
     if detail.notes:
         lines.append("Notes:")

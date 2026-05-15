@@ -150,6 +150,24 @@ False-negative policy:
 
 ---
 
+## Phase 23 Test 9 Regression Coverage
+
+Focused automated check for the 2026-05-15 feedback: full-dream text retrieval, English-language
+Google Doc entries, and numeric feedback interference.
+
+Eval Source: targeted unit suite, run 2026-05-15.
+
+| Check | Result | Evidence |
+|-------|--------|----------|
+| Full dream text is not truncated by `get_dream` tool output | Pass | `tests/unit/test_assistant_chat.py::test_execute_tool_get_dream_returns_complete_text_without_truncation` |
+| Long Telegram assistant replies can be sent in chunks | Pass | `tests/unit/test_telegram_bot.py::test_split_telegram_text_keeps_long_responses_under_limit` |
+| English/manual Google Doc headings preserve date, title, and full body | Pass | `tests/unit/test_segmentation.py::test_heading_based_profile_keeps_complete_english_body_and_parses_heading_date` |
+| English exact keyword recall has PostgreSQL `simple` FTS coverage | Pass | `tests/unit/test_rag_query.py::test_exact_and_hybrid_search_include_simple_fts_for_english_text` |
+| Digit-only replies are normal chat by default | Pass | `tests/unit/test_feedback_capture.py::test_numeric_feedback_disabled_treats_digit_as_normal_chat` |
+| Regression suite | Pass | Targeted Phase 23 slice -> 170 passed, 1 warning; full `tests/unit` -> 452 passed, 1 warning |
+
+---
+
 ## Phase 22 Manual Google Doc Freshness Regression
 
 This focused live check captures Test 8 from 2026-05-09: the Google Doc had a manually added

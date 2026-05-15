@@ -1,29 +1,30 @@
 # CODEX_PROMPT.md
 
-Version: 1.73
-Date: 2026-05-14
-Phase: Phase 22 follow-up implemented — multi-doc sync UX and status clarity
+Version: 1.74
+Date: 2026-05-15
+Phase: Phase 23 implemented — Test 9 full text, English entries, numeric feedback disablement
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 22 is implemented from Test 7 (2025-05-06) and Test 8 (2026-05-09); see `docs/tasks_phase22.md` and `docs/archive/PHASE22_REVIEW.md`.
+- **Phase:** Phase 23 is implemented from Test 9 (2026-05-15); see `docs/tasks_phase23.md` and `docs/archive/PHASE23_REVIEW.md`.
 - **Live audit baseline:** On 2026-05-09 all three services were active, but Google Docs auto-sync was failing every cycle. Redis state for the primary doc reported `last_sync_status=failed`, `last_synced_at=2026-04-26T10:16:43.458320+00:00`, and logs showed `DreamEntryValidationError: Dream entry candidates must not duplicate content_hash values within one document`.
 - **Phase 22 live result:** duplicate parsed candidates are skipped fail-soft, one live auto-sync completed with `last_sync_status=synced`, and `сон с рыбой` returns `5.11.24 запретная рыба` first with exact archive evidence.
 - **Phase 22 follow-up:** manual and automatic sync now track richer per-document state, hide `job_id` from normal user messages, explain zero-new-entry syncs, consider stale running syncs after 5 minutes, and fetch/sync the requested Google Doc ID instead of always reading the primary document.
-- **Ruff:** previous Phase 21 touched-code state was clean; rerun before any Phase 22 implementation.
+- **Phase 23 result:** `get_dream` tool output no longer truncates `raw_text`; long Telegram replies split safely; English/manual Google Doc headings and English exact FTS are covered; numeric 1–5 feedback is disabled by default via `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=false`.
+- **Ruff:** Phase 23 touched-code ruff check is clean; rerun before any new implementation.
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-14 (multi-doc sync UX follow-up)
+- **Last updated:** 2026-05-15 (Test 9 closure)
 
 ---
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 22 have task graphs and completion notes.
-- **Current planning state:** Phase 22 is closed plus one follow-up hotfix for multi-doc sync UX.
-- **Latest completed implementation task:** Phase 22 follow-up — multi-doc sync status and user-facing clarity.
-- **Current baseline:** Follow-up gate passed (`.venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/integration/test_workers.py -q --tb=short` -> 152 passed, 1 warning); ruff check/format clean for touched files.
+- **Phases completed:** Phase 1 through Phase 23 have task graphs and completion notes.
+- **Current planning state:** Phase 23 is closed after Test 9 implementation and review.
+- **Latest completed implementation task:** Phase 23 — full dream text, English entries, and numeric feedback disablement.
+- **Current baseline:** Phase 23 gate passed (targeted slice -> 170 passed, 1 warning; full `tests/unit` -> 452 passed, 1 warning); ruff clean for touched files.
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -34,7 +35,8 @@ Phase: Phase 22 follow-up implemented — multi-doc sync UX and status clarity
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
 - **Mandatory local workflow:** `docs/prompts/ORCHESTRATOR.md`
-- **Latest task graph:** `docs/tasks_phase22.md` (Test 7/8 sync, notes, title extraction, interpretation approval)
+- **Latest task graph:** `docs/tasks_phase23.md` (Test 9 full text, English entries, numeric feedback disablement)
+- **Previous task graph:** `docs/tasks_phase22.md` (Test 7/8 sync, notes, title extraction, interpretation approval)
 - **Previous task graph:** `docs/tasks_phase21.md` (Test 6 recording/search regressions)
 - **Previous task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
 - **Previous task graph:** `docs/tasks_phase19.md` (direct title search)
@@ -60,24 +62,26 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 ## Next Task
 
 Next phase: TBD.
-Baseline: Phase 22 closed after fixing duplicate-source sync failures, sync transparency,
-fish/manual Google Doc recall, note placement, title intake cleanup, and user-approved dream
-interpretation. Follow-up on 2026-05-14 fixed multi-doc sync and clearer status UX.
+Baseline: Phase 23 closed after fixing full-dream text truncation, adding Telegram long-message
+splitting, extending English/manual Google Doc parsing and English FTS coverage, and disabling
+numeric 1–5 feedback by default.
 Goal:
-  Choose the next task from new user feedback or a dedicated planning pass. Do not treat Phase 22
+  Choose the next task from new user feedback or a dedicated planning pass. Do not treat Phase 23
   as still open except for explicitly listed residual follow-ups.
 
 Context refs:
 - `docs/CODEX_PROMPT.md`
+- `docs/tasks_phase23.md`
 - `docs/tasks_phase22.md`
 - `docs/tasks_phase21.md`
-- `docs/archive/PHASE21_REVIEW.md`
+- `docs/archive/PHASE23_REVIEW.md`
 - `docs/RUNBOOK_TELEGRAM_BOT.md`
 - `docs/USER_GUIDE_RU.md`
 - `docs/retrieval_eval.md`
 
 Deferred:
   Concrete `TELEGRAM_REACTION_FEEDBACK_MAPPING` remains pending user-provided emoji meanings.
+  Live smoke against the user's newly added English Google Doc entries remains a deployment check.
   Interpretation persistence is out of scope until the user explicitly approves a storage design.
   A provider-dependent LLM title generator was not added in Phase 22; deterministic clean-title
   handling is active.
@@ -332,21 +336,20 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (58 Closed, 
 
 ### Last Evaluation
 
-- Profile: Planning / Live Audit
-- Task: Phase 22 planning from Test 7/8
-- Date: 2026-05-09
-- Eval Source: service state, Redis auto-sync key, journal logs, live Google Doc parse, and DB spot checks run locally against the configured environment
-- Metric(s): service active state, sync freshness, parse failure reason, fish-entry DB/search presence, recent title quality, note persistence
-- Score: services active; sync failed; last successful sync `2026-04-26T10:16:43.458320+00:00`; parse blocker is duplicate content hash inside the current Google Doc; `5.11.24 запретная рыба` present in Google Doc parse but absent from DB
-- Baseline: Phase 21 targeted automated suite passed before this live audit
-- Delta: live runtime regression found outside the Phase 21 automated gate
-- Regression: Yes — Phase 22 P0 work required
+- Profile: Targeted Regression
+- Task: Phase 23 Test 9
+- Date: 2026-05-15
+- Eval Source: targeted unit suite plus ruff check for full-text retrieval, Telegram delivery, English segmentation/search, and numeric feedback disablement
+- Metric(s): non-truncated `get_dream` text, Telegram chunk splitting, English heading parsing, `simple` FTS coverage, digit-only chat routing
+- Score: targeted slice `170 passed, 1 warning`; full unit suite `452 passed, 1 warning`; ruff clean
+- Baseline: Phase 22 follow-up targeted gate (`152 passed, 1 warning`)
+- Delta: +Test 9 regression coverage
+- Regression: No
 
 ### Open Evaluation Issues
 
-- Phase 22 P0: auto-sync failure blocks all manual Google Doc additions after the last successful sync.
-- Phase 22 P0: fish/manual-sync regression cannot be fully evaluated until sync ingests current Google Doc content.
-- Phase 22 P0: note placement and title extraction need targeted automated and live Telegram smoke coverage.
+- Live smoke against the user's newly added English Google Doc entries is still recommended after deployment.
+- A future deterministic full-text bypass may be useful if the LLM ever summarizes despite the prompt.
 
 ### Evaluation History
 
@@ -357,11 +360,13 @@ _Cycle 8 — 2026-04-14 · 58 findings total: P1: 3, P2: 33, P3: 15 (58 Closed, 
 | 2026-04-14 | T15 | RAG | hit@3, MRR, no-answer accuracy | 1.00 / 1.00 / 1.00 | T12 baseline | 0 | No |
 | 2026-05-02 | WS-19.2 | Tool-Use | schema/output/ambiguity guard | 104 passed | WS-19.1 40 passed | +64 targeted tests | No |
 | 2026-05-09 | Phase 22 planning | Live Audit | sync freshness / fish entry visibility | failed sync since 2026-04-26; fish entry absent from DB | Phase 21 automated gate | runtime regression | Yes |
+| 2026-05-15 | Phase 23 | Targeted Regression | full text / English / numeric feedback | targeted 170 passed; full unit 452 passed | Phase 22 follow-up gate | +Test 9 coverage | No |
 
 ---
 
 ## Completed Tasks
 
+- **Phase 23** — Test 9 Full Text, English Entries, Numeric Feedback — 2026-05-15 — targeted suite passing (`170 passed, 1 warning`) and full unit suite passing (`452 passed, 1 warning`) — `get_dream` no longer truncates full dream text; long Telegram replies split safely; English/manual headings parse with dates/titles; retrieval includes `simple` FTS for English exact recall; numeric 1–5 feedback prompt/capture is disabled by default behind `TELEGRAM_NUMERIC_FEEDBACK_ENABLED`
 - **WS-19.3** — Full Dream Retrieval by Title Flow — 2026-05-02 — targeted assistant tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`: 106 passed) — title search now retrieves the full dream via `get_dream` for a single match, leaves multiple matches as clarification options, and clearly says no title match was found before content-search fallback; light and deep review found no P0/P1/P2 issues; Phase 19 archive complete
 - **WS-19.2** — Assistant Tool `search_dreams_by_title` — 2026-05-02 — targeted assistant tests passing (`tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_facade.py`: 104 passed) — added tool catalog schema and execute_tool branch for title lookup; output includes `dream_id` for follow-up `get_dream`; prompt now routes specific title/name/heading lookup through title search first and instructs ambiguous matches to be presented as options, not guessed; light review found no contract/security issues
 - **WS-19.1** — Title Search Facade Method — 2026-05-02 — targeted AssistantFacade tests passing (`tests/unit/test_assistant_facade.py`: 40 passed) — added `AssistantFacade.search_dreams_by_title(query, limit=10)` over `dream_entries.title`; results include `dream_id`, date, title, and raw-text preview; lookup supports case-insensitive partial and punctuation-insensitive normalized matching for titles such as `Я и дети. Тайное общество`; light review found no contract/security issues

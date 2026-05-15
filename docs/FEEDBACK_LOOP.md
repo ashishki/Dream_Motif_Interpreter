@@ -6,7 +6,10 @@ This document defines the feedback capture capability planned for Phase 11: its 
 
 ## 1. Purpose
 
-The feedback loop provides a quality signal for human review of assistant responses. It allows the user to rate individual responses on a 1–5 scale with an optional comment. Emoji reactions are captured separately, but remain uninterpreted until the operator configures explicit meanings.
+The feedback loop provides a quality signal for human review of assistant responses. It can store
+1–5 ratings with optional comments, and it can store mapped Telegram reactions. As of 2026-05-15,
+the visible Telegram numeric prompt and digit capture are disabled by default because digit-only
+messages conflict with ordinary numbered choices in chat.
 
 Ratings are stored for manual inspection only. They do not feed into automated retraining, do not alter model behavior in any session, and are not used for any unsupervised training pipeline. The sole purpose is to accumulate a quality signal that a human reviewer can inspect.
 
@@ -16,15 +19,20 @@ This phase is independent of Phase 9 (motif abstraction) and Phase 10 (research 
 
 ## 2. Capture Mechanism
 
-The feedback is captured passively via Telegram without requiring a separate workflow.
+The numeric Telegram path is feature-flagged by `TELEGRAM_NUMERIC_FEEDBACK_ENABLED`.
 
 ### Trigger condition
 
-After the assistant delivers a substantive response (not an error message, not a transcription acknowledgment, not a system notice), it appends: "Ответьте 1–5, можно с коротким комментарием."
+Default: no rating prompt is appended after assistant responses.
+
+If `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=true`, after the assistant delivers a substantive response
+(not an error message, not a transcription acknowledgment, not a system notice), it appends:
+"Ответьте 1–5, можно с коротким комментарием."
 
 ### Primary path — Telegram reply
 
-The preferred capture path uses Telegram's native reply feature. The user taps "Reply" on the specific bot message and sends:
+When the numeric flag is enabled, the preferred capture path uses Telegram's native reply feature.
+The user taps "Reply" on the specific bot message and sends:
 
 - A single digit (1–5): recorded as a rating, `comment = NULL`.
 - A digit followed by text (e.g. `"4 Too detailed"`): digit recorded as score, remaining text stored as `comment`.
@@ -34,13 +42,17 @@ Detection is deterministic (no LLM calls). Only a reply to the exact bot message
 
 ### Fallback path — plain digit message
 
-For backward compatibility, a plain digit message (1–5, no other characters) sent immediately after a substantive response is also accepted as a rating if the pending-feedback state is set. Comment is `NULL` in this path.
+For backward compatibility, when the numeric flag is enabled, a plain digit message (1–5, no other
+characters) sent immediately after a substantive response is also accepted as a rating if the
+pending-feedback state is set. Comment is `NULL` in this path.
 
-### UX decision — Phase 20
+When the numeric flag is disabled, digit-only messages are routed through the normal chat flow and
+can be used to select numbered options.
 
-The numeric prompt remains the active feedback UX for now, but the text is shortened so it is less noisy after every substantive assistant response. Emoji reactions are not yet promoted to the primary UX because their production mapping is still pending.
+### UX decision — Phase 23
 
-The active prompt is:
+The numeric prompt is temporarily disabled by default. The retained prompt, when explicitly enabled,
+is:
 
 ```text
 Ответьте 1–5, можно с коротким комментарием.

@@ -266,15 +266,25 @@ Connection strength verbal labels: ≥0.7 — сильная, 0.4–0.69 — у�
 | name only | use name as-is |
 | neither | `дд.мм.гг, без названия` (use save date) |
 
-## 14. Phase 11 — Feedback Capture UX (Planned)
+## 14. Phase 11 — Feedback Capture UX
 
 ### When the rating prompt appears
 
-After the assistant delivers a substantive response (not an error message, not a transcription acknowledgment), it may append a brief rating prompt. The exact wording is: "Rate this response: reply with 1–5."
+As of 2026-05-15, the visible numeric rating prompt is disabled by default.
+
+If `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=true`, after the assistant delivers a substantive response
+(not an error message, not a transcription acknowledgment), it may append a brief rating prompt.
+The Russian wording is: "Ответьте 1–5, можно с коротким комментарием."
 
 ### What digit-only replies do
 
-A message containing only a single digit (1–5) sent immediately after a substantive response is captured as a rating for that response. The system stores: the chat ID, the score, the context snapshot of the preceding response, and the creation timestamp.
+With the default setting, a message containing only a single digit (1–5) is normal user input. This
+allows the user to answer numbered option lists without the bot treating the number as feedback.
+
+When `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=true`, a message containing only a single digit (1–5) sent
+immediately after a substantive response is captured as a rating for that response. The system
+stores: the chat ID, the score, the context snapshot of the preceding response, and the creation
+timestamp.
 
 Messages containing anything other than a single digit are not treated as ratings, even if they contain a digit among other characters.
 

@@ -353,6 +353,9 @@ def test_system_prompt_requires_search_answers_to_cite_evidence_text() -> None:
     prompt_lower = SYSTEM_PROMPT.lower()
     assert "evidence_text" in prompt_lower
     assert "final answers must cite only evidence_text" in prompt_lower
+    assert "for get_dream results, the text field is the archive-backed full dream text" in (
+        prompt_lower
+    )
 
 
 def test_system_prompt_routes_concrete_image_queries_to_augmented_search() -> None:
@@ -1085,9 +1088,40 @@ async def test_execute_tool_search_dreams_by_title_uses_default_for_bad_limit() 
     facade.search_dreams_by_title.assert_awaited_once_with("тайное общество", limit=10)
 
 
+@pytest.mark.asyncio
+async def test_execute_tool_get_dream_returns_complete_text_without_truncation() -> None:
+    dream_id = uuid.uuid4()
+    long_text = "Начало сна. " + ("длинный фрагмент " * 180) + "Финальная строка сна."
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_dream.return_value = DreamDetail(
+        id=dream_id,
+        date="2026-05-15",
+        title="Длинный сон",
+        raw_text=long_text,
+        word_count=len(long_text.split()),
+        source_doc_id="doc-1",
+        created_at="2026-05-15T00:00:00+00:00",
+        segmentation_confidence="high",
+        themes=[],
+        notes=[],
+    )
+
+    result = await tools_module.execute_tool(
+        "get_dream",
+        {"dream_id": str(dream_id)},
+        facade,
+    )
+
+    assert f"Dream {dream_id}" in result
+    assert "Text: Начало сна." in result
+    assert "Финальная строка сна." in result
+    assert long_text in result
+
+
 def test_system_prompt_routes_title_lookup_to_title_search_first() -> None:
     assert "search_dreams_by_title first" in SYSTEM_PROMPT
     assert "specific dream by title" in SYSTEM_PROMPT
+    assert "copy the Text field completely and verbatim" in SYSTEM_PROMPT
     assert "Never claim that a title-to-UUID lookup is unavailable." in SYSTEM_PROMPT
     assert "pass it as the date argument" in SYSTEM_PROMPT
     assert "multiple matches" in SYSTEM_PROMPT

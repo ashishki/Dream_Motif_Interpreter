@@ -86,7 +86,10 @@ This capability requires user confirmation before any external search is execute
 
 ### Feedback loop (Phase 11)
 
-The user will be able to rate assistant responses on a 1–5 scale with an optional comment via Telegram. Ratings provide a quality signal for human review only. They do not feed into automated retraining or any unsupervised model update pipeline.
+The system can store assistant response ratings as a quality signal for human review only. Numeric
+1–5 Telegram capture is disabled by default as of Phase 23 because it interferes with numbered
+choices in ordinary conversation. It can be re-enabled with `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=true`.
+Ratings do not feed into automated retraining or any unsupervised model update pipeline.
 
 ## 9. Active Execution Source
 

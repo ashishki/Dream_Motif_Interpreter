@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.19
-Last updated: 2026-05-14
+Version: 1.20
+Last updated: 2026-05-15
 Status: append-only
 
 ---
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-15 — Phase 23 Implementation — Test 9 Full Text, English Entries, Numeric Feedback
+
+- Scope: `app/assistant/{tools,prompts}.py`, `app/telegram/handlers.py`, `app/shared/config.py`, `app/services/segmentation.py`, `app/retrieval/query.py`, Phase 23 unit tests and docs.
+- Why this work happened: Test 9 reported truncated full-dream responses, newly added English Google Doc entries needing verification, and the 1–5 Telegram rating UX interfering with numbered choices.
+- Decisions applied: none.
+- Evidence collected: targeted Phase 23 suite -> `170 passed, 1 warning`; full unit suite -> `452 passed, 1 warning`; ruff check clean for touched files; review archived in `docs/archive/PHASE23_REVIEW.md`.
+- Follow-ups: run a live smoke against the user's English Google Doc entries after deployment.
+- Notes for next agent: numeric feedback is disabled by default via `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=false`; legacy capture still exists behind the flag. `get_dream` now emits full `raw_text`, so future full-text UX issues are likely model-compliance or Telegram delivery issues rather than tool truncation.
 
 ### 2026-05-14 — Phase 22 Follow-up — Multi-Doc Sync UX
 

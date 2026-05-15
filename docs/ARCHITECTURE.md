@@ -381,6 +381,10 @@ See [RESEARCH_AUGMENTATION.md](RESEARCH_AUGMENTATION.md) and [ADR-009](adr/ADR-0
 
 The `assistant_feedback` table stores user-submitted ratings (1–5) with optional comment. Ratings are linked to the chat context of the preceding assistant response.
 
+Telegram numeric rating capture is disabled by default as of Phase 23 because digit-only messages
+conflict with numbered choices. The legacy capture path remains available behind
+`TELEGRAM_NUMERIC_FEEDBACK_ENABLED=true`.
+
 This is a quality signal for human review only. It does not feed into automated retraining or any unsupervised model update pipeline.
 
 See [FEEDBACK_LOOP.md](FEEDBACK_LOOP.md).

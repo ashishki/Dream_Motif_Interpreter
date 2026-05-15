@@ -1,9 +1,9 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 2.7
-Last updated: 2026-05-09 (Phase 22 implemented — Test 7/8 sync, notes, titles, interpretation approval)
+Version: 2.8
+Last updated: 2026-05-15 (Phase 23 implemented — Test 9 full text, English entries, numeric feedback disablement)
 
-## 1. Current Status: Phases 1–22 Complete
+## 1. Current Status: Phases 1–23 Complete
 
 **Phases 1–5** — Backend platform complete:
 
@@ -49,6 +49,7 @@ Execution graph:
 - [docs/tasks_phase20.md](tasks_phase20.md) — historical Phase 20 graph (notes placement and emoji feedback polish)
 - [docs/tasks_phase21.md](tasks_phase21.md) — historical Phase 21 graph (Test 6 recording/search regressions)
 - [docs/tasks_phase22.md](tasks_phase22.md) — historical Phase 22 graph (Test 7/8 sync, notes, titles, interpretation approval)
+- [docs/tasks_phase23.md](tasks_phase23.md) — historical Phase 23 graph (Test 9 full text, English entries, numeric feedback disablement)
 
 ## 1.1 Phase 22 — Test 7/8 Reliability Loop
 
@@ -65,6 +66,19 @@ from data freshness to user-facing features:
 
 The canonical task graph is [docs/tasks_phase22.md](tasks_phase22.md). Deep review is archived at
 [docs/archive/PHASE22_REVIEW.md](archive/PHASE22_REVIEW.md).
+
+## 1.2 Phase 23 — Test 9 Reliability Loop
+
+Phase 23 closed the 2026-05-15 Test 9 feedback:
+
+1. Remove the artificial 2000-character truncation from `get_dream` tool output.
+2. Split long Telegram assistant replies into multiple safe messages.
+3. Treat `get_dream` Text as archive-backed full text in the prompt, distinct from search `evidence_text`.
+4. Add English/manual Google Doc heading coverage and `simple` FTS for English exact recall.
+5. Disable numeric 1–5 Telegram feedback by default while keeping it behind a feature flag.
+
+The canonical task graph is [docs/tasks_phase23.md](tasks_phase23.md). Deep review is archived at
+[docs/archive/PHASE23_REVIEW.md](archive/PHASE23_REVIEW.md).
 
 ## 2. Planning Principle
 

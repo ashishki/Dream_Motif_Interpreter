@@ -217,8 +217,20 @@ class RagQueryService:
                 dc.chunk_text
             FROM dream_chunks AS dc
             JOIN dream_entries AS de ON de.id = dc.dream_id
-            WHERE to_tsvector('russian', dc.chunk_text) @@ websearch_to_tsquery('russian', :query)
-            ORDER BY de.date DESC
+            WHERE
+                to_tsvector('russian', dc.chunk_text) @@ websearch_to_tsquery('russian', :query)
+                OR to_tsvector('simple', dc.chunk_text) @@ websearch_to_tsquery('simple', :query)
+            ORDER BY GREATEST(
+                ts_rank_cd(
+                    to_tsvector('russian', dc.chunk_text),
+                    websearch_to_tsquery('russian', :query)
+                ),
+                ts_rank_cd(
+                    to_tsvector('simple', dc.chunk_text),
+                    websearch_to_tsquery('simple', :query)
+                )
+            ) DESC,
+            de.date DESC
             LIMIT 20
             """
         )
@@ -301,36 +313,44 @@ class RagQueryService:
             ),
             fts_candidates AS (
                 SELECT
-                    dc.id,
-                    dc.dream_id,
-                    de.date,
-                    de.title,
-                    dc.chunk_text,
-                    ts_rank_cd(
-                        to_tsvector('russian', dc.chunk_text),
-                        websearch_to_tsquery('russian', :fts_query)
-                    ) / (
-                        1 + ts_rank_cd(
-                            to_tsvector('russian', dc.chunk_text),
-                            websearch_to_tsquery('russian', :fts_query)
-                        )
-                    ) AS fts_rank,
+                    raw_fts.id,
+                    raw_fts.dream_id,
+                    raw_fts.date,
+                    raw_fts.title,
+                    raw_fts.chunk_text,
+                    raw_fts.fts_rank_raw / (1 + raw_fts.fts_rank_raw) AS fts_rank,
                     ROW_NUMBER() OVER (
-                        ORDER BY ts_rank_cd(
-                            to_tsvector('russian', dc.chunk_text),
-                            websearch_to_tsquery('russian', :fts_query)
-                        ) DESC,
-                        dc.created_at DESC
+                        ORDER BY raw_fts.fts_rank_raw DESC,
+                        raw_fts.created_at DESC
                     ) AS rank_fts
-                FROM dream_chunks AS dc
-                JOIN dream_entries AS de ON de.id = dc.dream_id
-                WHERE to_tsvector('russian', dc.chunk_text)
-                    @@ websearch_to_tsquery('russian', :fts_query)
-                ORDER BY ts_rank_cd(
-                    to_tsvector('russian', dc.chunk_text),
-                    websearch_to_tsquery('russian', :fts_query)
-                ) DESC,
-                dc.created_at DESC
+                FROM (
+                    SELECT
+                        dc.id,
+                        dc.dream_id,
+                        de.date,
+                        de.title,
+                        dc.chunk_text,
+                        dc.created_at,
+                        GREATEST(
+                            ts_rank_cd(
+                                to_tsvector('russian', dc.chunk_text),
+                                websearch_to_tsquery('russian', :fts_query)
+                            ),
+                            ts_rank_cd(
+                                to_tsvector('simple', dc.chunk_text),
+                                websearch_to_tsquery('simple', :fts_query)
+                            )
+                        ) AS fts_rank_raw
+                    FROM dream_chunks AS dc
+                    JOIN dream_entries AS de ON de.id = dc.dream_id
+                    WHERE
+                        to_tsvector('russian', dc.chunk_text)
+                            @@ websearch_to_tsquery('russian', :fts_query)
+                        OR to_tsvector('simple', dc.chunk_text)
+                            @@ websearch_to_tsquery('simple', :fts_query)
+                ) AS raw_fts
+                ORDER BY raw_fts.fts_rank_raw DESC,
+                raw_fts.created_at DESC
                 LIMIT :fts_candidate_limit
             ),
             fused AS (

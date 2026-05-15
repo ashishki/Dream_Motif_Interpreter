@@ -49,6 +49,69 @@ def test_standard_date_header_segmentation() -> None:
     assert all(entry.segmentation_confidence == "high" for entry in entries)
 
 
+def test_short_european_date_header_segmentation() -> None:
+    paragraphs = [
+        "15.05.26",
+        "I found a fish in a glass elevator.",
+        "16.05.26",
+        "A train crossed the room before sunrise.",
+    ]
+
+    entries = segment_paragraphs(_build_document(paragraphs))
+
+    assert len(entries) == 2
+    assert [entry.date for entry in entries] == [date(2026, 5, 15), date(2026, 5, 16)]
+    assert entries[0].raw_text == "I found a fish in a glass elevator."
+
+
+def test_heading_based_profile_keeps_complete_english_body_and_parses_heading_date() -> None:
+    paragraphs = [
+        "15.05.26 - Fish in the elevator",
+        "I found a fish in a glass elevator.",
+        "It spoke English and asked me to choose floor number three.",
+        "05/16/26 - Train platform",
+        "I missed a late train while my mother stood on the platform.",
+    ]
+
+    entries = segment_paragraphs(_build_document(paragraphs))
+
+    assert len(entries) == 2
+    assert entries[0].date == date(2026, 5, 15)
+    assert entries[0].title == "Fish in the elevator"
+    assert entries[0].raw_text == (
+        "I found a fish in a glass elevator.\n\n"
+        "It spoke English and asked me to choose floor number three."
+    )
+    assert entries[1].date == date(2026, 5, 16)
+    assert entries[1].title == "Train platform"
+
+
+def test_heading_based_profile_parses_single_digit_day_date_prefix() -> None:
+    paragraphs = [
+        "5.11.24 - Fish in dark water",
+        "A black fish moved through clear water.",
+    ]
+
+    entries = segment_paragraphs(_build_document(paragraphs))
+
+    assert len(entries) == 1
+    assert entries[0].date == date(2024, 11, 5)
+    assert entries[0].title == "Fish in dark water"
+
+
+def test_heading_based_profile_accepts_day_first_slash_date_when_month_first_fails() -> None:
+    paragraphs = [
+        "16/05/26 - Fish in dark water",
+        "A black fish moved through clear water.",
+    ]
+
+    entries = segment_paragraphs(_build_document(paragraphs))
+
+    assert len(entries) == 1
+    assert entries[0].date == date(2026, 5, 16)
+    assert entries[0].title == "Fish in dark water"
+
+
 def test_no_date_header_fallback() -> None:
     paragraphs = [
         "I was standing at the edge of a lake at dusk.",

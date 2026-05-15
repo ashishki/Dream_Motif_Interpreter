@@ -25,6 +25,16 @@ def test_query_does_not_import_ingestion_module() -> None:
             assert node.module != "app.retrieval.ingestion"
 
 
+def test_exact_and_hybrid_search_include_simple_fts_for_english_text() -> None:
+    source = (Path(__file__).resolve().parents[2] / "app/retrieval/query.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "to_tsvector('simple', dc.chunk_text)" in source
+    assert "websearch_to_tsquery('simple', :query)" in source
+    assert "websearch_to_tsquery('simple', :fts_query)" in source
+
+
 def _build_settings() -> SimpleNamespace:
     return SimpleNamespace(
         OPENAI_API_KEY="test-openai-key", EMBEDDING_MODEL="text-embedding-3-small"

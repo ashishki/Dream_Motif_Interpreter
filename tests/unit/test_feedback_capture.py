@@ -58,12 +58,17 @@ def _make_update(
     return update, message
 
 
-def _make_context(session_factory: object | None = None) -> SimpleNamespace:
+def _make_context(
+    session_factory: object | None = None,
+    *,
+    numeric_feedback_enabled: bool = True,
+) -> SimpleNamespace:
     return SimpleNamespace(
         bot_data={
             "facade": AsyncMock(spec=AssistantFacade),
             "session_factory": session_factory,
             "allowed_chat_id": 77,
+            "numeric_feedback_enabled": numeric_feedback_enabled,
         },
         bot=SimpleNamespace(send_chat_action=AsyncMock()),
     )
@@ -98,6 +103,38 @@ async def test_digit_message_after_substantive_response_records_feedback() -> No
     assert session.committed is True
     message1.reply_text.assert_awaited_once_with(f"Detailed interpretation\n\n{FEEDBACK_PROMPT}")
     message2.reply_text.assert_awaited_once_with("Thanks, noted.")
+
+
+@pytest.mark.asyncio
+async def test_numeric_feedback_disabled_treats_digit_as_normal_chat() -> None:
+    session = StubSession()
+    context = _make_context(
+        StubSessionFactory(session),
+        numeric_feedback_enabled=False,
+    )
+    update1, message1 = _make_update("hello")
+    update2, message2 = _make_update("3")
+
+    with (
+        patch(
+            "app.telegram.handlers.handle_chat_with_metadata",
+            new=AsyncMock(
+                side_effect=[
+                    ChatResult("First substantive reply", []),
+                    ChatResult("Digit handled as a choice", []),
+                ]
+            ),
+        ) as mock_chat,
+        patch.object(FeedbackService, "record", new=AsyncMock()) as mock_record,
+    ):
+        await text_message_handler(update1, context)
+        await text_message_handler(update2, context)
+
+    assert mock_chat.await_count == 2
+    mock_record.assert_not_awaited()
+    assert session.committed is False
+    message1.reply_text.assert_awaited_once_with("First substantive reply")
+    message2.reply_text.assert_awaited_once_with("Digit handled as a choice")
 
 
 @pytest.mark.asyncio

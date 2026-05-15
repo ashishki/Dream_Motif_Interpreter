@@ -41,6 +41,17 @@ def test_motif_induction_enabled_defaults_to_true(
     assert settings.MOTIF_INDUCTION_ENABLED is True
 
 
+def test_telegram_numeric_feedback_defaults_to_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.delenv("TELEGRAM_NUMERIC_FEEDBACK_ENABLED", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.TELEGRAM_NUMERIC_FEEDBACK_ENABLED is False
+
+
 @pytest.mark.parametrize("missing_var", REQUIRED_SECRET_VARS)
 def test_config_fails_fast_on_missing_required_secret(
     monkeypatch: pytest.MonkeyPatch,

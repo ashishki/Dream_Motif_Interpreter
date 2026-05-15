@@ -1,7 +1,7 @@
 # Evidence Index — Dream Motif Interpreter
 
-Version: 1.2
-Last updated: 2026-05-14
+Version: 1.3
+Last updated: 2026-05-15
 Status: append-only
 
 ---
@@ -31,6 +31,8 @@ Lookup table for proof artifacts across review cycles, retrieval evaluations, an
 | EV-013 | live-check | Phase 22 implementation | 2026-05-09 | `docs/retrieval_eval.md §Phase 22 Manual Google Doc Freshness Regression` | Live sync recovered to `synced`; DB/search now finds `5.11.24 запретная рыба` for `сон с рыбой` | Active |
 | EV-014 | review | Phase 22 implementation | 2026-05-09 | `docs/archive/PHASE22_REVIEW.md` | Deep review findings, verification commands, live checks, and residual risks for Test 7/8 closure | Active |
 | EV-015 | test-coverage | Phase 22 follow-up | 2026-05-14 | `tests/unit/test_auto_sync.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_ingest_notify.py`, `tests/integration/test_workers.py` | Multi-doc sync fetches the requested Google Doc ID; sync status hides `job_id`, explains stale/failed/zero-entry states, and notifications use user-readable copy | Active |
+| EV-016 | test-coverage | Phase 23 implementation | 2026-05-15 | `tests/unit/test_assistant_chat.py`, `tests/unit/test_telegram_bot.py`, `tests/unit/test_feedback_capture.py`, `tests/unit/test_segmentation.py`, `tests/unit/test_rag_query.py`, `tests/unit/test_config.py`, full `tests/unit` | Full dream text is not truncated, long Telegram replies split safely, English/manual headings parse, English exact FTS is present, numeric feedback is disabled by default, and full unit suite passes | Active |
+| EV-017 | review | Phase 23 implementation | 2026-05-15 | `docs/archive/PHASE23_REVIEW.md` | Deep review found no P0/P1/P2 issues for Test 9 closure and records residual risks | Active |
 
 ---
 

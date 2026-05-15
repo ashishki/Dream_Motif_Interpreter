@@ -1,0 +1,109 @@
+# Phase 23 — Test 9 Full Text, English Entries, Numeric Feedback
+
+Last updated: 2026-05-15
+Status: Implemented — Test 9 regressions closed in code and docs
+
+## 1. User Feedback
+
+Test 9 (2026-05-15) reported three issues:
+
+1. When asked for the full text of a specific dream, the bot sent only part of the text and said the archive text was cut off, while Google Docs contained the full dream.
+2. Several English-language dreams were added to Google Docs; confirm the system can ingest and search English text.
+3. Temporarily remove the 1–5 rating prompt because digit-only replies conflict with numbered choices in normal conversation.
+
+## 2. Findings
+
+- `_format_dream_detail_payload()` truncated `detail.raw_text` to the first 2000 characters before the LLM saw it.
+- Telegram responses were sent as a single message, so long full-text answers also needed safe message splitting under Telegram's length limit.
+- Google Docs segmentation already accepted English body text, but needed explicit coverage for common manual English headings such as `15.05.26 - Title`, `05/16/26 - Title`, and `May 16, 2026 - Title`.
+- Exact and hybrid retrieval used PostgreSQL `russian` FTS only. English can still be found semantically, but exact English word recall is safer with `simple` FTS alongside Russian FTS.
+- Numeric feedback capture was unconditional in the Telegram handler once pending feedback existed.
+
+## 3. Work Items
+
+### WS-23.1 — Full Dream Text Delivery
+
+Scope:
+- `app/assistant/tools.py`
+- `app/assistant/prompts.py`
+- `app/telegram/handlers.py`
+- `tests/unit/test_assistant_chat.py`
+- `tests/unit/test_telegram_bot.py`
+
+Acceptance criteria:
+- `get_dream` tool output includes complete `raw_text`, not a preview.
+- Prompt explicitly says full-text requests should call `get_dream` and copy the Text field completely.
+- Long Telegram assistant replies are split into multiple plain-text messages under the Telegram limit.
+- Regression tests cover non-truncated long dream text and chunk splitting.
+
+Codex prompt:
+
+```text
+Fix full dream retrieval. Inspect app/assistant/tools.py::_format_dream_detail_payload and remove any artificial raw_text truncation. Update SYSTEM_PROMPT so get_dream Text is treated as archive-backed full text, distinct from search evidence_text boundaries. In app/telegram/handlers.py add a helper that sends long assistant replies in chunks below Telegram's 4096-char limit. Add unit tests proving a long get_dream raw_text reaches the tool result completely and long Telegram replies are split without data loss.
+```
+
+### WS-23.2 — English Google Doc and Search Coverage
+
+Scope:
+- `app/services/segmentation.py`
+- `app/retrieval/query.py`
+- `tests/unit/test_segmentation.py`
+- `tests/unit/test_rag_query.py`
+
+Acceptance criteria:
+- Short European date headers (`15.05.26`, `5.11.24`) parse.
+- Heading-based entries parse date/title prefixes for `15.05.26 - Title`, `5.11.24 - Title`, `05/16/26 - Title`, `16/05/26 - Title`, and month-name English headings.
+- English body text remains complete in `raw_text`.
+- Exact/hybrid FTS includes PostgreSQL `simple` config in addition to `russian`.
+
+Codex prompt:
+
+```text
+Add multilingual Google Doc support for English dream entries. Extend segmentation date parsing for dd.mm.yy and common English/US heading forms with a title suffix. Keep the body untouched. In retrieval query SQL, combine russian FTS with simple FTS for exact and hybrid keyword recall. Add focused unit tests for English heading ingestion and source-level checks that simple FTS is present.
+```
+
+### WS-23.3 — Disable Numeric Feedback Prompt/Capture by Default
+
+Scope:
+- `app/shared/config.py`
+- `app/telegram/handlers.py`
+- `tests/unit/test_feedback_capture.py`
+- `tests/unit/test_telegram_bot.py`
+- `tests/unit/test_config.py`
+- `docs/FEEDBACK_LOOP.md`
+- `docs/USER_GUIDE_RU.md`
+- `docs/TELEGRAM_INTERACTION_MODEL.md`
+
+Acceptance criteria:
+- `TELEGRAM_NUMERIC_FEEDBACK_ENABLED` defaults to `false`.
+- Default Telegram responses do not append the 1–5 prompt.
+- Digit-only user messages are treated as normal chat input by default.
+- Legacy numeric capture still works behind the feature flag for later reactivation.
+- User-facing docs state that numbers can be used for numbered choices.
+
+Codex prompt:
+
+```text
+Temporarily disable Telegram numeric feedback. Add TELEGRAM_NUMERIC_FEEDBACK_ENABLED=false by default. Gate both prompt appending and digit/reply capture in app/telegram/handlers.py. Keep existing FeedbackService and storage intact behind the flag. Update tests so default behavior has no prompt and digit-only replies route to chat, while flag-enabled tests preserve legacy capture.
+```
+
+## 4. Verification
+
+- `.venv/bin/ruff check app/shared/config.py app/telegram/handlers.py app/assistant/tools.py app/assistant/prompts.py app/services/segmentation.py app/retrieval/query.py tests/unit/test_telegram_bot.py tests/unit/test_feedback_capture.py tests/unit/test_assistant_chat.py tests/unit/test_segmentation.py tests/unit/test_rag_query.py tests/unit/test_config.py tests/unit/test_voice_cleanup.py`
+- `.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_feedback_capture.py tests/unit/test_assistant_chat.py tests/unit/test_segmentation.py tests/unit/test_rag_query.py tests/unit/test_config.py tests/unit/test_voice_cleanup.py -q --tb=short`
+- `.venv/bin/python -m pytest tests/unit -q --tb=short`
+
+Result: targeted slice `170 passed, 1 warning`; full unit suite `452 passed, 1 warning`; ruff clean.
+
+## 5. Light Review Notes
+
+- Full-text fix is low risk: it removes a presentation-layer truncation and does not change stored dream data.
+- Long-message splitting is scoped to assistant replies and keeps short replies as a single Telegram message.
+- English support is additive: Russian FTS remains active; `simple` FTS adds exact English keyword recall.
+- Numeric feedback storage remains available, but user-facing capture is off by default.
+
+## 6. Residual Risks
+
+- Very large dreams still pass through the LLM before final response; if the model itself chooses to summarize despite prompt rules, deterministic full-text bypass may be a future enhancement.
+- Live English Google Doc smoke was not run in this local verification slice.
+- Emoji reaction semantics remain dependent on explicit `TELEGRAM_REACTION_FEEDBACK_MAPPING`.

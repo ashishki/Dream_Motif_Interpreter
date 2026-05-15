@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.assistant.chat import ChatResult
 from app.workers.cleanup import (
     cleanup_voice_media,
     delete_local_voice_file,
@@ -184,7 +185,10 @@ async def test_transcribe_and_reply_deletes_local_file_after_success() -> None:
     try:
         with (
             patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="text")),
-            patch("app.workers.transcribe.handle_chat", new=AsyncMock(return_value="reply")),
+            patch(
+                "app.workers.transcribe.handle_chat_with_metadata",
+                new=AsyncMock(return_value=ChatResult("reply", [])),
+            ),
             patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
             patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()),
         ):

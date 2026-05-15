@@ -26,6 +26,7 @@ from app.telegram.handlers import (
     _extract_direct_note_text,
     _remember_feedback_request,
     _format_create_dream_reply,
+    _split_telegram_text,
     chat_guard,
     text_message_handler,
 )
@@ -114,7 +115,7 @@ async def test_text_message_handler_routes_to_handle_chat() -> None:
         session_factory=None,
         chat_id=42,
     )
-    message.reply_text.assert_awaited_once_with(f"Here are your dreams.\n\n{FEEDBACK_PROMPT}")
+    message.reply_text.assert_awaited_once_with("Here are your dreams.")
 
 
 def test_voice_processing_ack_is_russian() -> None:
@@ -123,6 +124,22 @@ def test_voice_processing_ack_is_russian() -> None:
 
 def test_feedback_prompt_is_short_numeric_reply_prompt() -> None:
     assert FEEDBACK_PROMPT == "Ответьте 1–5, можно с коротким комментарием."
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_can_append_feedback_prompt_when_enabled() -> None:
+    update, message = _make_text_message_update("what are my recent dreams?", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+    context.bot_data["numeric_feedback_enabled"] = True
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(return_value=ChatResult("Here are your dreams.", [])),
+    ):
+        await text_message_handler(update, context)
+
+    message.reply_text.assert_awaited_once_with(f"Here are your dreams.\n\n{FEEDBACK_PROMPT}")
 
 
 def test_pending_feedback_requests_are_bounded(
@@ -177,7 +194,7 @@ async def test_text_message_handler_sends_handle_chat_response() -> None:
     ):
         await text_message_handler(update, context)
 
-    message.reply_text.assert_awaited_once_with(f"pong\n\n{FEEDBACK_PROMPT}")
+    message.reply_text.assert_awaited_once_with("pong")
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +217,7 @@ async def test_text_message_handler_sends_insufficient_evidence_reply() -> None:
     ):
         await text_message_handler(update, context)
 
-    message.reply_text.assert_awaited_once_with(f"{insufficient_reply}\n\n{FEEDBACK_PROMPT}")
+    message.reply_text.assert_awaited_once_with(insufficient_reply)
 
 
 @pytest.mark.asyncio
@@ -241,7 +258,7 @@ async def test_text_message_handler_sends_typing_before_handle_chat() -> None:
         await text_message_handler(update, context)
 
     mock_chat.assert_awaited_once()
-    message.reply_text.assert_awaited_once_with(f"pong\n\n{FEEDBACK_PROMPT}")
+    message.reply_text.assert_awaited_once_with("pong")
 
 
 @pytest.mark.asyncio
@@ -279,6 +296,7 @@ async def test_text_message_handler_acks_feedback_when_commit_fails() -> None:
                 }
             },
             "_bot_message_ids_by_chat": {"42": 901},
+            "numeric_feedback_enabled": True,
         },
         bot=SimpleNamespace(send_chat_action=AsyncMock()),
     )
@@ -286,6 +304,16 @@ async def test_text_message_handler_acks_feedback_when_commit_fails() -> None:
     await text_message_handler(update, context)
 
     message.reply_text.assert_awaited_once_with("Thanks, noted.")
+
+
+def test_split_telegram_text_keeps_long_responses_under_limit() -> None:
+    text = ("word " * 1700) + "\nfinal line"
+
+    chunks = _split_telegram_text(text)
+
+    assert len(chunks) >= 3
+    assert all(len(chunk) <= 3900 for chunk in chunks)
+    assert "".join(chunks) == text
 
 
 @pytest.mark.asyncio

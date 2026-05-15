@@ -81,8 +81,6 @@ Automated regression slice:
 .venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py -q --tb=short
 ```
 
-## 6. Common Failure Modes
-
 ## 6. Test 7/8 Sync, Notes, Titles, Interpretation Checklist
 
 Run this checklist after deployments that touch Google Docs sync, note writing, title intake, or
@@ -109,6 +107,30 @@ dream section, before the next dream heading.
 that title and `raw_text` does not include the recording command.
 9. Ask for an interpretation; verify the bot shows the pending prompt and does not interpret until
 the user replies `да`. Reply `нет` in a separate run and verify it cancels.
+
+## 7. Test 9 Full Text, English, Numeric Feedback Checklist
+
+Run this checklist after deployments that touch full dream retrieval, Google Docs parsing,
+retrieval SQL, or Telegram feedback UX.
+
+1. Ask for the full text of a long known dream by date/title. Verify the final lines are present
+   and the bot does not say the archive text is cut off.
+2. If the answer is longer than one Telegram message, verify it arrives in multiple messages and
+   no text is lost between parts.
+3. Add or identify an English Google Doc entry with a heading such as
+   `15.05.26 - Fish in the elevator`; run sync and verify the stored title is `Fish in the elevator`
+   and the body text is complete.
+4. Search for a distinctive English word from that dream; verify the result cites archive-backed
+   evidence from the English text.
+5. Ask the bot a question that returns numbered options, then answer `1` or `2`. Verify the digit
+   is treated as the chosen option, not as feedback.
+6. Verify ordinary substantive responses no longer append `Ответьте 1–5...`.
+
+Automated regression slice:
+
+```bash
+.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_feedback_capture.py tests/unit/test_assistant_chat.py tests/unit/test_segmentation.py tests/unit/test_rag_query.py tests/unit/test_config.py -q --tb=short
+```
 
 Auto-sync Redis inspection helper:
 
@@ -153,7 +175,7 @@ Automated Phase 22 regression slice:
 .venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_rag_ingestion.py tests/unit/test_segmentation.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short
 ```
 
-## 7. Common Failure Modes
+## 8. Common Failure Modes
 
 ### Bot starts but receives nothing
 
@@ -190,7 +212,7 @@ Check:
 - `ASSISTANT_MODEL` is a valid model ID
 - bounded tool-use loop hit MAX_TOOL_ROUNDS=5 without an end_turn response (log will show this)
 
-## 8. Voice Failure Diagnostics
+## 9. Voice Failure Diagnostics
 
 Voice messages go through a two-stage pipeline: the handler persists + downloads, then a background task transcribes and replies.
 

@@ -1,7 +1,7 @@
 # Decision Log — Dream Motif Interpreter
 
-Version: 2.6
-Last updated: 2026-05-09 (Phase 22 sync and interpretation implementation)
+Version: 2.7
+Last updated: 2026-05-15 (Phase 23 numeric feedback disablement)
 
 ## Rules
 
@@ -29,11 +29,12 @@ Last updated: 2026-05-09 (Phase 22 sync and interpretation implementation)
 | D-014 | 2026-04-18 | Active | WS-11.4 (optional comment capture after digit rating) deferred; rating-only feedback sufficient for current quality signal; comment capture may be added in a future phase | `docs/tasks_phase11.md §WS-11.4`, `docs/FEEDBACK_LOOP.md §2` |
 | D-015 | 2026-05-01 | Planned | Dream recording reliability must move from prompt-only behavior to deterministic intake, pending-draft state, write status tracking, and honest success/failure responses | `docs/tasks_phase17.md` |
 | D-016 | 2026-05-01 | Active | Local AI development workflow requires explicit role ownership, prompt-file dispatch via `PROMPT=$(cat ...)`, mandatory light/deep review gates, documentation updates, and ruff/format checks before completion | `docs/prompts/ORCHESTRATOR.md`, `docs/CODEX_PROMPT.md §Instructions for Codex` |
-| D-017 | 2026-05-02 | Active | Telegram numeric feedback prompt remains active and shortened; emoji reactions are stored and scaffolded for semantics, but concrete emoji meaning mapping is deferred until the user supplies it | `docs/tasks_phase20.md §WS-20.2-20.3`, `docs/FEEDBACK_LOOP.md §2, §7` |
+| D-017 | 2026-05-02 | Superseded by D-020 | Telegram numeric feedback prompt remains active and shortened; emoji reactions are stored and scaffolded for semantics, but concrete emoji meaning mapping is deferred until the user supplies it | `docs/tasks_phase20.md §WS-20.2-20.3`, `docs/FEEDBACK_LOOP.md §2, §7` |
 | D-018 | 2026-05-09 | Active | Phase 22 treats Google Docs freshness as a P0 user-facing invariant: duplicate source content must not abort the entire sync, and failed/stale sync states must be visible before the assistant relies on missing archive evidence | `docs/tasks_phase22.md §WS-22.1-22.3`, `docs/archive/PHASE22_REVIEW.md` |
 | D-019 | 2026-05-09 | Active | Whole-dream LLM interpretation must be a separate explicit-approval flow, distinct from motif induction and external research; interpretation output is subjective and is not persisted as archive fact in Phase 22 | `docs/tasks_phase22.md §WS-22.6`, `docs/IMPLEMENTATION_CONTRACT.md §LLM Output Framing`, `docs/archive/PHASE22_REVIEW.md` |
+| D-020 | 2026-05-15 | Active | Telegram numeric 1–5 feedback prompt and digit capture are disabled by default because they interfere with numbered-choice conversation; legacy capture remains behind `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=true` | `docs/tasks_phase23.md §WS-23.3`, `docs/FEEDBACK_LOOP.md §2`, `docs/archive/PHASE23_REVIEW.md` |
 
 ## Notes
 
-- Decisions through D-014 and D-016 through D-019 are Active; D-015 remains planned until the broader recording reliability plan is fully superseded.
+- Decisions through D-014, D-016, and D-018 through D-020 are Active; D-017 is superseded by D-020; D-015 remains planned until the broader recording reliability plan is fully superseded.
 - The presence of a decision in this log implies the corresponding implementation exists unless explicitly marked otherwise.

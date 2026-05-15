@@ -30,6 +30,7 @@ from app.assistant.voice_media import create_voice_media_event
 from app.assistant.voice_media import get_voice_transcript_for_message
 from app.llm.client import LLMClientError
 from app.services.feedback_service import FeedbackService
+from app.shared.config import get_settings
 from app.telegram.voice import download_voice_file
 
 LOGGER = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ VOICE_TRANSCRIPT_UNAVAILABLE = (
 _FEEDBACK_STATE_KEY = "_feedback_pending_by_chat"
 _BOT_MESSAGE_IDS_KEY = "_bot_message_ids_by_chat"
 MAX_PENDING_FEEDBACK_REQUESTS = 10_000
+TELEGRAM_MESSAGE_CHUNK_SIZE = 3900
 
 
 async def chat_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -68,9 +70,14 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     chat_key = str(chat_id) if chat_id is not None else None
     pending_feedback = _feedback_state(context)
     bot_msg_ids = _bot_message_ids(context)
+    feedback_enabled = _numeric_feedback_enabled(context)
     stripped_text = message.text.strip()
     reply_to_msg_id = getattr(getattr(message, "reply_to_message", None), "message_id", None)
     session_factory = context.bot_data.get("session_factory")
+
+    if not feedback_enabled and chat_key is not None:
+        pending_feedback.pop(chat_key, None)
+        bot_msg_ids.pop(chat_key, None)
 
     if chat_id is not None and await _handle_reply_to_voice_save(
         message,
@@ -85,7 +92,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     if (
-        chat_key is not None
+        feedback_enabled
+        and chat_key is not None
         and reply_to_msg_id is not None
         and reply_to_msg_id == bot_msg_ids.get(chat_key)
     ):
@@ -109,7 +117,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
     if (
-        chat_key is not None
+        feedback_enabled
+        and chat_key is not None
         and reply_to_msg_id is None
         and _is_rating_message(stripped_text)
         and chat_key in pending_feedback
@@ -191,8 +200,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             typing_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await typing_task
-    reply_text = _format_reply_text(result)
-    sent_message = await message.reply_text(reply_text)
+    reply_text = _format_reply_text(result, feedback_enabled=feedback_enabled)
+    sent_message = await _reply_text(message, reply_text)
 
     if chat_id is not None:
         _maybe_store_pending_dream(
@@ -203,7 +212,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             source_kind="text",
         )
 
-    if chat_key is not None and _is_substantive_response(result.text):
+    if feedback_enabled and chat_key is not None and _is_substantive_response(result.text):
         _remember_feedback_request(
             pending_feedback,
             bot_msg_ids,
@@ -345,6 +354,17 @@ def _bot_message_ids(context: ContextTypes.DEFAULT_TYPE) -> MutableMapping[str, 
     return context.bot_data.setdefault(_BOT_MESSAGE_IDS_KEY, {})
 
 
+def _numeric_feedback_enabled(context: ContextTypes.DEFAULT_TYPE) -> bool:
+    override = context.bot_data.get("numeric_feedback_enabled")
+    if override is not None:
+        return bool(override)
+    try:
+        return get_settings().TELEGRAM_NUMERIC_FEEDBACK_ENABLED
+    except Exception:
+        LOGGER.warning("Could not load Telegram feedback setting", exc_info=True)
+        return False
+
+
 async def _record_feedback_safely(
     *,
     chat_key: str,
@@ -421,10 +441,46 @@ def _is_substantive_response(text: str) -> bool:
     )
 
 
-def _format_reply_text(result: ChatResult) -> str:
-    if not _is_substantive_response(result.text):
+def _format_reply_text(result: ChatResult, *, feedback_enabled: bool = False) -> str:
+    if not feedback_enabled or not _is_substantive_response(result.text):
         return result.text
     return f"{result.text}\n\n{FEEDBACK_PROMPT}"
+
+
+async def _reply_text(message: Any, text: str) -> Any:
+    sent_message: Any = None
+    for chunk in _split_telegram_text(text):
+        sent_message = await message.reply_text(chunk)
+    return sent_message
+
+
+def _split_telegram_text(
+    text: str,
+    *,
+    chunk_size: int = TELEGRAM_MESSAGE_CHUNK_SIZE,
+) -> list[str]:
+    if len(text) <= chunk_size:
+        return [text]
+
+    chunks: list[str] = []
+    remaining = text
+    while len(remaining) > chunk_size:
+        split_at = max(
+            remaining.rfind("\n\n", 0, chunk_size + 1),
+            remaining.rfind("\n", 0, chunk_size + 1),
+            remaining.rfind(" ", 0, chunk_size + 1),
+        )
+        if split_at < chunk_size // 2:
+            split_at = chunk_size
+
+        chunk = remaining[:split_at]
+        if chunk:
+            chunks.append(chunk)
+        remaining = remaining[split_at:]
+
+    if remaining:
+        chunks.append(remaining)
+    return chunks
 
 
 async def _handle_pending_dream_confirmation(

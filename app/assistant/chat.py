@@ -53,6 +53,12 @@ class ChatResult:
     tool_calls_made: list[str]
 
 
+@dataclass(slots=True)
+class _DirectChatResult:
+    text: str
+    tool_calls_made: list[str]
+
+
 async def handle_chat(
     message_text: str,
     facade: AssistantFacade,
@@ -84,6 +90,36 @@ async def handle_chat_with_metadata(
     Returns a plain text response suitable for sending back to the user.
     Never raises — errors are returned as user-facing strings.
     """
+    history: list[dict[str, Any]] = []
+    if session_factory is not None and chat_id is not None:
+        try:
+            history = await load_history(session_factory, chat_id)
+        except Exception:
+            LOGGER.warning("Failed to load session history for chat_id=%s", chat_id, exc_info=True)
+
+    try:
+        direct_result = await _try_direct_full_text_request(message_text, facade)
+    except Exception:
+        LOGGER.warning("Direct full-text lookup failed; falling back to LLM", exc_info=True)
+        direct_result = None
+    if direct_result is not None:
+        LOGGER.info(
+            "pre_llm_full_dream_text_response chat_id=%s chars=%s",
+            chat_id,
+            len(direct_result.text),
+        )
+        await _save_turn_history(
+            session_factory,
+            chat_id,
+            history,
+            message_text,
+            direct_result.text,
+        )
+        return ChatResult(
+            text=direct_result.text,
+            tool_calls_made=direct_result.tool_calls_made,
+        )
+
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         LOGGER.error("ANTHROPIC_API_KEY is not set — chat unavailable")
@@ -95,13 +131,6 @@ async def handle_chat_with_metadata(
     model = os.environ.get("ASSISTANT_MODEL", _DEFAULT_MODEL)
     client = AsyncAnthropic(api_key=api_key)
     settings = get_settings()
-
-    history: list[dict[str, Any]] = []
-    if session_factory is not None and chat_id is not None:
-        try:
-            history = await load_history(session_factory, chat_id)
-        except Exception:
-            LOGGER.warning("Failed to load session history for chat_id=%s", chat_id, exc_info=True)
 
     feedback_rows: list[dict] = []
     if session_factory is not None:
@@ -278,6 +307,110 @@ def _direct_full_dream_text_response(
     return _format_full_dream_text_reply(tool_result)
 
 
+async def _try_direct_full_text_request(
+    message_text: str,
+    facade: AssistantFacade,
+) -> _DirectChatResult | None:
+    query = _extract_full_text_query(message_text)
+    if not query:
+        return None
+
+    title_matches = await facade.search_dreams_by_title(query, limit=10)
+    if len(title_matches) == 1:
+        detail = await facade.get_dream(title_matches[0].dream_id)
+        if detail is None:
+            return _DirectChatResult(
+                text=(
+                    "Нашёл сон по названию, но не смог загрузить полный текст из архива. "
+                    "Попробуй уточнить дату или название."
+                ),
+                tool_calls_made=["search_dreams_by_title", "get_dream"],
+            )
+        return _DirectChatResult(
+            text=_format_full_dream_detail_reply(detail),
+            tool_calls_made=["search_dreams_by_title", "get_dream"],
+        )
+    if len(title_matches) > 1:
+        return _DirectChatResult(
+            text=_format_ambiguous_full_text_matches(query, title_matches),
+            tool_calls_made=["search_dreams_by_title"],
+        )
+
+    search_result = await facade.search_dreams(query)
+    if search_result.insufficient_reason is not None or not search_result.items:
+        return _DirectChatResult(
+            text=(
+                f"Не нашёл в архиве однозначный сон по запросу «{query}». "
+                "Укажи, пожалуйста, точное название или дату."
+            ),
+            tool_calls_made=["search_dreams_by_title", "search_dreams"],
+        )
+
+    unique_ids = []
+    seen_ids = set()
+    for item in search_result.items:
+        if item.dream_id in seen_ids:
+            continue
+        seen_ids.add(item.dream_id)
+        unique_ids.append(item.dream_id)
+
+    if len(unique_ids) == 1:
+        detail = await facade.get_dream(unique_ids[0])
+        if detail is None:
+            return _DirectChatResult(
+                text=(
+                    "Нашёл похожий сон, но не смог загрузить полный текст из архива. "
+                    "Попробуй уточнить дату или название."
+                ),
+                tool_calls_made=["search_dreams_by_title", "search_dreams", "get_dream"],
+            )
+        return _DirectChatResult(
+            text=_format_full_dream_detail_reply(detail),
+            tool_calls_made=["search_dreams_by_title", "search_dreams", "get_dream"],
+        )
+
+    return _DirectChatResult(
+        text=_format_ambiguous_full_text_search_results(query, search_result.items),
+        tool_calls_made=["search_dreams_by_title", "search_dreams"],
+    )
+
+
+def _extract_full_text_query(message_text: str) -> str | None:
+    if not _is_full_dream_text_request(message_text):
+        return None
+
+    patterns = (
+        r"(?is)^\s*(?:приведи|пришли|покажи|дай|напиши|выведи|отправь|скинь)?"
+        r"\s*(?:мне|пожалуйста)?\s*(?:полный|весь)\s+текст"
+        r"\s*(?:сна|сон|записи)?\s*(?:про|о|по|под названием|с названием)?"
+        r"\s*[:\"'«»—–-]?\s*(?P<query>.+?)\s*$",
+        r"(?is)^\s*(?:приведи|пришли|покажи|дай|напиши|выведи|отправь|скинь)?"
+        r"\s*(?:мне|пожалуйста)?\s*полную\s+запись"
+        r"\s*(?:сна|сон)?\s*(?:про|о|по|под названием|с названием)?"
+        r"\s*[:\"'«»—–-]?\s*(?P<query>.+?)\s*$",
+        r"(?is)^\s*(?:приведи|пришли|покажи|дай|напиши|выведи|отправь|скинь)?"
+        r"\s*(?:мне|пожалуйста)?\s*(?:сон|запись)?\s*(?:целиком|полностью|без сокращений)"
+        r"\s*(?:про|о|по|под названием|с названием)?\s*[:\"'«»—–-]?\s*(?P<query>.+?)\s*$",
+        r"(?is)^\s*(?:show|send|give|print)?\s*(?:me)?\s*(?:the)?\s*"
+        r"(?:full|complete|entire|whole|verbatim)\s+(?:text\s+)?(?:of\s+)?(?:the\s+)?"
+        r"(?:dream\s+)?(?P<query>.+?)\s*$",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, message_text)
+        if match:
+            return _clean_full_text_query(match.group("query"))
+    return None
+
+
+def _clean_full_text_query(raw_query: str) -> str | None:
+    query = raw_query.strip().strip("\"'«»“”")
+    if query.casefold() in {"сна", "сон", "записи", "запись", "dream"}:
+        return None
+    query = re.sub(r"(?i)^(?:сна|сон|записи|запись|dream)\s+", "", query).strip()
+    query = re.sub(r"(?i)^(?:про|о|по|под названием|с названием)\s+", "", query).strip()
+    return query or None
+
+
 def _is_full_dream_text_request(request_text: str) -> bool:
     text = request_text.casefold()
     if any(marker in text for marker in _EXPLICIT_FULL_TEXT_MARKERS):
@@ -285,6 +418,56 @@ def _is_full_dream_text_request(request_text: str) -> bool:
     has_full_text_marker = any(marker in text for marker in _COMPLETENESS_MARKERS)
     has_dream_marker = any(marker in text for marker in _DREAM_MARKERS)
     return has_full_text_marker and has_dream_marker
+
+
+def _format_full_dream_detail_reply(detail: Any) -> str:
+    title = str(getattr(detail, "title", "") or "").strip()
+    date_value = _format_tool_date(str(getattr(detail, "date", "") or "").strip())
+    dream_text = str(getattr(detail, "raw_text", "") or "").rstrip()
+    notes = [
+        str(note).strip()
+        for note in getattr(detail, "notes", [])
+        if str(note).strip()
+    ]
+
+    header_parts = [part for part in (date_value, title) if part and part != "unknown"]
+    response_parts: list[str] = []
+    if header_parts:
+        response_parts.append(", ".join(header_parts))
+    response_parts.append(dream_text or "В архиве у этого сна пустой текст.")
+    if notes:
+        response_parts.append("Заметки:\n" + "\n".join(notes))
+    return "\n\n".join(response_parts)
+
+
+def _format_ambiguous_full_text_matches(query: str, matches: list[Any]) -> str:
+    lines = [f"Нашёл несколько снов по запросу «{query}». Уточни, какой текст прислать:"]
+    for index, item in enumerate(matches[:10], start=1):
+        date_value = _format_tool_date(str(getattr(item, "date", "") or "").strip())
+        title = str(getattr(item, "title", "") or "без названия").strip()
+        label = ", ".join(part for part in (date_value, title) if part and part != "unknown")
+        lines.append(f"{index}. {label or title}")
+    return "\n".join(lines)
+
+
+def _format_ambiguous_full_text_search_results(query: str, items: list[Any]) -> str:
+    lines = [f"Нашёл несколько похожих снов по запросу «{query}». Уточни, какой текст прислать:"]
+    seen_ids = set()
+    option_index = 1
+    for item in items:
+        if item.dream_id in seen_ids:
+            continue
+        seen_ids.add(item.dream_id)
+        date_value = _format_tool_date(
+            getattr(item.date, "isoformat", lambda: str(item.date or ""))()
+        )
+        title = str(getattr(item, "title", "") or "без названия").strip()
+        label = ", ".join(part for part in (date_value, title) if part and part != "unknown")
+        lines.append(f"{option_index}. {label or title}")
+        option_index += 1
+        if option_index > 10:
+            break
+    return "\n".join(lines)
 
 
 def _format_full_dream_text_reply(tool_result: str) -> str | None:

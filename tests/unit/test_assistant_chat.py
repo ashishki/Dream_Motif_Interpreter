@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.assistant import tools as tools_module
-from app.assistant.chat import handle_chat, _extract_text
+from app.assistant.chat import handle_chat, handle_chat_with_metadata, _extract_text
 from app.assistant.facade import (
     AssistantFacade,
     DreamDetail,
@@ -184,12 +184,63 @@ async def test_handle_chat_returns_full_dream_text_directly_without_final_llm() 
                 client.messages.create = AsyncMock(return_value=tool_response)
                 mock_client_cls.return_value = client
 
-                result = await handle_chat("пришли полный текст Длинная ночь", facade)
+                result = await handle_chat("пришли полный текст сна", facade)
 
     assert result.startswith("15.05.26, Длинная ночь\n\nНачало сна.")
     assert long_text in result
     assert "Финальная строка сна." in result
     assert client.messages.create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_chat_pre_llm_full_text_lookup_ignores_stale_history() -> None:
+    dream_id = uuid.uuid4()
+    long_text = "Start of the dream. " + ("middle fragment " * 180) + "Final archive line."
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams_by_title.return_value = [
+        DreamTitleSearchResult(
+            dream_id=dream_id,
+            date=None,
+            title="4.08.25 dreamwork, three women",
+            raw_text_preview=long_text[:120],
+        )
+    ]
+    facade.get_dream.return_value = DreamDetail(
+        id=dream_id,
+        date=None,
+        title="4.08.25 dreamwork, three women",
+        raw_text=long_text,
+        word_count=len(long_text.split()),
+        source_doc_id="doc-1",
+        created_at="2026-05-17T00:00:00+00:00",
+        segmentation_confidence="high",
+        themes=[],
+        notes=[],
+    )
+
+    stale_history = [
+        {"role": "user", "content": "Приведи полный текст сна dreamwork, three women"},
+        {"role": "assistant", "content": "В архиве сохранён только неполный текст."},
+    ]
+
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
+        with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
+            with patch("app.assistant.chat.load_history", new=AsyncMock(return_value=stale_history)):
+                with patch("app.assistant.chat.save_history", new=AsyncMock()) as mock_save:
+                    result = await handle_chat_with_metadata(
+                        "Приведи полный текст сна dreamwork, three women",
+                        facade,
+                        session_factory=MagicMock(),
+                        chat_id=123,
+                    )
+
+    assert result.text.startswith("4.08.25 dreamwork, three women\n\nStart of the dream.")
+    assert "Final archive line." in result.text
+    assert result.tool_calls_made == ["search_dreams_by_title", "get_dream"]
+    facade.search_dreams_by_title.assert_awaited_once_with("dreamwork, three women", limit=10)
+    facade.get_dream.assert_awaited_once_with(dream_id)
+    mock_client_cls.assert_not_called()
+    mock_save.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -217,7 +268,7 @@ async def test_handle_chat_returns_full_title_match_text_directly() -> None:
                 client.messages.create = AsyncMock(return_value=tool_response)
                 mock_client_cls.return_value = client
 
-                result = await handle_chat("покажи полный текст сна Рыба", facade)
+                result = await handle_chat("покажи полный текст сна", facade)
 
     assert result == "16.05.26, Рыба\n\nВ этом сне была рыба.\n\nЗаметки:\nзаметка к сну"
     assert client.messages.create.await_count == 1

@@ -17,6 +17,8 @@ No P0/P1/P2 findings remain in the implemented Phase 23 slice.
 - `app/retrieval/query.py`: exact and hybrid keyword search now combine Russian FTS with `simple` FTS for English recall.
 - `app/assistant/chat.py`: explicit full-text dream requests now bypass the final LLM response after
   a full dream tool result is available, preventing `max_tokens=1024` from shortening the archive text.
+- `app/assistant/chat.py`: full-text requests that include a title/query are now resolved before the
+  LLM call, preventing stale conversation history from answering without an archive lookup.
 
 ## Verification
 
@@ -24,8 +26,10 @@ No P0/P1/P2 findings remain in the implemented Phase 23 slice.
 - `.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_feedback_capture.py tests/unit/test_assistant_chat.py tests/unit/test_segmentation.py tests/unit/test_rag_query.py tests/unit/test_config.py tests/unit/test_voice_cleanup.py -q --tb=short` -> `170 passed, 1 warning`
 - `.venv/bin/python -m pytest tests/unit -q --tb=short` -> `452 passed, 1 warning`
 - `.venv/bin/ruff check app/assistant/chat.py tests/unit/test_assistant_chat.py` -> clean
-- `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py -q --tb=short` -> `89 passed, 1 warning`
-- `.venv/bin/python -m pytest tests/unit -q --tb=short` -> `454 passed, 1 warning`
+- `.venv/bin/python -m pytest tests/unit/test_assistant_chat.py -q --tb=short` -> `90 passed, 1 warning`
+- `.venv/bin/python -m pytest tests/unit -q --tb=short` -> `455 passed, 1 warning`
+- Local DB smoke: `Приведи полный текст сна dreamwork, three women` -> pre-LLM direct route,
+  `search_dreams_by_title` + `get_dream`, `2644` chars returned.
 
 ## Findings
 
@@ -37,6 +41,9 @@ No P0/P1/P2 findings remain in the implemented Phase 23 slice.
   tool, but it still passed through final LLM generation with `max_tokens=1024`. Long dreams could
   therefore arrive incomplete before Telegram splitting. Fixed by returning explicit full-text
   requests directly from the archive-backed tool result.
+- CODE-23-3 (P2, fixed in follow-up): repeated full-text requests could be answered from stale chat
+  history without any tool call. Fixed by routing inline full-text title/query requests through
+  deterministic archive lookup before the first LLM call.
 
 ## Residual Risk
 

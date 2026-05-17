@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import os
+import re
 from typing import Any
 
 from anthropic import AsyncAnthropic
@@ -22,6 +23,28 @@ LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 _MAX_TOOL_ROUNDS = 5
+_FULL_DREAM_TEXT_TOOLS = {"get_dream", "search_dreams_by_title"}
+_EXPLICIT_FULL_TEXT_MARKERS = (
+    "полный текст",
+    "полную запись",
+    "весь текст",
+    "всю запись",
+    "full text",
+    "complete text",
+    "entire text",
+    "whole text",
+    "verbatim",
+)
+_COMPLETENESS_MARKERS = (
+    "полностью",
+    "целиком",
+    "без сокращ",
+    "не сокращ",
+    "не обрез",
+    "entire dream",
+    "complete dream",
+)
+_DREAM_MARKERS = ("сон", "сна", "сновид", "запис", "dream")
 
 
 @dataclass(slots=True)
@@ -165,6 +188,26 @@ async def handle_chat_with_metadata(
                 request_text=message_text,
             )
             tool_pairs.append((block, result))
+            direct_response = _direct_full_dream_text_response(
+                block.name,
+                result,
+                request_text=message_text,
+            )
+            if direct_response:
+                LOGGER.info(
+                    "direct_full_dream_text_response chat_id=%s tool=%s chars=%s",
+                    chat_id,
+                    block.name,
+                    len(direct_response),
+                )
+                await _save_turn_history(
+                    session_factory,
+                    chat_id,
+                    history,
+                    message_text,
+                    direct_response,
+                )
+                return ChatResult(text=direct_response, tool_calls_made=tool_calls_made)
 
         messages.append({"role": "assistant", "content": response.content})
         messages.append(
@@ -189,15 +232,7 @@ async def handle_chat_with_metadata(
     if not last_text:
         return ChatResult(text="No response from the assistant.", tool_calls_made=tool_calls_made)
 
-    if session_factory is not None and chat_id is not None:
-        new_history = history + [
-            {"role": "user", "content": message_text},
-            {"role": "assistant", "content": last_text},
-        ]
-        try:
-            await save_history(session_factory, chat_id, new_history)
-        except Exception:
-            LOGGER.warning("Failed to save session history for chat_id=%s", chat_id, exc_info=True)
+    await _save_turn_history(session_factory, chat_id, history, message_text, last_text)
 
     return ChatResult(text=last_text, tool_calls_made=tool_calls_made)
 
@@ -208,3 +243,97 @@ def _extract_text(response: Any) -> str:
         if getattr(block, "type", None) == "text" and getattr(block, "text", ""):
             parts.append(block.text)
     return "".join(parts).strip()
+
+
+async def _save_turn_history(
+    session_factory: async_sessionmaker[AsyncSession] | None,
+    chat_id: int | None,
+    history: list[dict[str, Any]],
+    message_text: str,
+    assistant_text: str,
+) -> None:
+    if session_factory is None or chat_id is None:
+        return
+
+    new_history = history + [
+        {"role": "user", "content": message_text},
+        {"role": "assistant", "content": assistant_text},
+    ]
+    try:
+        await save_history(session_factory, chat_id, new_history)
+    except Exception:
+        LOGGER.warning("Failed to save session history for chat_id=%s", chat_id, exc_info=True)
+
+
+def _direct_full_dream_text_response(
+    tool_name: str,
+    tool_result: str,
+    *,
+    request_text: str,
+) -> str | None:
+    if tool_name not in _FULL_DREAM_TEXT_TOOLS:
+        return None
+    if not _is_full_dream_text_request(request_text):
+        return None
+    return _format_full_dream_text_reply(tool_result)
+
+
+def _is_full_dream_text_request(request_text: str) -> bool:
+    text = request_text.casefold()
+    if any(marker in text for marker in _EXPLICIT_FULL_TEXT_MARKERS):
+        return True
+    has_full_text_marker = any(marker in text for marker in _COMPLETENESS_MARKERS)
+    has_dream_marker = any(marker in text for marker in _DREAM_MARKERS)
+    return has_full_text_marker and has_dream_marker
+
+
+def _format_full_dream_text_reply(tool_result: str) -> str | None:
+    text_match = re.search(r"(?m)^Text: ?", tool_result)
+    if not text_match:
+        return None
+
+    dream_text, notes = _split_dream_text_and_notes(tool_result[text_match.end() :])
+    dream_text = dream_text.rstrip()
+    if not dream_text.strip():
+        return None
+
+    title = _extract_tool_field(tool_result, "Title")
+    date_value = _format_tool_date(_extract_tool_field(tool_result, "Date"))
+
+    header_parts = [part for part in (date_value, title) if part and part != "unknown"]
+    response_parts: list[str] = []
+    if header_parts:
+        response_parts.append(", ".join(header_parts))
+    response_parts.append(dream_text)
+    if notes:
+        response_parts.append(f"Заметки:\n{notes}")
+    return "\n\n".join(response_parts)
+
+
+def _split_dream_text_and_notes(text_with_optional_notes: str) -> tuple[str, str]:
+    if "\nNotes:\n" not in text_with_optional_notes:
+        return text_with_optional_notes, ""
+
+    dream_text, notes_text = text_with_optional_notes.rsplit("\nNotes:\n", 1)
+    note_lines = [line.strip() for line in notes_text.splitlines() if line.strip()]
+    if not note_lines or any(not line.startswith("- ") for line in note_lines):
+        return text_with_optional_notes, ""
+
+    notes = "\n".join(line[2:].strip() for line in note_lines)
+    return dream_text, notes
+
+
+def _extract_tool_field(tool_result: str, field_name: str) -> str:
+    match = re.search(rf"(?m)^{re.escape(field_name)}: (.*)$", tool_result)
+    if not match:
+        return ""
+    value = match.group(1).strip()
+    return "" if value in {"", "None"} else value
+
+
+def _format_tool_date(date_value: str) -> str:
+    match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", date_value)
+    if not match:
+        return date_value
+    year, month, day = match.groups()
+    return f"{day}.{month}.{year[2:]}"

@@ -159,6 +159,70 @@ async def test_handle_chat_executes_search_tool_and_returns_final_text() -> None
     facade.search_dreams.assert_awaited_once_with("flying")
 
 
+@pytest.mark.asyncio
+async def test_handle_chat_returns_full_dream_text_directly_without_final_llm() -> None:
+    dream_id = uuid.uuid4()
+    long_text = "Начало сна.\n" + ("длинный фрагмент " * 220) + "\nФинальная строка сна."
+    tool_result = (
+        f"Dream {dream_id}\n"
+        "Date: 2026-05-15\n"
+        "Title: Длинная ночь\n"
+        f"Words: {len(long_text.split())}\n"
+        "Themes: none\n"
+        f"Text: {long_text}"
+    )
+    facade = _make_facade()
+    tool_response = _make_response(
+        "tool_use",
+        [_tool_use_block("get_dream", "t-full", {"dream_id": str(dream_id)})],
+    )
+
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
+            with patch("app.assistant.chat.execute_tool", new=AsyncMock(return_value=tool_result)):
+                client = AsyncMock()
+                client.messages.create = AsyncMock(return_value=tool_response)
+                mock_client_cls.return_value = client
+
+                result = await handle_chat("пришли полный текст Длинная ночь", facade)
+
+    assert result.startswith("15.05.26, Длинная ночь\n\nНачало сна.")
+    assert long_text in result
+    assert "Финальная строка сна." in result
+    assert client.messages.create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_chat_returns_full_title_match_text_directly() -> None:
+    dream_id = uuid.uuid4()
+    tool_result = (
+        "Single title match found for 'рыба'. Full dream:\n"
+        f"Dream {dream_id}\n"
+        "Date: 2026-05-16\n"
+        "Title: Рыба\n"
+        "Words: 7\n"
+        "Themes: none\n"
+        "Text: В этом сне была рыба.\nNotes:\n- заметка к сну"
+    )
+    facade = _make_facade()
+    tool_response = _make_response(
+        "tool_use",
+        [_tool_use_block("search_dreams_by_title", "t-title", {"query": "рыба"})],
+    )
+
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
+            with patch("app.assistant.chat.execute_tool", new=AsyncMock(return_value=tool_result)):
+                client = AsyncMock()
+                client.messages.create = AsyncMock(return_value=tool_response)
+                mock_client_cls.return_value = client
+
+                result = await handle_chat("покажи полный текст сна Рыба", facade)
+
+    assert result == "16.05.26, Рыба\n\nВ этом сне была рыба.\n\nЗаметки:\nзаметка к сну"
+    assert client.messages.create.await_count == 1
+
+
 # ---------------------------------------------------------------------------
 # handle_chat — insufficient evidence path
 # ---------------------------------------------------------------------------

@@ -1,9 +1,9 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 2.8
-Last updated: 2026-05-15 (Phase 23 implemented — Test 9 full text, English entries, numeric feedback disablement)
+Version: 2.9
+Last updated: 2026-05-20 (Phase 25 implemented — backdated Google Doc writes and duplicate rewrites)
 
-## 1. Current Status: Phases 1–23 Complete
+## 1. Current Status: Phases 1–25 Complete
 
 **Phases 1–5** — Backend platform complete:
 
@@ -50,6 +50,8 @@ Execution graph:
 - [docs/tasks_phase21.md](tasks_phase21.md) — historical Phase 21 graph (Test 6 recording/search regressions)
 - [docs/tasks_phase22.md](tasks_phase22.md) — historical Phase 22 graph (Test 7/8 sync, notes, titles, interpretation approval)
 - [docs/tasks_phase23.md](tasks_phase23.md) — historical Phase 23 graph (Test 9 full text, English entries, numeric feedback disablement)
+- [docs/tasks_phase24.md](tasks_phase24.md) — historical Phase 24 graph (Test 10 titles and dream-set pattern analysis)
+- [docs/tasks_phase25.md](tasks_phase25.md) — historical Phase 25 graph (backdated Google Doc writes and duplicate rewrites)
 
 ## 1.1 Phase 22 — Test 7/8 Reliability Loop
 
@@ -79,6 +81,32 @@ Phase 23 closed the 2026-05-15 Test 9 feedback:
 
 The canonical task graph is [docs/tasks_phase23.md](tasks_phase23.md). Deep review is archived at
 [docs/archive/PHASE23_REVIEW.md](archive/PHASE23_REVIEW.md).
+
+## 1.3 Phase 24 — Test 10 Reliability Loop
+
+Phase 24 closed the 2026-05-20 Test 10 feedback:
+
+1. Use a narrow LLM title generator for new dreams when the user does not provide a title.
+2. Ignore model-supplied `create_dream.title` unless the current user message has an explicit
+   title marker.
+3. Remember recent dream search result IDs per chat for follow-up analysis.
+4. Automatically load full dream texts when the user asks for common patterns in a result set or
+   topic.
+
+The canonical task graph is [docs/tasks_phase24.md](tasks_phase24.md).
+
+## 1.4 Phase 25 — Backdated Write Reliability Loop
+
+Phase 25 closed the 2026-05-20 follow-up on Google Doc write placement:
+
+1. Parse short numeric dates such as `19.05` for dream recording.
+2. Strip leading date directives such as `за 19.05:` from stored Telegram dream text.
+3. Insert Google Doc dream headings before the first later dated heading/paragraph instead of
+   always appending to the physical document end.
+4. Allow repeated Google Doc writes for dreams that already exist in the archive while keeping the
+   archive row deduplicated by `content_hash`.
+
+The canonical task graph is [docs/tasks_phase25.md](tasks_phase25.md).
 
 ## 2. Planning Principle
 

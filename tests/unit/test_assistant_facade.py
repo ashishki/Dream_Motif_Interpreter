@@ -20,6 +20,7 @@ from app.assistant.facade import (
     SyncJobRef,
     _exact_result_item,
     _extract_quote,
+    _resolve_absolute_dream_date,
     _resolve_relative_dream_date,
     _resolve_dream_title,
 )
@@ -668,6 +669,34 @@ async def test_create_dream_extracts_inline_title_and_strips_record_command() ->
 
 
 @pytest.mark.asyncio
+async def test_create_dream_extracts_short_date_directive() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Река в доме")),
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 5, 20)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        result = await facade.create_dream(
+            "Запиши сон за 19.05: Мне приснилась река в доме.",
+            chat_id=42,
+        )
+
+    assert result.date == "2026-05-19"
+    added = session.add.call_args[0][0]
+    assert added.date == date(2026, 5, 19)
+    assert added.raw_text == "Мне приснилась река в доме."
+
+
+@pytest.mark.asyncio
 async def test_create_dream_generated_title_ignores_record_command_words() -> None:
     session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
     analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
@@ -973,8 +1002,15 @@ def test_resolve_relative_dream_date_from_russian_markers() -> None:
     assert _resolve_relative_dream_date("позавчера снилась башня", today=today) == date(2026, 4, 29)
 
 
+def test_resolve_absolute_dream_date_from_short_numeric_date() -> None:
+    today = date(2026, 5, 20)
+
+    assert _resolve_absolute_dream_date("запиши сон за 19.05", today=today) == date(2026, 5, 19)
+    assert _resolve_absolute_dream_date("сон от 19.05.26", today=today) == date(2026, 5, 19)
+
+
 @pytest.mark.asyncio
-async def test_create_dream_returns_existing_entry_without_rerunning_pipeline() -> None:
+async def test_create_dream_rewrites_existing_entry_without_rerunning_pipeline() -> None:
     existing_id = uuid4()
     created_at = datetime(2026, 4, 21, tzinfo=timezone.utc)
     existing = SimpleNamespace(
@@ -996,7 +1032,12 @@ async def test_create_dream_returns_existing_entry_without_rerunning_pipeline() 
         title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Short title")),
     )
 
-    result = await facade.create_dream("Existing dream text", chat_id=7)
+    with patch.object(
+        facade,
+        "write_dream_to_google_doc",
+        AsyncMock(return_value=(True, "Сны")),
+    ) as mock_write:
+        result = await facade.create_dream("Existing dream text", chat_id=7)
 
     assert result == CreatedDreamItem(
         id=existing_id,
@@ -1006,11 +1047,14 @@ async def test_create_dream_returns_existing_entry_without_rerunning_pipeline() 
         source_doc_id="doc-123",
         created_at=created_at.isoformat(),
         created=False,
+        written_to_google_doc=True,
+        written_to_doc_name="Сны",
     )
     session.add.assert_not_called()
     session.commit.assert_not_awaited()
     analysis_service.analyse_dream_with_session_factory.assert_not_awaited()
     index_dream_callable.assert_not_awaited()
+    mock_write.assert_awaited_once_with(dream_id=existing_id)
 
 
 @pytest.mark.asyncio

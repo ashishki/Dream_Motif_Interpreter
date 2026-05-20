@@ -701,7 +701,12 @@ def _normalize_direct_note_tail(text: str) -> str | None:
 
 def _format_create_dream_reply(created: Any) -> str:
     if not getattr(created, "created", False):
-        return "Эта запись уже есть в архиве. В Google Doc повторно не записываю."
+        if getattr(created, "written_to_google_doc", False):
+            return "Сон сохранён и добавлен в документ"
+        return (
+            "Эта запись уже есть в архиве. "
+            "Повторная запись в Google Doc не получилась; попробуйте позже."
+        )
     if getattr(created, "written_to_google_doc", False):
         return "Сон сохранён и добавлен в документ"
     return (

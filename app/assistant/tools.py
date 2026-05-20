@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 
 from app.assistant.facade import AssistantFacade, SearchResultItem
-from app.assistant.facade import _resolve_relative_dream_date
+from app.assistant.facade import _resolve_absolute_dream_date, _resolve_relative_dream_date
 from app.assistant.session import save_pending_interpretation_request
 from app.retrieval.query import extract_concrete_image_query
 from app.shared.config import extract_google_doc_id, get_doc_name
@@ -124,7 +124,10 @@ _BASE_TOOLS: list[dict[str, Any]] = [
                 },
                 "date": {
                     "type": "string",
-                    "description": "Optional dream date in ISO format YYYY-MM-DD.",
+                    "description": (
+                        "Optional dream date. Accepts YYYY-MM-DD, DD.MM, DD.MM.YY, "
+                        "DD.MM.YYYY, or Russian relative dates."
+                    ),
                 },
             },
             "required": ["raw_text"],
@@ -513,9 +516,12 @@ async def execute_tool(
         dream_date = None
         if raw_date:
             try:
-                dream_date = _resolve_relative_dream_date(raw_date) or date.fromisoformat(raw_date)
+                dream_date = _parse_tool_date(raw_date)
             except ValueError:
-                return f"Invalid date: {raw_date!r}. Expected YYYY-MM-DD or Russian relative date."
+                return (
+                    f"Invalid date: {raw_date!r}. "
+                    "Expected YYYY-MM-DD, DD.MM, DD.MM.YY, DD.MM.YYYY, or Russian relative date."
+                )
 
         created = await facade.create_dream(
             raw_text,
@@ -524,10 +530,15 @@ async def execute_tool(
             chat_id=chat_id,
         )
         if not created.created:
-            return (
-                f"Запись уже существует в архиве (id={created.id}, title={created.title!r}). "
-                "В Google Doc повторно не записывается."
-            )
+            lines = [f"Запись уже существует в архиве (id={created.id}, title={created.title!r})."]
+            if created.written_to_google_doc:
+                lines.append("Запись добавлена в Google Doc.")
+            else:
+                lines.append(
+                    "Запись сохранена в архиве. "
+                    "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
+                )
+            return "\n".join(lines)
         lines = [
             f"Dream saved: {created.id} | {created.title} | "
             f"date={created.date or 'unknown'} | source={created.source_doc_id}"
@@ -910,6 +921,10 @@ def _parse_tool_date(raw_date: str) -> date:
         return date.fromisoformat(raw_date)
     except ValueError:
         pass
+
+    absolute = _resolve_absolute_dream_date(raw_date)
+    if absolute is not None:
+        return absolute
 
     match = re.fullmatch(r"(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})", raw_date.strip())
     if match is None:

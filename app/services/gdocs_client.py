@@ -1,7 +1,7 @@
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,7 @@ GOOGLE_DOCS_SOURCE_TYPE = "google_doc"
 logger = get_logger(__name__)
 
 _DATE_PREFIX_RE = re.compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")
+_DREAM_HEADING_DATE_RE = re.compile(r"^\s*(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})\b")
 
 
 class GDocsAuthError(Exception):
@@ -261,32 +262,33 @@ class GDocsClient:
                 ) from exc
 
     def append_dream_entry(self, doc_id: str, date_str: str, title: str, body: str) -> None:
-        """Append a dream entry with the title styled as Heading 1."""
+        """Write a dream entry into the date-sorted position with a Heading 1 title."""
         with self._tracer.start_as_current_span("gdocs.append_dream_entry"):
-            logger.info("Appending dream entry to Google Docs document", document_id=doc_id)
+            logger.info("Writing dream entry to Google Docs document", document_id=doc_id)
             try:
                 service = self._build_docs_service()
                 document = service.documents().get(documentId=doc_id).execute()
-                body_content = document.get("body", {}).get("content", [])
-                end_index = 1
-                if body_content:
-                    last = body_content[-1]
-                    end_index = max(1, last.get("endIndex", 1) - 1)
+                end_index = _document_body_end_index(document)
+                insert_index = _find_dream_entry_insert_index(
+                    document,
+                    target_date=_parse_dream_heading_date(date_str),
+                )
 
                 # Layout: \n\n{date_str} - {title}\n\n{body}
-                prefix = "\n\n"
+                prefix = "\n\n" if insert_index > 1 else ""
+                suffix = "\n\n" if insert_index < end_index else ""
                 clean_title = _DATE_PREFIX_RE.sub("", title).strip()
                 heading = f"{date_str} - {clean_title}"
                 title_line = f"{heading}\n\n"
-                full_text = prefix + title_line + body
+                full_text = prefix + title_line + body + suffix
 
-                title_start = end_index + len(prefix)
+                title_start = insert_index + len(prefix)
                 title_end = title_start + len(heading) + 1  # +1 for trailing \n
 
                 requests: list[dict] = [
                     {
                         "insertText": {
-                            "location": {"index": end_index},
+                            "location": {"index": insert_index},
                             "text": full_text,
                         }
                     },
@@ -306,7 +308,7 @@ class GDocsClient:
                     body={"requests": requests},
                 ).execute()
                 logger.info(
-                    "Successfully appended dream entry to Google Docs document", document_id=doc_id
+                    "Successfully wrote dream entry to Google Docs document", document_id=doc_id
                 )
             except RefreshError as exc:
                 logger.warning("Google Docs authentication failed during append")
@@ -553,6 +555,58 @@ def _get_status_code(exc: HttpError) -> int | None:
         return None
 
 
+def _document_body_end_index(document: Mapping[str, Any]) -> int:
+    blocks = document.get("body", {}).get("content", [])
+    if not blocks:
+        return 1
+    last = blocks[-1]
+    return max(1, int(last.get("endIndex") or 1) - 1)
+
+
+def _find_dream_entry_insert_index(
+    document: Mapping[str, Any],
+    *,
+    target_date: date | None,
+) -> int:
+    end_index = _document_body_end_index(document)
+    if target_date is None:
+        return end_index
+
+    blocks = document.get("body", {}).get("content", [])
+    for block in blocks:
+        paragraph = block.get("paragraph")
+        if not isinstance(paragraph, dict):
+            continue
+        heading_date = _parse_dream_heading_date(_paragraph_text(paragraph))
+        if heading_date is not None and heading_date > target_date:
+            return max(1, int(block.get("startIndex") or block.get("endIndex") or end_index))
+    return end_index
+
+
+def _parse_dream_heading_date(value: str) -> date | None:
+    match = _DREAM_HEADING_DATE_RE.search(value)
+    if match is None:
+        return None
+    day = int(match.group(1))
+    month = int(match.group(2))
+    year_raw = match.group(3)
+    year = int(year_raw)
+    if len(year_raw) == 2:
+        year += 2000
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _paragraph_text(paragraph: Mapping[str, Any]) -> str:
+    return "".join(
+        str(element.get("textRun", {}).get("content", ""))
+        for element in paragraph.get("elements", [])
+        if isinstance(element, dict)
+    )
+
+
 def _find_heading_section_end_index(document: Mapping[str, Any], heading: str) -> int | None:
     target = _normalize_doc_text(heading)
     if not target:
@@ -566,11 +620,7 @@ def _find_heading_section_end_index(document: Mapping[str, Any], heading: str) -
         style = paragraph.get("paragraphStyle", {})
         if style.get("namedStyleType") != "HEADING_1":
             continue
-        paragraph_text = "".join(
-            str(element.get("textRun", {}).get("content", ""))
-            for element in paragraph.get("elements", [])
-            if isinstance(element, dict)
-        )
+        paragraph_text = _paragraph_text(paragraph)
         if _normalize_doc_text(paragraph_text) == target:
             heading_end_index = int(block.get("endIndex") or 1)
             if index == len(blocks) - 1:

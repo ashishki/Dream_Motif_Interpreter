@@ -1,6 +1,6 @@
 # Telegram Interaction Model
 
-Last updated: 2026-04-23 (Phase 12 — research flow simplified, response formatting rules added)
+Last updated: 2026-05-20 (Phase 25 — backdated writes and duplicate rewrites)
 
 ## 1. Purpose
 
@@ -269,6 +269,12 @@ Connection strength verbal labels: ≥0.7 — сильная, 0.4–0.69 — у�
 If no explicit title marker is present, the model-supplied `create_dream.title` argument is ignored.
 The facade generates a short semantic title from the full dream text and falls back to the
 deterministic keyword title only when title generation is unavailable.
+
+Dates in save requests may be ISO, `DD.MM`, `DD.MM.YY`, `DD.MM.YYYY`, or Russian relative dates.
+`DD.MM` resolves to the current application year. Google Doc writes are inserted before the first
+later dated Heading 1, so a dream saved for `19.05` appears before an existing `20.05` dream.
+Duplicate dream text remains deduplicated in the archive, but the Google Doc write is attempted
+again when the user asks to save it again.
 
 ## 14. Phase 11 — Feedback Capture UX
 

@@ -1,30 +1,32 @@
 # CODEX_PROMPT.md
 
-Version: 1.74
-Date: 2026-05-15
-Phase: Phase 23 implemented — Test 9 full text, English entries, numeric feedback disablement
+Version: 1.75
+Date: 2026-05-20
+Phase: Phase 25 implemented — backdated Google Doc writes and duplicate rewrites
 
 ---
 
 ## Current State
 
-- **Phase:** Phase 23 is implemented from Test 9 (2026-05-15); see `docs/tasks_phase23.md` and `docs/archive/PHASE23_REVIEW.md`.
+- **Phase:** Phase 25 is implemented from the 2026-05-20 backdated-write follow-up; see `docs/tasks_phase25.md`.
 - **Live audit baseline:** On 2026-05-09 all three services were active, but Google Docs auto-sync was failing every cycle. Redis state for the primary doc reported `last_sync_status=failed`, `last_synced_at=2026-04-26T10:16:43.458320+00:00`, and logs showed `DreamEntryValidationError: Dream entry candidates must not duplicate content_hash values within one document`.
 - **Phase 22 live result:** duplicate parsed candidates are skipped fail-soft, one live auto-sync completed with `last_sync_status=synced`, and `сон с рыбой` returns `5.11.24 запретная рыба` first with exact archive evidence.
 - **Phase 22 follow-up:** manual and automatic sync now track richer per-document state, hide `job_id` from normal user messages, explain zero-new-entry syncs, consider stale running syncs after 5 minutes, and fetch/sync the requested Google Doc ID instead of always reading the primary document.
 - **Phase 23 result:** `get_dream` tool output no longer truncates `raw_text`; long Telegram replies split safely; English/manual Google Doc headings and English exact FTS are covered; numeric 1–5 feedback is disabled by default via `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=false`.
-- **Ruff:** Phase 23 touched-code ruff check is clean; rerun before any new implementation.
+- **Phase 24 result:** new Telegram dreams without explicit titles use an LLM title generator, and pattern analysis over a search/list selection loads full dream texts automatically.
+- **Phase 25 result:** save dates like `19.05` are accepted; `за 19.05:` is stripped from stored body text; Google Doc writes insert before the first later dated heading/paragraph; duplicate archive dreams can be written to Google Doc again.
+- **Ruff:** Phase 25 touched-code ruff check and format-check are clean; rerun before any new implementation.
 - **Last CI run:** passing (2026-04-25)
-- **Last updated:** 2026-05-15 (Test 9 closure)
+- **Last updated:** 2026-05-20 (backdated write closure)
 
 ---
 
 ## Summary State
 
-- **Phases completed:** Phase 1 through Phase 23 have task graphs and completion notes.
-- **Current planning state:** Phase 23 is closed after Test 9 implementation and review.
-- **Latest completed implementation task:** Phase 23 — full dream text, English entries, and numeric feedback disablement.
-- **Current baseline:** Phase 23 gate passed (targeted slice -> 170 passed, 1 warning; full `tests/unit` -> 452 passed, 1 warning); ruff clean for touched files.
+- **Phases completed:** Phase 1 through Phase 25 have task graphs and completion notes.
+- **Current planning state:** Phase 25 is closed after the backdated Google Doc write implementation.
+- **Latest completed implementation task:** Phase 25 — backdated Google Doc writes and duplicate rewrites.
+- **Current baseline:** Phase 25 gate passed (targeted slice -> 195 passed, 1 warning; full `tests/unit` -> 470 passed, 1 warning); ruff check and format-check clean for touched files.
 - **Archived task history:** older completed-task entries moved to `## Archived Tasks` per compaction protocol
 
 ---
@@ -35,7 +37,9 @@ Phase: Phase 23 implemented — Test 9 full text, English entries, numeric feedb
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
 - **Mandatory local workflow:** `docs/prompts/ORCHESTRATOR.md`
-- **Latest task graph:** `docs/tasks_phase23.md` (Test 9 full text, English entries, numeric feedback disablement)
+- **Latest task graph:** `docs/tasks_phase25.md` (backdated Google Doc writes and duplicate rewrites)
+- **Previous task graph:** `docs/tasks_phase24.md` (Test 10 titles and dream-set pattern analysis)
+- **Previous task graph:** `docs/tasks_phase23.md` (Test 9 full text, English entries, numeric feedback disablement)
 - **Previous task graph:** `docs/tasks_phase22.md` (Test 7/8 sync, notes, title extraction, interpretation approval)
 - **Previous task graph:** `docs/tasks_phase21.md` (Test 6 recording/search regressions)
 - **Previous task graph:** `docs/tasks_phase20.md` (notes placement and emoji feedback polish)
@@ -62,15 +66,16 @@ For each WS: extract the exact `Context-Refs` lines, quote the relevant `old_str
 ## Next Task
 
 Next phase: TBD.
-Baseline: Phase 23 closed after fixing full-dream text truncation, adding Telegram long-message
-splitting, extending English/manual Google Doc parsing and English FTS coverage, and disabling
-numeric 1–5 feedback by default.
+Baseline: Phase 25 closed after accepting short numeric save dates, inserting Google Doc dream
+entries into date order, and allowing duplicate archive dreams to be written to Google Doc again.
 Goal:
   Choose the next task from new user feedback or a dedicated planning pass. Do not treat Phase 23
-  as still open except for explicitly listed residual follow-ups.
+  through Phase 25 as still open except for explicitly listed residual follow-ups.
 
 Context refs:
 - `docs/CODEX_PROMPT.md`
+- `docs/tasks_phase25.md`
+- `docs/tasks_phase24.md`
 - `docs/tasks_phase23.md`
 - `docs/tasks_phase22.md`
 - `docs/tasks_phase21.md`
@@ -82,9 +87,8 @@ Context refs:
 Deferred:
   Concrete `TELEGRAM_REACTION_FEEDBACK_MAPPING` remains pending user-provided emoji meanings.
   Live smoke against the user's newly added English Google Doc entries remains a deployment check.
+  Live smoke a backdated `19.05` write against the deployed Google Doc after rollout.
   Interpretation persistence is out of scope until the user explicitly approves a storage design.
-  A provider-dependent LLM title generator was not added in Phase 22; deterministic clean-title
-  handling is active.
 
 ---
 

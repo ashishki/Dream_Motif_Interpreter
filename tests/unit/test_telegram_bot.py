@@ -472,17 +472,14 @@ def test_format_create_dream_reply_does_not_claim_doc_write_on_failure() -> None
     )
 
 
-def test_format_create_dream_reply_does_not_claim_duplicate_doc_write() -> None:
+def test_format_create_dream_reply_confirms_duplicate_doc_rewrite() -> None:
     created = SimpleNamespace(
         created=False,
         written_to_google_doc=True,
         written_to_doc_name="Dream Archive",
     )
 
-    assert (
-        _format_create_dream_reply(created)
-        == "Эта запись уже есть в архиве. В Google Doc повторно не записываю."
-    )
+    assert _format_create_dream_reply(created) == "Сон сохранён и добавлен в документ"
 
 
 class _ReactionSession:

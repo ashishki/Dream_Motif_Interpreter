@@ -431,6 +431,133 @@ def test_append_dream_entry_strips_duplicate_date_from_title_heading() -> None:
     assert "21.04.26 - 21.04.26" not in inserted_text
 
 
+def test_append_dream_entry_inserts_before_later_dated_heading() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1,
+                    "endIndex": 20,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "20.05.26 - Later\n"}}],
+                    },
+                },
+                {
+                    "startIndex": 20,
+                    "endIndex": 48,
+                    "paragraph": {
+                        "elements": [{"textRun": {"content": "Later body\n"}}],
+                    },
+                },
+                {"startIndex": 48, "endIndex": 49},
+            ]
+        }
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        client.append_dream_entry(
+            "doc-123",
+            "19.05.26",
+            "Earlier",
+            "Текст сна",
+        )
+
+    requests = mocked_service.documents.return_value.batchUpdate.call_args.kwargs["body"][
+        "requests"
+    ]
+    insert_request = requests[0]["insertText"]
+    style_request = requests[1]["updateParagraphStyle"]
+    assert insert_request["location"]["index"] == 1
+    assert insert_request["text"].startswith("19.05.26 - Earlier\n\nТекст сна\n\n")
+    assert style_request["range"]["startIndex"] == 1
+
+
+def test_append_dream_entry_inserts_before_later_plain_dated_paragraph() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1,
+                    "endIndex": 20,
+                    "paragraph": {
+                        "elements": [{"textRun": {"content": "20.05.26 - Manual\n"}}],
+                    },
+                },
+                {"startIndex": 20, "endIndex": 21},
+            ]
+        }
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        client.append_dream_entry(
+            "doc-123",
+            "19.05.26",
+            "Earlier",
+            "Текст сна",
+        )
+
+    request = mocked_service.documents.return_value.batchUpdate.call_args.kwargs["body"][
+        "requests"
+    ][0]
+    assert request["insertText"]["location"]["index"] == 1
+    assert request["insertText"]["text"].startswith("19.05.26 - Earlier\n\n")
+
+
+def test_append_dream_entry_inserts_same_date_after_existing_same_date() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1,
+                    "endIndex": 22,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "19.05.26 - First\n"}}],
+                    },
+                },
+                {
+                    "startIndex": 22,
+                    "endIndex": 40,
+                    "paragraph": {
+                        "elements": [{"textRun": {"content": "First body\n"}}],
+                    },
+                },
+                {
+                    "startIndex": 40,
+                    "endIndex": 60,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "20.05.26 - Later\n"}}],
+                    },
+                },
+                {"startIndex": 60, "endIndex": 61},
+            ]
+        }
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        client.append_dream_entry(
+            "doc-123",
+            "19.05.26",
+            "Second",
+            "Повторный сон",
+        )
+
+    request = mocked_service.documents.return_value.batchUpdate.call_args.kwargs["body"][
+        "requests"
+    ][0]
+    assert request["insertText"]["location"]["index"] == 40
+    assert request["insertText"]["text"].startswith("\n\n19.05.26 - Second\n\n")
+    assert request["insertText"]["text"].endswith("\n\n")
+
+
 def test_append_text_raises_gdocs_write_error_on_403() -> None:
     client = GDocsClient(settings=_build_settings())
     mocked_service = Mock()

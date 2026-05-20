@@ -1,6 +1,6 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-05-14 (multi-doc sync UX and stale-status checks)
+Last updated: 2026-05-20 (backdated Google Doc writes and duplicate rewrites)
 
 ## 1. Purpose
 
@@ -58,7 +58,8 @@ Run this after deployment or after changing Telegram, voice, assistant, or Googl
 1. Send a natural dream opening, for example: `Сегодня мне приснилось, что я шёл по мосту над морем`.
 2. Verify the bot does not ask whether to record it and replies with either `Сон сохранён и добавлен в документ` after a successful Google Doc write or the archive-only retry message after a failed write.
 3. Verify the Google Doc gets one heading in the form `дд.мм.гг - <title>` and the title does not duplicate the date.
-4. Send a duplicate of the same dream text; verify it does not create a duplicate Google Doc entry.
+4. Send a duplicate of the same dream text; verify it does not create a duplicate archive row but
+   does write the existing dream to Google Doc again when requested.
 5. Temporarily break Google Docs write credentials or use a test failure stub; verify the bot says the dream was saved only in the archive and does not claim it was added to Google Doc.
 6. Restore write access and send `повтори запись в Google Doc`; verify it retries the failed write, not the latest unrelated dream.
 7. Send a voice message, wait for transcription, then reply to that voice message with `запиши сон`; verify the stored transcript is saved.
@@ -132,6 +133,25 @@ Automated regression slice:
 .venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_feedback_capture.py tests/unit/test_assistant_chat.py tests/unit/test_segmentation.py tests/unit/test_rag_query.py tests/unit/test_config.py -q --tb=short
 ```
 
+## 8. Backdated Write Checklist
+
+Run this after deployments that touch dream recording or Google Doc write placement.
+
+1. Ensure the Google Doc has a dream heading for `20.05.26`.
+2. Ask the bot to save a dream for `19.05`, for example:
+   `Запиши сон за 19.05: Мне приснилась река в доме`.
+3. Verify the bot replies `Сон сохранён и добавлен в документ` only after a successful write.
+4. Inspect Google Doc and verify the new `19.05.26 - ...` heading appears before the `20.05.26`
+   heading.
+5. Repeat the same dream text and verify the archive row is not duplicated, while the Google Doc
+   write is attempted again.
+
+Automated regression slice:
+
+```bash
+.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py -q --tb=short
+```
+
 Auto-sync Redis inspection helper:
 
 ```bash
@@ -175,7 +195,7 @@ Automated Phase 22 regression slice:
 .venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_rag_ingestion.py tests/unit/test_segmentation.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short
 ```
 
-## 8. Common Failure Modes
+## 9. Common Failure Modes
 
 ### Bot starts but receives nothing
 
@@ -212,7 +232,7 @@ Check:
 - `ASSISTANT_MODEL` is a valid model ID
 - bounded tool-use loop hit MAX_TOOL_ROUNDS=5 without an end_turn response (log will show this)
 
-## 9. Voice Failure Diagnostics
+## 10. Voice Failure Diagnostics
 
 Voice messages go through a two-stage pipeline: the handler persists + downloads, then a background task transcribes and replies.
 
@@ -251,7 +271,7 @@ Log pattern: `Voice download failed for message_id=... event_id=...`
 
 Check disk space and `VOICE_MEDIA_DIR` permissions. User will have already received "Could not download your voice message."
 
-## 9. Session State Diagnostics
+## 11. Session State Diagnostics
 
 Chat history is persisted in the `bot_sessions` table (one row per `chat_id`).
 
@@ -281,11 +301,11 @@ UPDATE bot_sessions SET history_json = '[]', updated_at = now()
 WHERE chat_id = <chat_id>;
 ```
 
-## 10. Safety Rule
+## 12. Safety Rule
 
 If chat-driven mutation tools are not in the approved phase scope, disable or omit them entirely.
 
-## 11. Logging Rules
+## 13. Logging Rules
 
 Use identifiers and statuses.
 Do not log raw dream text, transcript text, or secrets.

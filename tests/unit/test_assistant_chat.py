@@ -226,7 +226,9 @@ async def test_handle_chat_pre_llm_full_text_lookup_ignores_stale_history() -> N
 
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
         with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
-            with patch("app.assistant.chat.load_history", new=AsyncMock(return_value=stale_history)):
+            with patch(
+                "app.assistant.chat.load_history", new=AsyncMock(return_value=stale_history)
+            ):
                 with patch("app.assistant.chat.save_history", new=AsyncMock()) as mock_save:
                     result = await handle_chat_with_metadata(
                         "Приведи полный текст сна dreamwork, three women",
@@ -336,10 +338,13 @@ async def test_handle_chat_analyzes_recent_dream_set_without_asking_user() -> No
     assert result.tool_calls_made == ["analyze_dream_set_patterns", "get_dream"]
     facade.search_dreams.assert_not_awaited()
     assert facade.get_dream.await_count == 2
-    assert "Я пытаюсь работать" in client.messages.create.await_args.kwargs["messages"][0]["content"]
-    assert "не предлагай варианты" in client.messages.create.await_args.kwargs["messages"][0][
-        "content"
-    ].casefold()
+    assert (
+        "Я пытаюсь работать" in client.messages.create.await_args.kwargs["messages"][0]["content"]
+    )
+    assert (
+        "не предлагай варианты"
+        in client.messages.create.await_args.kwargs["messages"][0]["content"].casefold()
+    )
 
 
 @pytest.mark.asyncio
@@ -902,6 +907,34 @@ async def test_execute_tool_create_dream_accepts_russian_relative_date_argument(
 
 
 @pytest.mark.asyncio
+async def test_execute_tool_create_dream_accepts_short_numeric_date_argument() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=True,
+        date="2026-05-19",
+        title="Река в доме",
+        word_count=7,
+        source_doc_id="telegram:42",
+        written_to_google_doc=True,
+        written_to_doc_name="Сны Николая",
+    )
+
+    with patch("app.assistant.facade._application_today", return_value=date(2026, 5, 20)):
+        result = await tools_module.execute_tool(
+            "create_dream",
+            {"raw_text": "Мне приснилась река в доме.", "date": "19.05"},
+            facade,
+            chat_id=42,
+            request_text="запиши сон за 19.05",
+        )
+
+    assert "Dream saved:" in result
+    facade.create_dream.assert_awaited_once()
+    assert facade.create_dream.await_args.kwargs["dream_date"] == date(2026, 5, 19)
+
+
+@pytest.mark.asyncio
 async def test_execute_tool_create_dream_success_hides_doc_label() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     facade.create_dream.return_value = SimpleNamespace(
@@ -952,6 +985,33 @@ async def test_execute_tool_create_dream_failure_does_not_claim_doc_write() -> N
     assert "Запись добавлена в Google Doc." not in result
     assert "Запись сохранена в архиве." in result
     assert "повтори запись в Google Doc" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_create_dream_duplicate_can_rewrite_google_doc() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=False,
+        date="2026-05-01",
+        title="Рыба",
+        word_count=4,
+        source_doc_id="telegram:42",
+        written_to_google_doc=True,
+        written_to_doc_name="Dream Archive",
+    )
+
+    result = await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": "запиши сон про рыбу"},
+        facade,
+        chat_id=42,
+        request_text="запиши сон про рыбу",
+    )
+
+    assert "Запись уже существует в архиве" in result
+    assert "Запись добавлена в Google Doc." in result
+    assert "повторно не записывается" not in result
 
 
 @pytest.mark.asyncio

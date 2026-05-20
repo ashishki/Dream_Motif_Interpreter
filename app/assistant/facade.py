@@ -186,6 +186,7 @@ class DreamInterpretationResult:
 class DreamRecordingInput:
     raw_text: str
     title: str | None
+    dream_date_hint: date | None = None
 
 
 class SyncJobEnqueuer(Protocol):
@@ -407,15 +408,16 @@ class AssistantFacade:
             raise ValueError("Dream text must not be empty")
 
         resolved_dream_date = (
-            dream_date or _resolve_relative_dream_date(normalized_text) or _application_today()
-        )
-        resolved_title = await self._resolve_dream_title_for_recording(
-            normalized_text,
-            title=prepared_input.title,
+            dream_date
+            or prepared_input.dream_date_hint
+            or _resolve_relative_dream_date(normalized_text)
+            or _resolve_absolute_dream_date(normalized_text)
+            or _application_today()
         )
         source_doc_id = f"telegram:{chat_id}" if chat_id is not None else "telegram:manual"
         content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
         tracer = get_tracer(__name__)
+        existing_item: CreatedDreamItem | None = None
 
         async with self._session_factory() as session:
             with tracer.start_as_current_span("assistant.create_dream.lookup_existing"):
@@ -424,7 +426,7 @@ class AssistantFacade:
                 )
             existing = result.scalar_one_or_none()
             if existing is not None:
-                return CreatedDreamItem(
+                existing_item = CreatedDreamItem(
                     id=existing.id,
                     date=existing.date.isoformat() if existing.date is not None else None,
                     title=existing.title,
@@ -434,6 +436,28 @@ class AssistantFacade:
                     created=False,
                 )
 
+        if existing_item is not None:
+            written, written_doc_name = await self.write_dream_to_google_doc(
+                dream_id=existing_item.id
+            )
+            return CreatedDreamItem(
+                id=existing_item.id,
+                date=existing_item.date,
+                title=existing_item.title,
+                word_count=existing_item.word_count,
+                source_doc_id=existing_item.source_doc_id,
+                created_at=existing_item.created_at,
+                created=False,
+                written_to_google_doc=written,
+                written_to_doc_name=written_doc_name,
+            )
+
+        resolved_title = await self._resolve_dream_title_for_recording(
+            normalized_text,
+            title=prepared_input.title,
+        )
+
+        async with self._session_factory() as session:
             dream = DreamEntry(
                 id=uuid.uuid4(),
                 source_doc_id=source_doc_id,
@@ -1140,6 +1164,11 @@ _DREAM_RECORD_COMMAND_PREFIX_RE = re.compile(
     r"(?:\s+(?:мой|этот|новый))?\s+сон"
     r"(?:\s+в\s+архив)?[\s:;,.!?–—-]*"
 )
+_LEADING_DATE_DIRECTIVE_RE = re.compile(
+    r"(?is)^\s*(?:за|от|на)\s+"
+    r"(?P<date>\d{1,2}[./]\d{1,2}(?:[./](?:\d{2}|\d{4}))?)"
+    r"[\s:;,.!?–—-]*"
+)
 _DEFAULT_APPLICATION_TIMEZONE = "Asia/Tbilisi"
 _DREAM_INTERPRETATION_SYSTEM_PROMPT = (
     "You interpret dreams for a private archive. Write in Russian. "
@@ -1223,6 +1252,7 @@ _RELATIVE_DATE_OFFSETS = (
     ("сегодня", 0),
     ("вчера", 1),
 )
+_ABSOLUTE_DREAM_DATE_RE = re.compile(r"(?<!\d)(\d{1,2})[./](\d{1,2})(?:[./](\d{2}|\d{4}))?(?!\d)")
 
 
 def _strip_date_prefix(s: str) -> str:
@@ -1248,6 +1278,27 @@ def _resolve_relative_dream_date(text: str, *, today: date | None = None) -> dat
         if marker in normalized:
             return date.fromordinal(current.toordinal() - days_back)
     return None
+
+
+def _resolve_absolute_dream_date(text: str, *, today: date | None = None) -> date | None:
+    match = _ABSOLUTE_DREAM_DATE_RE.search(text)
+    if match is None:
+        return None
+
+    current = today or _application_today()
+    day = int(match.group(1))
+    month = int(match.group(2))
+    year_raw = match.group(3)
+    if year_raw is None:
+        year = current.year
+    else:
+        year = int(year_raw)
+        if len(year_raw) == 2:
+            year += 2000
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
 
 
 def _sanitize_write_error(error: str) -> str:
@@ -1287,9 +1338,22 @@ def _prepare_dream_recording_input(
         break
 
     normalized_text = _DREAM_RECORD_COMMAND_PREFIX_RE.sub("", normalized_text, count=1)
+    dream_date_hint = _resolve_leading_date_directive(normalized_text)
+    normalized_text = _LEADING_DATE_DIRECTIVE_RE.sub("", normalized_text, count=1)
     normalized_text = _normalize_recording_text(normalized_text)
     prepared_title = extracted_title or (title.strip() if title and title.strip() else None)
-    return DreamRecordingInput(raw_text=normalized_text, title=prepared_title)
+    return DreamRecordingInput(
+        raw_text=normalized_text,
+        title=prepared_title,
+        dream_date_hint=dream_date_hint,
+    )
+
+
+def _resolve_leading_date_directive(value: str) -> date | None:
+    match = _LEADING_DATE_DIRECTIVE_RE.match(value)
+    if match is None:
+        return None
+    return _resolve_absolute_dream_date(match.group("date"))
 
 
 def _clean_inline_title(value: str) -> str | None:

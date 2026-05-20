@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.21
+Version: 1.22
 Last updated: 2026-05-20
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-20 — Phase 25 Implementation — Backdated Writes and Duplicate Rewrites
+
+- Scope: `app/services/gdocs_client.py`, `app/assistant/{facade,tools,prompts}.py`, `app/telegram/handlers.py`, Phase 25 unit tests and docs.
+- Why this work happened: a user asked the bot to add a dream for `19.05`; the bot claimed success, but the Google Doc did not show the entry in the expected date position. The user also requested repeated writes even when the dream already exists in the archive.
+- Decisions applied: none.
+- Evidence collected: targeted Phase 25 suite -> `195 passed, 1 warning`; full unit suite -> `470 passed, 1 warning`; ruff check and format-check clean for touched files.
+- Follow-ups: live-smoke a backdated write against the deployed Google Doc after rollout.
+- Notes for next agent: Google Doc writes now insert before the first later dated heading/paragraph; duplicate `content_hash` still deduplicates the archive row but reattempts the Google Doc write for the existing dream.
 
 ### 2026-05-20 — Phase 24 Implementation — Test 10 Titles and Dream-Set Patterns
 

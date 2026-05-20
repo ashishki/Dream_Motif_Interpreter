@@ -26,6 +26,8 @@ PENDING_DREAM_TTL_MINUTES = 30
 MAX_PENDING_DREAM_DRAFTS = 10_000
 PENDING_INTERPRETATION_TTL_MINUTES = 30
 MAX_PENDING_INTERPRETATION_REQUESTS = 10_000
+RECENT_DREAM_SET_TTL_MINUTES = 120
+MAX_RECENT_DREAM_SETS = 10_000
 
 
 @dataclass(slots=True)
@@ -46,8 +48,16 @@ class PendingInterpretationRequest:
     created_at: datetime
 
 
+@dataclass(slots=True)
+class RecentDreamSet:
+    query: str
+    dream_ids: list[str]
+    created_at: datetime
+
+
 _pending_dream_drafts: dict[int, PendingDreamDraft] = {}
 _pending_interpretation_requests: dict[int, PendingInterpretationRequest] = {}
+_recent_dream_sets: dict[int, RecentDreamSet] = {}
 
 
 async def load_history(
@@ -182,6 +192,25 @@ def clear_pending_interpretation_request(chat_id: int) -> None:
     _pending_interpretation_requests.pop(chat_id, None)
 
 
+def save_recent_dream_set(chat_id: int, *, query: str, dream_ids: list[str]) -> RecentDreamSet:
+    """Store the most recent archive search result IDs for follow-up analysis."""
+    _evict_expired_recent_dream_sets()
+    recent = RecentDreamSet(
+        query=query.strip(),
+        dream_ids=list(dict.fromkeys(dream_ids)),
+        created_at=datetime.now(tz=timezone.utc),
+    )
+    _recent_dream_sets[chat_id] = recent
+    _evict_excess_recent_dream_sets()
+    return recent
+
+
+def load_recent_dream_set(chat_id: int) -> RecentDreamSet | None:
+    """Return the recent dream set for chat_id, if still fresh."""
+    _evict_expired_recent_dream_sets()
+    return _recent_dream_sets.get(chat_id)
+
+
 def _evict_expired_pending_dream_drafts(*, now: datetime | None = None) -> None:
     current = now or datetime.now(tz=timezone.utc)
     ttl = timedelta(minutes=PENDING_DREAM_TTL_MINUTES)
@@ -206,6 +235,18 @@ def _evict_expired_pending_interpretation_requests(*, now: datetime | None = Non
         _pending_interpretation_requests.pop(chat_id, None)
 
 
+def _evict_expired_recent_dream_sets(*, now: datetime | None = None) -> None:
+    current = now or datetime.now(tz=timezone.utc)
+    ttl = timedelta(minutes=RECENT_DREAM_SET_TTL_MINUTES)
+    expired_chat_ids = [
+        chat_id
+        for chat_id, recent in _recent_dream_sets.items()
+        if current - recent.created_at > ttl
+    ]
+    for chat_id in expired_chat_ids:
+        _recent_dream_sets.pop(chat_id, None)
+
+
 def _evict_excess_pending_dream_drafts() -> None:
     excess = len(_pending_dream_drafts) - MAX_PENDING_DREAM_DRAFTS
     if excess <= 0:
@@ -228,3 +269,15 @@ def _evict_excess_pending_interpretation_requests() -> None:
     )[:excess]
     for chat_id in oldest_chat_ids:
         _pending_interpretation_requests.pop(chat_id, None)
+
+
+def _evict_excess_recent_dream_sets() -> None:
+    excess = len(_recent_dream_sets) - MAX_RECENT_DREAM_SETS
+    if excess <= 0:
+        return
+    oldest_chat_ids = sorted(
+        _recent_dream_sets,
+        key=lambda chat_id: _recent_dream_sets[chat_id].created_at,
+    )[:excess]
+    for chat_id in oldest_chat_ids:
+        _recent_dream_sets.pop(chat_id, None)

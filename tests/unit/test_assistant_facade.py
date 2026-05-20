@@ -578,6 +578,7 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
         analysis_service=analysis_service,
         index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Мост у моря")),
     )
 
     with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))):
@@ -617,6 +618,7 @@ async def test_create_dream_defaults_date_and_title_deterministically() -> None:
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
         analysis_service=analysis_service,
         index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Мост у моря")),
     )
 
     with (
@@ -629,10 +631,10 @@ async def test_create_dream_defaults_date_and_title_deterministically() -> None:
         )
 
     assert result.date == "2026-04-30"
-    assert result.title == "о море мост башня"
+    assert result.title == "Мост у моря"
     added = session.add.call_args[0][0]
     assert added.date == date(2026, 4, 30)
-    assert added.title == "о море мост башня"
+    assert added.title == "Мост у моря"
 
 
 @pytest.mark.asyncio
@@ -645,6 +647,7 @@ async def test_create_dream_extracts_inline_title_and_strips_record_command() ->
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
         analysis_service=analysis_service,
         index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="ignored")),
     )
 
     with (
@@ -674,6 +677,35 @@ async def test_create_dream_generated_title_ignores_record_command_words() -> No
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
         analysis_service=analysis_service,
         index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Башня и мост")),
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 5, 1)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        result = await facade.create_dream(
+            "Сохрани сон: вчера мне приснилось море мост башня",
+            chat_id=42,
+        )
+
+    assert result.title == "Башня и мост"
+    added = session.add.call_args[0][0]
+    assert added.raw_text == "вчера мне приснилось море мост башня"
+
+
+@pytest.mark.asyncio
+async def test_create_dream_falls_back_when_title_llm_fails() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    title_llm_client = SimpleNamespace(complete=AsyncMock(side_effect=RuntimeError("down")))
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+        title_llm_client=title_llm_client,
     )
 
     with (
@@ -686,8 +718,7 @@ async def test_create_dream_generated_title_ignores_record_command_words() -> No
         )
 
     assert result.title == "о море мост башня"
-    added = session.add.call_args[0][0]
-    assert added.raw_text == "вчера мне приснилось море мост башня"
+    title_llm_client.complete.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -962,6 +993,7 @@ async def test_create_dream_returns_existing_entry_without_rerunning_pipeline() 
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
         analysis_service=analysis_service,
         index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Short title")),
     )
 
     result = await facade.create_dream("Existing dream text", chat_id=7)
@@ -1136,6 +1168,7 @@ async def test_create_dream_sets_written_to_google_doc_true_on_success() -> None
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
         analysis_service=analysis_service,
         index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Short title")),
     )
 
     with patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))):

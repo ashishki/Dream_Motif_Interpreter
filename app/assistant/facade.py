@@ -213,6 +213,7 @@ class AssistantFacade:
         index_note_callable: Callable[[uuid.UUID], Awaitable[int]] | None = None,
         motif_service: MotifService | None = None,
         interpretation_llm_client: Any | None = None,
+        title_llm_client: Any | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._rag_query_service = rag_query_service
@@ -225,6 +226,7 @@ class AssistantFacade:
         self._index_note_callable = index_note_callable or self._build_index_note_callable()
         self._motif_service = motif_service or MotifService()
         self._interpretation_llm_client = interpretation_llm_client or AnthropicLLMClient()
+        self._title_llm_client = title_llm_client or self._interpretation_llm_client
 
     async def search_dreams(self, query: str) -> SearchResult:
         result = await self._rag_query_service.retrieve(query)
@@ -407,10 +409,9 @@ class AssistantFacade:
         resolved_dream_date = (
             dream_date or _resolve_relative_dream_date(normalized_text) or _application_today()
         )
-        resolved_title = _resolve_dream_title(
+        resolved_title = await self._resolve_dream_title_for_recording(
             normalized_text,
             title=prepared_input.title,
-            dream_date=resolved_dream_date,
         )
         source_doc_id = f"telegram:{chat_id}" if chat_id is not None else "telegram:manual"
         content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
@@ -717,6 +718,31 @@ class AssistantFacade:
             True,
             "Заметка сохранена в архиве, но не добавлена в Google Doc: заголовок сна не найден.",
         )
+
+    async def _resolve_dream_title_for_recording(
+        self,
+        raw_text: str,
+        *,
+        title: str | None,
+    ) -> str:
+        if title is not None and title.strip():
+            return _strip_date_prefix(title.strip())
+        return await self._generate_dream_title_with_llm(raw_text)
+
+    async def _generate_dream_title_with_llm(self, raw_text: str) -> str:
+        fallback = _generate_dream_title(raw_text)
+        try:
+            generated = await self._title_llm_client.complete(
+                _DREAM_TITLE_SYSTEM_PROMPT,
+                _build_dream_title_prompt(raw_text),
+                max_tokens=80,
+            )
+        except Exception:
+            logger.warning("Dream title LLM generation failed; using fallback", exc_info=True)
+            return fallback
+
+        cleaned = _clean_generated_dream_title(generated)
+        return cleaned or fallback
 
     async def prepare_dream_interpretation_request(
         self,
@@ -1121,6 +1147,12 @@ _DREAM_INTERPRETATION_SYSTEM_PROMPT = (
     "Separate direct observations from hypotheses. Do not diagnose, do not claim certainty, "
     "and avoid instructions that replace professional help."
 )
+_DREAM_TITLE_SYSTEM_PROMPT = (
+    "You create concise titles for private dream journal entries. "
+    "Read the full dream text and return exactly one short title. "
+    "Use Russian by default. Do not explain. Do not use markdown. "
+    "Do not include dates, quotes, the word 'сон', or command words."
+)
 _TITLE_STOPWORDS = {
     "today",
     "dream",
@@ -1301,6 +1333,46 @@ def _resolve_dream_title(
     if title is not None and title.strip():
         return _strip_date_prefix(title.strip())
     return _generate_dream_title(raw_text, dream_date=dream_date)
+
+
+def _build_dream_title_prompt(raw_text: str) -> str:
+    return "\n".join(
+        [
+            "Прочитай сон и дай короткое смысловое название.",
+            "Требования:",
+            "1. 2-6 слов.",
+            "2. Не начинай с «о ...».",
+            "3. Не используй дату и слово «сон».",
+            "4. Не пересказывай весь сюжет.",
+            "5. Верни только название.",
+            "",
+            "Текст сна:",
+            raw_text.strip(),
+        ]
+    )
+
+
+def _clean_generated_dream_title(value: str) -> str | None:
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if not lines:
+        return None
+
+    title = lines[0].strip(" \t\r\n\"'«»“”")
+    title = re.sub(r"(?is)^(?:название|заголовок|title)\s*[:\-–—]\s*", "", title).strip()
+    title = _strip_date_prefix(title)
+    title = re.sub(r"\s+", " ", title).strip(" \t\r\n:;,.!?–—-\"'«»“”")
+    if not title:
+        return None
+    if len(title) > 80:
+        return None
+    word_count = len(_WORD_RE.findall(title))
+    if word_count == 0 or word_count > 8:
+        return None
+    if "```" in title or title.startswith(("-", "*")):
+        return None
+    if title.casefold() in {"сон", "без названия"}:
+        return None
+    return title
 
 
 def _generate_dream_title(raw_text: str, *, dream_date: date | None = None) -> str:

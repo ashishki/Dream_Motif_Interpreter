@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import logging
 import os
 import re
+import uuid
 from typing import Any
 
 from anthropic import AsyncAnthropic
@@ -14,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.assistant.facade import AssistantFacade
 from app.assistant.facade import _application_today
 from app.assistant.prompts import SYSTEM_PROMPT, build_system_prompt
-from app.assistant.session import load_history, save_history
+from app.assistant.session import (
+    load_history,
+    load_recent_dream_set,
+    save_history,
+    save_recent_dream_set,
+)
 from app.assistant.tools import build_tools, execute_tool
 from app.services.feedback_service import FeedbackService
 from app.shared.config import get_settings
@@ -45,6 +51,14 @@ _COMPLETENESS_MARKERS = (
     "complete dream",
 )
 _DREAM_MARKERS = ("сон", "сна", "сновид", "запис", "dream")
+_DREAM_SET_PATTERN_SYSTEM_PROMPT = (
+    "You analyse patterns across a selected set of dream texts. "
+    "Answer in Russian. Use only the supplied dream texts. "
+    "Do not say you only see search results: the full texts are supplied. "
+    "Give concrete shared patterns and cite which dreams support each pattern by date/title. "
+    "Keep hypotheses cautious and distinguish observation from interpretation. "
+    "Use plain text without markdown."
+)
 
 
 @dataclass(slots=True)
@@ -132,6 +146,31 @@ async def handle_chat_with_metadata(
     client = AsyncAnthropic(api_key=api_key)
     settings = get_settings()
 
+    try:
+        pattern_result = await _try_direct_dream_set_pattern_analysis(
+            message_text,
+            facade,
+            history=history,
+            chat_id=chat_id,
+            client=client,
+            model=model,
+        )
+    except Exception:
+        LOGGER.warning("Direct dream-set pattern analysis failed; falling back to LLM", exc_info=True)
+        pattern_result = None
+    if pattern_result is not None:
+        await _save_turn_history(
+            session_factory,
+            chat_id,
+            history,
+            message_text,
+            pattern_result.text,
+        )
+        return ChatResult(
+            text=pattern_result.text,
+            tool_calls_made=pattern_result.tool_calls_made,
+        )
+
     feedback_rows: list[dict] = []
     if session_factory is not None:
         try:
@@ -217,6 +256,7 @@ async def handle_chat_with_metadata(
                 request_text=message_text,
             )
             tool_pairs.append((block, result))
+            _remember_search_result_set(chat_id, block.name, block.input, result)
             direct_response = _direct_full_dream_text_response(
                 block.name,
                 result,
@@ -292,6 +332,230 @@ async def _save_turn_history(
         await save_history(session_factory, chat_id, new_history)
     except Exception:
         LOGGER.warning("Failed to save session history for chat_id=%s", chat_id, exc_info=True)
+
+
+def _remember_search_result_set(
+    chat_id: int | None,
+    tool_name: str,
+    tool_input: Any,
+    tool_result: str,
+) -> None:
+    if chat_id is None or tool_name not in {"search_dreams", "search_dreams_exact"}:
+        return
+
+    dream_ids = re.findall(
+        r"(?m)^\s*result_id:\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s*$",
+        tool_result,
+    )
+    if not dream_ids:
+        return
+    query = ""
+    if isinstance(tool_input, dict):
+        query = str(tool_input.get("query", "")).strip()
+    save_recent_dream_set(chat_id, query=query, dream_ids=dream_ids)
+
+
+async def _try_direct_dream_set_pattern_analysis(
+    message_text: str,
+    facade: AssistantFacade,
+    *,
+    history: list[dict[str, Any]],
+    chat_id: int | None,
+    client: AsyncAnthropic,
+    model: str,
+) -> ChatResult | None:
+    if not _is_dream_set_pattern_request(message_text):
+        return None
+
+    query = _extract_pattern_query(message_text) or _extract_pattern_query_from_history(history)
+    dream_ids: list[uuid.UUID] = []
+    tool_calls = ["analyze_dream_set_patterns"]
+
+    recent = load_recent_dream_set(chat_id) if chat_id is not None else None
+    if recent is not None and recent.dream_ids and _should_use_recent_dream_set(message_text, query, recent.query):
+        query = query or recent.query
+        dream_ids = _coerce_uuid_list(recent.dream_ids)
+
+    if not dream_ids:
+        if not query:
+            return ChatResult(
+                text=(
+                    "Я не вижу в текущем контексте, какую подборку снов анализировать. "
+                    "Напиши тему одним словом или повтори подборку, и я сразу разберу все найденные сны."
+                ),
+                tool_calls_made=tool_calls,
+            )
+        search_result = await facade.search_dreams(query)
+        tool_calls.append("search_dreams")
+        if search_result.insufficient_reason is not None or not search_result.items:
+            return ChatResult(
+                text=f"По теме «{query}» не нашёл достаточно снов для анализа паттернов.",
+                tool_calls_made=tool_calls,
+            )
+        dream_ids = []
+        seen: set[uuid.UUID] = set()
+        for item in search_result.items:
+            if item.dream_id in seen:
+                continue
+            seen.add(item.dream_id)
+            dream_ids.append(item.dream_id)
+        if chat_id is not None:
+            save_recent_dream_set(
+                chat_id,
+                query=query,
+                dream_ids=[str(dream_id) for dream_id in dream_ids],
+            )
+
+    details = []
+    for dream_id in dream_ids[:20]:
+        detail = await facade.get_dream(dream_id)
+        if detail is not None:
+            details.append(detail)
+    tool_calls.append("get_dream")
+
+    if not details:
+        return ChatResult(
+            text="Нашёл подборку, но не смог загрузить полные тексты этих снов.",
+            tool_calls_made=tool_calls,
+        )
+
+    response = await client.messages.create(
+        model=model,
+        system=_DREAM_SET_PATTERN_SYSTEM_PROMPT,
+        max_tokens=2200,
+        messages=[
+            {
+                "role": "user",
+                "content": _build_dream_set_pattern_prompt(
+                    message_text,
+                    query=query or "последняя подборка",
+                    details=details,
+                ),
+            }
+        ],
+    )
+    text = _extract_text(response)
+    if not text:
+        return ChatResult(
+            text="Не получилось сформировать анализ паттернов по этой подборке.",
+            tool_calls_made=tool_calls,
+        )
+    LOGGER.info(
+        "direct_dream_set_pattern_analysis chat_id=%s query=%r dreams=%s chars=%s",
+        chat_id,
+        query,
+        len(details),
+        len(text),
+    )
+    return ChatResult(text=text, tool_calls_made=tool_calls)
+
+
+def _is_dream_set_pattern_request(message_text: str) -> bool:
+    text = message_text.casefold()
+    has_pattern = any(marker in text for marker in ("паттерн", "закономер", "общие мотив", "общий мотив", "повторя"))
+    has_set_context = any(
+        marker in text
+        for marker in (
+            "подбор",
+            "спис",
+            "этих с",
+            "эти с",
+            "в снах",
+            "снов",
+            "по теме",
+            "фигурирует",
+            "связанных",
+        )
+    )
+    return has_pattern and has_set_context
+
+
+def _extract_pattern_query(message_text: str) -> str | None:
+    text = message_text.strip()
+    patterns = (
+        r"(?is)(?:по теме|на тему|теме)\s+(?P<query>[^.?!,\n]+)",
+        r"(?is)(?:фигурирует|связанных с|связанные с|про|о|об)\s+(?P<query>[^.?!,\n]+)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return _clean_pattern_query(match.group("query"))
+    if re.search(r"(?i)\bработ[ауыое]?\b", text):
+        return "работа"
+    return None
+
+
+def _extract_pattern_query_from_history(history: list[dict[str, Any]]) -> str | None:
+    for item in reversed(history[-8:]):
+        if item.get("role") != "user":
+            continue
+        content = item.get("content")
+        if isinstance(content, str):
+            query = _extract_pattern_query(content)
+            if query:
+                return query
+    return None
+
+
+def _clean_pattern_query(value: str) -> str | None:
+    query = value.strip().strip("\"'«»“”")
+    query = re.sub(
+        r"(?is)\b(?:найди|общие|паттерны|паттерн|мотивы|мотив|сны|снов|подборк[аиу]?|которых|где|есть)\b",
+        " ",
+        query,
+    )
+    query = re.sub(r"\s+", " ", query).strip(" \t\r\n:;,.!?–—-")
+    return query or None
+
+
+def _should_use_recent_dream_set(message_text: str, query: str | None, recent_query: str) -> bool:
+    text = message_text.casefold()
+    if any(marker in text for marker in ("подбор", "спис", "этих", "эти ", "последн")):
+        return True
+    if not query:
+        return True
+    return query.casefold() in recent_query.casefold() or recent_query.casefold() in query.casefold()
+
+
+def _coerce_uuid_list(values: list[str]) -> list[uuid.UUID]:
+    dream_ids: list[uuid.UUID] = []
+    for value in values:
+        try:
+            dream_ids.append(uuid.UUID(str(value)))
+        except ValueError:
+            continue
+    return dream_ids
+
+
+def _build_dream_set_pattern_prompt(
+    user_request: str,
+    *,
+    query: str,
+    details: list[Any],
+) -> str:
+    sections = [
+        f"Запрос пользователя: {user_request}",
+        f"Тема/подборка: {query}",
+        f"Количество снов: {len(details)}",
+        "",
+        "Проанализируй все тексты ниже и найди общие паттерны, в которых проявляется тема.",
+        "Для каждого паттерна укажи 2-5 сна, на которых он основан.",
+        "Не предлагай варианты дальнейшей работы, сразу делай анализ.",
+        "",
+    ]
+    for index, detail in enumerate(details, start=1):
+        date_value = _format_tool_date(str(getattr(detail, "date", "") or "unknown"))
+        title = str(getattr(detail, "title", "") or "без названия")
+        raw_text = str(getattr(detail, "raw_text", "") or "")
+        sections.extend(
+            [
+                f"Сон {index}: {date_value}, {title}",
+                raw_text,
+                "",
+            ]
+        )
+    return "\n".join(sections)
 
 
 def _direct_full_dream_text_response(

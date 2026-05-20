@@ -134,6 +134,13 @@ SYSTEM_PROMPT = (
     "«рождество крест икона», «богослужение священник песнопение». "
     "Merge and deduplicate results by dream_id, sort by relevance_score descending."
     "\n"
+    "When the user asks for common patterns in a previous search/list/selection of dreams, or asks "
+    "for patterns in dreams on a topic, do not ask whether to fetch full texts. Continue the work: "
+    "use the dream_ids from the selection when available, call get_dream for each selected dream, "
+    "and analyze the full texts. If no dream_ids are available in context, repeat search_dreams for "
+    "the topic, then call get_dream for every returned dream before analyzing. "
+    "Never answer with «I only see search results» or offer paths/options for this workflow."
+    "\n"
     "When presenting search_dreams_exact results with an evidence_text field, format each entry as: "
     '«N. дд.мм.гг, Название: краткая характеристика: "цитата"».'
     "\n\n"

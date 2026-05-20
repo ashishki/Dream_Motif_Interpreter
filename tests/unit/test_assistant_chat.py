@@ -25,6 +25,7 @@ from app.assistant.prompts import SYSTEM_PROMPT
 from app.assistant.session import (
     clear_pending_interpretation_request,
     load_pending_interpretation_request,
+    save_recent_dream_set,
 )
 
 
@@ -274,6 +275,122 @@ async def test_handle_chat_returns_full_title_match_text_directly() -> None:
     assert client.messages.create.await_count == 1
 
 
+@pytest.mark.asyncio
+async def test_handle_chat_analyzes_recent_dream_set_without_asking_user() -> None:
+    first_id = uuid.uuid4()
+    second_id = uuid.uuid4()
+    chat_id = 880001
+    save_recent_dream_set(
+        chat_id,
+        query="работа",
+        dream_ids=[str(first_id), str(second_id)],
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_dream = AsyncMock(
+        side_effect=[
+            DreamDetail(
+                id=first_id,
+                date="2026-05-01",
+                title="Офис",
+                raw_text="Я пытаюсь работать, но задачи распадаются.",
+                word_count=6,
+                source_doc_id="doc-1",
+                created_at="2026-05-01T00:00:00+00:00",
+                segmentation_confidence="high",
+                themes=[],
+                notes=[],
+            ),
+            DreamDetail(
+                id=second_id,
+                date="2026-05-02",
+                title="Руководитель",
+                raw_text="Научный руководитель проверяет мою работу.",
+                word_count=5,
+                source_doc_id="doc-1",
+                created_at="2026-05-02T00:00:00+00:00",
+                segmentation_confidence="high",
+                themes=[],
+                notes=[],
+            ),
+        ]
+    )
+
+    final_response = _make_response(
+        "end_turn",
+        [_text_block("1. Проверка и оценка: Офис, Руководитель.")],
+    )
+
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
+            client = AsyncMock()
+            client.messages.create = AsyncMock(return_value=final_response)
+            mock_client_cls.return_value = client
+
+            result = await handle_chat_with_metadata(
+                "найди общие паттерны в этой подборке",
+                facade,
+                chat_id=chat_id,
+            )
+
+    assert result.text == "1. Проверка и оценка: Офис, Руководитель."
+    assert result.tool_calls_made == ["analyze_dream_set_patterns", "get_dream"]
+    facade.search_dreams.assert_not_awaited()
+    assert facade.get_dream.await_count == 2
+    assert "Я пытаюсь работать" in client.messages.create.await_args.kwargs["messages"][0]["content"]
+    assert "не предлагай варианты" in client.messages.create.await_args.kwargs["messages"][0][
+        "content"
+    ].casefold()
+
+
+@pytest.mark.asyncio
+async def test_handle_chat_repeats_search_for_pattern_topic_when_no_recent_set() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams.return_value = SearchResult(
+        items=[
+            SearchResultItem(
+                dream_id=dream_id,
+                date=date(2026, 5, 3),
+                title="Рабочая встреча",
+                chunk_text="Встреча на работе.",
+                relevance_score=0.8,
+                matched_fragments=[],
+                quote="Встреча на работе",
+            )
+        ]
+    )
+    facade.get_dream.return_value = DreamDetail(
+        id=dream_id,
+        date="2026-05-03",
+        title="Рабочая встреча",
+        raw_text="Я на рабочей встрече и не могу выбрать, что сказать.",
+        word_count=10,
+        source_doc_id="doc-1",
+        created_at="2026-05-03T00:00:00+00:00",
+        segmentation_confidence="high",
+        themes=[],
+        notes=[],
+    )
+    final_response = _make_response("end_turn", [_text_block("1. Затруднение выбора.")])
+
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
+            client = AsyncMock()
+            client.messages.create = AsyncMock(return_value=final_response)
+            mock_client_cls.return_value = client
+
+            result = await handle_chat_with_metadata(
+                "найди общие паттерны в снах, где фигурирует работа",
+                facade,
+                chat_id=880002,
+            )
+
+    assert result.text == "1. Затруднение выбора."
+    assert result.tool_calls_made == ["analyze_dream_set_patterns", "search_dreams", "get_dream"]
+    facade.search_dreams.assert_awaited_once_with("работа")
+    facade.get_dream.assert_awaited_once_with(dream_id)
+
+
 # ---------------------------------------------------------------------------
 # handle_chat — insufficient evidence path
 # ---------------------------------------------------------------------------
@@ -479,6 +596,13 @@ def test_system_prompt_routes_concrete_image_queries_to_augmented_search() -> No
     assert "augments semantic retrieval with exact text recall" in prompt_lower
 
 
+def test_system_prompt_requires_full_text_pattern_analysis_without_options() -> None:
+    prompt_lower = SYSTEM_PROMPT.lower()
+    assert "common patterns in a previous search/list/selection" in prompt_lower
+    assert "call get_dream for each selected dream" in prompt_lower
+    assert "never answer with «i only see search results»" in prompt_lower
+
+
 # ---------------------------------------------------------------------------
 # build_tools — conditional get_dream_motifs registration
 # ---------------------------------------------------------------------------
@@ -612,6 +736,58 @@ async def test_execute_tool_create_dream_requires_explicit_user_request() -> Non
 
     assert "explicit user request" in result.lower()
     facade.create_dream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_create_dream_ignores_non_explicit_model_title() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=True,
+        date="2026-05-20",
+        title="LLM title",
+        word_count=7,
+        source_doc_id="telegram:42",
+        written_to_google_doc=True,
+        written_to_doc_name="Сны",
+    )
+
+    await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": "Мне приснилось море и башня.", "title": "Море и башня"},
+        facade,
+        chat_id=42,
+        request_text="запиши сон: Мне приснилось море и башня.",
+    )
+
+    facade.create_dream.assert_awaited_once()
+    assert facade.create_dream.await_args.kwargs["title"] is None
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_create_dream_keeps_explicit_user_title() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=True,
+        date="2026-05-20",
+        title="Море и башня",
+        word_count=7,
+        source_doc_id="telegram:42",
+        written_to_google_doc=True,
+        written_to_doc_name="Сны",
+    )
+
+    await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": "Мне приснилось море и башня.", "title": "Море и башня"},
+        facade,
+        chat_id=42,
+        request_text="запиши сон. Название: Море и башня. Мне приснилось море и башня.",
+    )
+
+    facade.create_dream.assert_awaited_once()
+    assert facade.create_dream.await_args.kwargs["title"] == "Море и башня"
 
 
 @pytest.mark.parametrize(

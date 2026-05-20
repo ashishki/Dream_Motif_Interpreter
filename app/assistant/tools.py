@@ -507,6 +507,8 @@ async def execute_tool(
         if not raw_text:
             return "raw_text is required to create a dream entry."
         title = str(tool_input.get("title", "")).strip() or None
+        if title is not None and not _has_explicit_title_marker(request_text, raw_text):
+            title = None
         raw_date = str(tool_input.get("date", "")).strip()
         dream_date = None
         if raw_date:
@@ -1136,6 +1138,17 @@ def _is_explicit_create_request(request_text: str | None) -> bool:
         return True
 
     return _has_natural_dream_opening(text)
+
+
+def _has_explicit_title_marker(request_text: str | None, raw_text: str | None = None) -> bool:
+    combined = "\n".join(part for part in (request_text, raw_text) if part)
+    if not combined.strip():
+        return False
+    patterns = (
+        r"(?is)(?:^|[\n\r.!?]\s*)(?:название|title)\s*[:\-–—]\s*\S",
+        r"(?is)(?:^|[\n\r.!?]\s*)(?:назови\s+(?:его|сон)|с\s+названием)\s+\S",
+    )
+    return any(re.search(pattern, combined) is not None for pattern in patterns)
 
 
 _WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")

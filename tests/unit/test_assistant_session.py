@@ -14,9 +14,11 @@ from app.assistant.session import (
     clear_pending_dream_draft,
     load_history,
     load_pending_dream_draft,
+    load_recent_dream_set,
     pop_pending_dream_draft,
     save_history,
     save_pending_dream_draft,
+    save_recent_dream_set,
 )
 
 
@@ -251,3 +253,31 @@ def test_pending_dream_drafts_evict_oldest_when_over_cap(monkeypatch: pytest.Mon
         clear_pending_dream_draft(1)
         clear_pending_dream_draft(2)
         clear_pending_dream_draft(3)
+
+
+def test_save_recent_dream_set_dedupes_ids() -> None:
+    recent = save_recent_dream_set(
+        101,
+        query="работа",
+        dream_ids=["a", "b", "a"],
+    )
+
+    loaded = load_recent_dream_set(101)
+
+    assert loaded == recent
+    assert loaded is not None
+    assert loaded.query == "работа"
+    assert loaded.dream_ids == ["a", "b"]
+
+
+def test_load_recent_dream_set_ignores_expired_entries() -> None:
+    from app.assistant import session as session_module
+
+    stale = session_module.RecentDreamSet(
+        query="old",
+        dream_ids=["a"],
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=121),
+    )
+    session_module._recent_dream_sets[102] = stale
+
+    assert load_recent_dream_set(102) is None

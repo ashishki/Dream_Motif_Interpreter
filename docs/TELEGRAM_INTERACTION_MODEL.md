@@ -261,10 +261,14 @@ Connection strength verbal labels: ≥0.7 — сильная, 0.4–0.69 — у�
 
 | User provides | Resulting title |
 |--------------|----------------|
-| date + name | `дд.мм.гг - Название` |
-| date only | `дд.мм.гг, без названия` |
+| explicit date + explicit name | `Название`; Google Doc heading is `дд.мм.гг - Название` |
+| explicit date only | generated semantic title; Google Doc heading is `дд.мм.гг - title` |
 | name only | use name as-is |
-| neither | `дд.мм.гг, без названия` (use save date) |
+| neither | generated semantic title using the save date for the Google Doc heading |
+
+If no explicit title marker is present, the model-supplied `create_dream.title` argument is ignored.
+The facade generates a short semantic title from the full dream text and falls back to the
+deterministic keyword title only when title generation is unavailable.
 
 ## 14. Phase 11 — Feedback Capture UX
 

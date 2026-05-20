@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.20
-Last updated: 2026-05-15
+Version: 1.21
+Last updated: 2026-05-20
 Status: append-only
 
 ---
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-20 — Phase 24 Implementation — Test 10 Titles and Dream-Set Patterns
+
+- Scope: `app/assistant/{facade,tools,chat,session,prompts}.py`, Phase 24 unit tests and docs.
+- Why this work happened: Test 10 reported poor auto-generated dream titles and a frustrating pattern-analysis flow where the bot asked whether to fetch full texts instead of doing the work.
+- Decisions applied: none.
+- Evidence collected: targeted Phase 24 suite -> `158 passed, 1 warning`; full unit suite -> `463 passed, 1 warning`; ruff check clean for touched files; review archived in `docs/archive/PHASE24_REVIEW.md`.
+- Follow-ups: consider a persisted recent-result-set table if cross-restart follow-up analysis becomes important; consider historical title backfill for already-created poor titles.
+- Notes for next agent: missing-title Telegram dreams now use a narrow LLM title generator; `create_dream` ignores model-supplied titles unless the current user message has an explicit title marker. Recent search result IDs are cached per chat for 120 minutes and used by direct dream-set pattern analysis.
 
 ### 2026-05-15 — Phase 23 Implementation — Test 9 Full Text, English Entries, Numeric Feedback
 

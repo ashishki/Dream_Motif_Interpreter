@@ -1188,8 +1188,51 @@ async def test_retry_write_to_google_doc_uses_latest_failed_status_for_chat() ->
 
 
 @pytest.mark.asyncio
+async def test_retry_write_to_google_doc_repeats_latest_chat_dream_when_no_failed_status() -> None:
+    dream_id = uuid4()
+    latest_dream = SimpleNamespace(
+        id=dream_id,
+        date=date(2026, 5, 19),
+        title="Река в доме",
+        raw_text="Мне приснилась река в доме.",
+        source_doc_id="telegram:42",
+        created_at=datetime(2026, 5, 20, tzinfo=timezone.utc),
+    )
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult(scalar=None),
+            _FakeResult(scalar=latest_dream),
+        ],
+    )
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+    )
+
+    with patch.object(
+        facade,
+        "write_dream_to_google_doc",
+        AsyncMock(return_value=(True, "Сны")),
+    ) as mock_write:
+        success, doc_name, reason = await facade.retry_write_to_google_doc(chat_id=42)
+
+    assert success is True
+    assert doc_name == "Сны"
+    assert reason == "retried"
+    mock_write.assert_awaited_once_with(dream_id=dream_id, write_status_id=None)
+    latest_query = str(session.executed_statements[1])
+    assert "dream_entries.source_doc_id" in latest_query
+    assert "dream_entries.created_at" in latest_query
+
+
+@pytest.mark.asyncio
 async def test_retry_write_to_google_doc_returns_nothing_to_retry() -> None:
-    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult(scalar=None),
+            _FakeResult(scalar=None),
+        ],
+    )
     facade = AssistantFacade(
         session_factory=_FakeSessionFactory(session),
         rag_query_service=SimpleNamespace(retrieve=AsyncMock()),

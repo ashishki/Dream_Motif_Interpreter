@@ -61,7 +61,9 @@ Run this after deployment or after changing Telegram, voice, assistant, or Googl
 4. Send a duplicate of the same dream text; verify it does not create a duplicate archive row but
    does write the existing dream to Google Doc again when requested.
 5. Temporarily break Google Docs write credentials or use a test failure stub; verify the bot says the dream was saved only in the archive and does not claim it was added to Google Doc.
-6. Restore write access and send `повтори запись в Google Doc`; verify it retries the failed write, not the latest unrelated dream.
+6. Restore write access and send `повтори запись в Google Doc`; verify it retries the failed write.
+   Also verify that `повтори` after a save visibility issue repeats the latest dream from the
+   current Telegram chat when no failed write status exists.
 7. Send a voice message, wait for transcription, then reply to that voice message with `запиши сон`; verify the stored transcript is saved.
 8. Repeat the reply-to-voice save while transcription is still processing or after a failed transcription; verify the bot does not claim success.
 

@@ -25,6 +25,8 @@ The 2026-05-20 follow-up reported a Google Doc write mismatch:
   short user date such as `19.05`.
 - Direct recording cleanup could leave a leading date directive such as `за 19.05:` in the stored
   dream body.
+- `retry_write_to_google_doc` only retried rows marked `failed`, so a user-visible missing Google
+  Doc entry could not be repeated when the internal status had already moved past `failed`.
 
 ## 3. Work Items
 
@@ -75,12 +77,28 @@ Acceptance criteria:
   the stored body text.
 - The assistant prompt tells the model to pass dates like `19.05` as the tool date argument.
 
+### WS-25.4 — Repeat Latest Visible Save
+
+Scope:
+- `app/assistant/facade.py`
+- `app/assistant/tools.py`
+- `app/assistant/prompts.py`
+- `tests/unit/test_assistant_facade.py`
+- `tests/unit/test_assistant_chat.py`
+
+Acceptance criteria:
+- `повтори` / `повтори запись в Google Doc` still retries the latest failed write first.
+- If no failed write exists, the same command repeats the latest dream from the current Telegram
+  chat.
+- If there is no failed write and no latest chat dream, the bot gives a practical recovery message
+  instead of implying that sync status is the issue.
+
 ## 4. Verification
 
 - `.venv/bin/python -m ruff check app/services/gdocs_client.py app/assistant/facade.py app/assistant/tools.py app/assistant/prompts.py app/telegram/handlers.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py` -> clean
 - `.venv/bin/python -m ruff format --check app/services/gdocs_client.py app/assistant/facade.py app/assistant/tools.py app/assistant/prompts.py app/telegram/handlers.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py` -> clean
-- `.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py -q --tb=short` -> `195 passed, 1 warning`
-- `.venv/bin/python -m pytest tests/unit -q --tb=short` -> `470 passed, 1 warning`
+- `.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py -q --tb=short` -> `196 passed, 1 warning`
+- `.venv/bin/python -m pytest tests/unit -q --tb=short` -> `471 passed, 1 warning`
 
 ## 5. Residual Risk
 

@@ -1027,7 +1027,8 @@ async def test_execute_tool_retry_write_reports_nothing_to_retry() -> None:
         request_text="повтори запись в Google Doc",
     )
 
-    assert result == "Нет неудачной записи в Google Doc для повтора."
+    assert "Не нашёл сон" in result
+    assert "повторно записать" in result
     facade.retry_write_to_google_doc.assert_awaited_once_with(dream_id=None, chat_id=42)
 
 

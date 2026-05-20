@@ -276,6 +276,10 @@ later dated Heading 1, so a dream saved for `19.05` appears before an existing `
 Duplicate dream text remains deduplicated in the archive, but the Google Doc write is attempted
 again when the user asks to save it again.
 
+For a user command like `повтори` after a save visibility issue, the assistant calls
+`retry_write_to_google_doc`. That tool first retries the latest failed write; if no failed status
+exists, it repeats the latest dream from the current Telegram chat.
+
 ## 14. Phase 11 — Feedback Capture UX
 
 ### When the rating prompt appears

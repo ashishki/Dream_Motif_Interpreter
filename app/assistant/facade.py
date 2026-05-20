@@ -616,10 +616,12 @@ class AssistantFacade:
     async def retry_write_to_google_doc(
         self, dream_id: uuid.UUID | None = None, *, chat_id: int | None = None
     ) -> tuple[bool, str, str]:
-        """Retry a failed Google Doc write.
+        """Retry or repeat a Google Doc write.
 
         If dream_id is omitted, retry the latest failed write scoped to the current
-        Telegram chat source when chat_id is available.
+        Telegram chat source when chat_id is available. If there is no failed write
+        status, repeat the latest dream from the current chat so users can recover
+        from cases where a write was marked successful but is not visible in Google Doc.
         Returns (success, doc_name, reason).
         """
         if dream_id is not None:
@@ -658,9 +660,22 @@ class AssistantFacade:
                 result = await session.execute(stmt)
                 write_status = result.scalar_one_or_none()
                 if write_status is None:
-                    return False, "", "nothing_to_retry"
-                dream_id = write_status.dream_id
-                write_status_id = write_status.id
+                    if chat_id is None:
+                        return False, "", "nothing_to_retry"
+                    latest_result = await session.execute(
+                        select(DreamEntry)
+                        .where(DreamEntry.source_doc_id == f"telegram:{chat_id}")
+                        .order_by(DreamEntry.created_at.desc())
+                        .limit(1)
+                    )
+                    latest_dream = latest_result.scalar_one_or_none()
+                    if latest_dream is None:
+                        return False, "", "nothing_to_retry"
+                    dream_id = latest_dream.id
+                    write_status_id = None
+                else:
+                    dream_id = write_status.dream_id
+                    write_status_id = write_status.id
 
         success, doc_name = await self.write_dream_to_google_doc(
             dream_id=dream_id,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -28,6 +30,23 @@ def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GOOGLE_DOC_ID", "test-doc-id")
     monkeypatch.setenv("SECRET_KEY", "test-secret")
     monkeypatch.setenv("ENV", "test")
+
+
+@pytest.fixture(autouse=True)
+def isolate_runtime_google_docs_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(config_module, "_EXTRA_DOCS_FILE", tmp_path / "runtime_extra_docs.json")
+    config_module._google_doc_id_override = None
+    config_module._google_doc_ids_override = None
+    config_module._doc_names.clear()
+    config_module.get_settings.cache_clear()
+    yield
+    config_module._google_doc_id_override = None
+    config_module._google_doc_ids_override = None
+    config_module._doc_names.clear()
+    config_module.get_settings.cache_clear()
 
 
 def test_motif_induction_enabled_defaults_to_true(
@@ -143,6 +162,48 @@ def test_get_effective_google_doc_id_falls_back_to_settings(
         config_module.get_settings.cache_clear()
 
 
+def test_get_effective_google_doc_id_uses_persisted_primary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("GOOGLE_DOC_IDS", "")
+    config_module._EXTRA_DOCS_FILE.write_text(
+        json.dumps(
+            {
+                "primary": "runtime-primary-doc",
+                "extras": [{"id": "other-doc", "name": "Other doc"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_module.get_settings.cache_clear()
+
+    assert config_module.get_effective_google_doc_id() == "runtime-primary-doc"
+
+
+def test_set_google_doc_id_override_persists_runtime_primary_and_existing_extras(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("GOOGLE_DOC_IDS", "")
+    config_module._EXTRA_DOCS_FILE.write_text(
+        json.dumps(
+            [
+                {"id": "runtime-primary-doc", "name": "Runtime primary"},
+                {"id": "other-doc", "name": "Other doc"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    config_module.get_settings.cache_clear()
+
+    config_module.set_google_doc_id_override("runtime-primary-doc")
+
+    payload = json.loads(config_module._EXTRA_DOCS_FILE.read_text(encoding="utf-8"))
+    assert payload["primary"] == "runtime-primary-doc"
+    assert [entry["id"] for entry in payload["extras"]] == ["test-doc-id", "other-doc"]
+
+
 def test_google_doc_ids_parse_from_env_csv(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_env(monkeypatch)
     monkeypatch.setenv("GOOGLE_DOC_IDS", "doc-b, doc-c ,,")
@@ -192,3 +253,40 @@ def test_get_all_doc_ids_primary_first_and_deduplicated(
         config_module._google_doc_id_override = None
         config_module._google_doc_ids_override = None
         config_module.get_settings.cache_clear()
+
+
+def test_get_all_doc_ids_accepts_legacy_runtime_extra_docs_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("GOOGLE_DOC_IDS", "")
+    config_module._EXTRA_DOCS_FILE.write_text(
+        json.dumps([{"id": "legacy-extra-doc", "name": "Legacy"}]),
+        encoding="utf-8",
+    )
+    config_module.get_settings.cache_clear()
+
+    assert config_module.get_all_doc_ids() == ["test-doc-id", "legacy-extra-doc"]
+
+
+def test_get_all_doc_ids_keeps_settings_primary_when_runtime_primary_differs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("GOOGLE_DOC_IDS", "")
+    config_module._EXTRA_DOCS_FILE.write_text(
+        json.dumps(
+            {
+                "primary": "runtime-primary-doc",
+                "extras": [{"id": "other-doc", "name": "Other"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_module.get_settings.cache_clear()
+
+    assert config_module.get_all_doc_ids() == [
+        "runtime-primary-doc",
+        "test-doc-id",
+        "other-doc",
+    ]

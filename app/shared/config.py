@@ -134,6 +134,9 @@ def get_effective_google_doc_id() -> str:
     """Return the currently active GOOGLE_DOC_ID (runtime override takes precedence)."""
     if _google_doc_id_override is not None:
         return _google_doc_id_override
+    persisted_doc_id = _load_persisted_primary_doc_id()
+    if persisted_doc_id:
+        return persisted_doc_id
     return get_settings().GOOGLE_DOC_ID
 
 
@@ -141,6 +144,7 @@ def set_google_doc_id_override(doc_id: str) -> None:
     """Override GOOGLE_DOC_ID at runtime without restarting the process."""
     global _google_doc_id_override
     _google_doc_id_override = doc_id
+    _persist_extra_docs()
 
 
 def set_google_doc_ids_override(doc_ids: list[str]) -> None:
@@ -163,6 +167,8 @@ def get_doc_name(doc_id: str) -> str:
 
 def _ensure_names_loaded() -> None:
     if not _doc_names:
+        for doc_id, name in _load_doc_names().items():
+            _doc_names[doc_id] = name
         for entry in _load_extra_docs_raw():
             if isinstance(entry, dict) and entry.get("id"):
                 _doc_names[entry["id"]] = entry.get("name") or entry["id"]
@@ -170,27 +176,66 @@ def _ensure_names_loaded() -> None:
 
 def _persist_extra_docs() -> None:
     primary = get_effective_google_doc_id()
-    extras_ids = _google_doc_ids_override if _google_doc_ids_override is not None else []
+    extras_ids = _runtime_extra_doc_ids_for_persist(primary)
     entries = [
         {"id": doc_id, "name": _doc_names.get(doc_id, doc_id)}
         for doc_id in extras_ids
         if doc_id and doc_id != primary
     ]
+    payload = {
+        "primary": primary,
+        "extras": entries,
+        "names": {
+            doc_id: name
+            for doc_id, name in _doc_names.items()
+            if doc_id and name
+        },
+    }
     try:
-        _EXTRA_DOCS_FILE.write_text(json.dumps(entries), encoding="utf-8")
+        _EXTRA_DOCS_FILE.write_text(json.dumps(payload), encoding="utf-8")
     except Exception:
         _logger.warning("Failed to persist extra docs to %s", _EXTRA_DOCS_FILE)
 
 
-def _load_extra_docs_raw() -> list[object]:
+def _load_runtime_docs_payload() -> dict[str, object]:
     try:
         if _EXTRA_DOCS_FILE.exists():
             data = json.loads(_EXTRA_DOCS_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, list):
+            if isinstance(data, dict):
                 return data
+            if isinstance(data, list):
+                return {"extras": data}
     except Exception:
         _logger.warning("Failed to load extra docs from %s", _EXTRA_DOCS_FILE)
+    return {}
+
+
+def _load_extra_docs_raw() -> list[object]:
+    data = _load_runtime_docs_payload()
+    extras = data.get("extras")
+    if isinstance(extras, list):
+        return extras
     return []
+
+
+def _load_doc_names() -> dict[str, str]:
+    data = _load_runtime_docs_payload()
+    names = data.get("names")
+    if not isinstance(names, dict):
+        return {}
+    return {
+        str(doc_id): str(name)
+        for doc_id, name in names.items()
+        if isinstance(doc_id, str) and doc_id and isinstance(name, str) and name
+    }
+
+
+def _load_persisted_primary_doc_id() -> str | None:
+    data = _load_runtime_docs_payload()
+    primary = data.get("primary")
+    if isinstance(primary, str) and primary.strip():
+        return primary.strip()
+    return None
 
 
 def _load_extra_docs() -> list[str]:
@@ -207,19 +252,40 @@ def _load_extra_docs() -> list[str]:
     return ids
 
 
+def _runtime_extra_doc_ids_for_persist(primary: str) -> list[str]:
+    settings = get_settings()
+    if _google_doc_ids_override is not None:
+        extras = _google_doc_ids_override
+    else:
+        extras = settings.GOOGLE_DOC_IDS or _load_extra_docs()
+
+    candidates: list[str] = []
+    if settings.GOOGLE_DOC_ID and settings.GOOGLE_DOC_ID != primary:
+        candidates.append(settings.GOOGLE_DOC_ID)
+    candidates.extend(extras)
+    return _dedupe_doc_ids(candidates, exclude={primary})
+
+
+def _dedupe_doc_ids(doc_ids: list[str], *, exclude: set[str] | None = None) -> list[str]:
+    seen = set(exclude or set())
+    result: list[str] = []
+    for doc_id in doc_ids:
+        if doc_id and doc_id not in seen:
+            seen.add(doc_id)
+            result.append(doc_id)
+    return result
+
+
 def get_all_doc_ids() -> list[str]:
     primary = get_effective_google_doc_id()
     if _google_doc_ids_override is not None:
         extras = _google_doc_ids_override
     else:
         extras = get_settings().GOOGLE_DOC_IDS or _load_extra_docs()
-    seen: set[str] = {primary}
-    result = [primary]
-    for doc_id in extras:
-        if doc_id and doc_id not in seen:
-            seen.add(doc_id)
-            result.append(doc_id)
-    return result
+    settings_primary = get_settings().GOOGLE_DOC_ID
+    candidates = [settings_primary] if settings_primary != primary else []
+    candidates.extend(extras)
+    return [primary, *_dedupe_doc_ids(candidates, exclude={primary})]
 
 
 def _source_container_from_path(source_path: str) -> str | None:

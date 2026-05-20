@@ -275,6 +275,8 @@ Dates in save requests may be ISO, `DD.MM`, `DD.MM.YY`, `DD.MM.YYYY`, or Russian
 later dated Heading 1, so a dream saved for `19.05` appears before an existing `20.05` dream.
 Duplicate dream text remains deduplicated in the archive, but the Google Doc write is attempted
 again when the user asks to save it again.
+When that repeated write succeeds, the tool result is the same success signal as a new write, so
+the final Telegram reply stays `Сон сохранён и добавлен в документ`.
 
 For a user command like `повтори` after a save visibility issue, the assistant calls
 `retry_write_to_google_doc`. That tool first retries the latest failed write; if no failed status

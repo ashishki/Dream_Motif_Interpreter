@@ -14,7 +14,7 @@ Phase: Phase 25 implemented — backdated Google Doc writes and duplicate rewrit
 - **Phase 22 follow-up:** manual and automatic sync now track richer per-document state, hide `job_id` from normal user messages, explain zero-new-entry syncs, consider stale running syncs after 5 minutes, and fetch/sync the requested Google Doc ID instead of always reading the primary document.
 - **Phase 23 result:** `get_dream` tool output no longer truncates `raw_text`; long Telegram replies split safely; English/manual Google Doc headings and English exact FTS are covered; numeric 1–5 feedback is disabled by default via `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=false`.
 - **Phase 24 result:** new Telegram dreams without explicit titles use an LLM title generator, and pattern analysis over a search/list selection loads full dream texts automatically.
-- **Phase 25 result:** save dates like `19.05` are accepted; `за 19.05:` is stripped from stored body text; Google Doc writes insert before the first later dated heading/paragraph; duplicate archive dreams can be written to Google Doc again; `повтори` repeats the latest chat dream when there is no failed write status.
+- **Phase 25 result:** save dates like `19.05` are accepted; `за 19.05:` is stripped from stored body text; Google Doc writes insert before the first later dated heading/paragraph; duplicate archive dreams can be written to Google Doc again with a plain success tool result; `повтори` repeats the latest chat dream when there is no failed write status.
 - **Ruff:** Phase 25 touched-code ruff check and format-check are clean; rerun before any new implementation.
 - **Last CI run:** passing (2026-04-25)
 - **Last updated:** 2026-05-20 (backdated write closure)

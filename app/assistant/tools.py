@@ -530,15 +530,12 @@ async def execute_tool(
             chat_id=chat_id,
         )
         if not created.created:
-            lines = [f"Запись уже существует в архиве (id={created.id}, title={created.title!r})."]
             if created.written_to_google_doc:
-                lines.append("Запись добавлена в Google Doc.")
-            else:
-                lines.append(
-                    "Запись сохранена в архиве. "
-                    "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
-                )
-            return "\n".join(lines)
+                return "Запись добавлена в Google Doc."
+            return (
+                "Запись сохранена в архиве. "
+                "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
+            )
         lines = [
             f"Dream saved: {created.id} | {created.title} | "
             f"date={created.date or 'unknown'} | source={created.source_doc_id}"

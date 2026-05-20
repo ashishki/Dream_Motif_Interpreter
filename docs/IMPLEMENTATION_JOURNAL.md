@@ -30,7 +30,7 @@ Status: append-only
 - Decisions applied: none.
 - Evidence collected: targeted Phase 25 suite -> `196 passed, 1 warning`; full unit suite -> `471 passed, 1 warning`; ruff check and format-check clean for touched files.
 - Follow-ups: live-smoke a backdated write against the deployed Google Doc after rollout.
-- Notes for next agent: Google Doc writes now insert before the first later dated heading/paragraph; duplicate `content_hash` still deduplicates the archive row but reattempts the Google Doc write for the existing dream. `retry_write_to_google_doc` retries failed writes first, then falls back to the latest dream from the current Telegram chat.
+- Notes for next agent: Google Doc writes now insert before the first later dated heading/paragraph; duplicate `content_hash` still deduplicates the archive row but reattempts the Google Doc write for the existing dream. Successful duplicate writes return the same plain success signal as new writes. `retry_write_to_google_doc` retries failed writes first, then falls back to the latest dream from the current Telegram chat.
 
 ### 2026-05-20 — Phase 24 Implementation — Test 10 Titles and Dream-Set Patterns
 

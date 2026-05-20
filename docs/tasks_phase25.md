@@ -27,6 +27,8 @@ The 2026-05-20 follow-up reported a Google Doc write mismatch:
   dream body.
 - `retry_write_to_google_doc` only retried rows marked `failed`, so a user-visible missing Google
   Doc entry could not be repeated when the internal status had already moved past `failed`.
+- The duplicate `create_dream` tool result still started with "already exists", so the final model
+  could frame a successful repeated Google Doc write as a duplicate-entry clarification.
 
 ## 3. Work Items
 
@@ -92,6 +94,20 @@ Acceptance criteria:
   chat.
 - If there is no failed write and no latest chat dream, the bot gives a practical recovery message
   instead of implying that sync status is the issue.
+
+### WS-25.5 — Duplicate Tool Result Framing
+
+Scope:
+- `app/assistant/tools.py`
+- `app/assistant/prompts.py`
+- `tests/unit/test_assistant_chat.py`
+
+Acceptance criteria:
+- When duplicate dream text is successfully written to Google Doc, the tool returns only the
+  success signal `Запись добавлена в Google Doc.`
+- The assistant prompt explicitly treats successful repeated writes as successful saves.
+- The final assistant must not suggest notes, another title, or another date after a successful
+  duplicate write.
 
 ## 4. Verification
 

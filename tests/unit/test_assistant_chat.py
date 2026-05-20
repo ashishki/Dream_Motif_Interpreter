@@ -1009,8 +1009,7 @@ async def test_execute_tool_create_dream_duplicate_can_rewrite_google_doc() -> N
         request_text="запиши сон про рыбу",
     )
 
-    assert "Запись уже существует в архиве" in result
-    assert "Запись добавлена в Google Doc." in result
+    assert result == "Запись добавлена в Google Doc."
     assert "повторно не записывается" not in result
 
 

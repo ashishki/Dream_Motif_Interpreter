@@ -284,6 +284,8 @@ class GDocsClient:
 
                 title_start = insert_index + len(prefix)
                 title_end = title_start + len(heading) + 1  # +1 for trailing \n
+                body_start = title_start + len(title_line)
+                body_end = body_start + len(body)
 
                 requests: list[dict] = [
                     {
@@ -303,6 +305,31 @@ class GDocsClient:
                         }
                     },
                 ]
+                if body_end > body_start:
+                    requests.extend(
+                        [
+                            {
+                                "updateParagraphStyle": {
+                                    "range": {
+                                        "startIndex": body_start,
+                                        "endIndex": body_end,
+                                    },
+                                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                                    "fields": "namedStyleType",
+                                }
+                            },
+                            {
+                                "updateTextStyle": {
+                                    "range": {
+                                        "startIndex": body_start,
+                                        "endIndex": body_end,
+                                    },
+                                    "textStyle": {"bold": False},
+                                    "fields": "bold",
+                                }
+                            },
+                        ]
+                    )
                 service.documents().batchUpdate(
                     documentId=doc_id,
                     body={"requests": requests},

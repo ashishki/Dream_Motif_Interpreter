@@ -475,6 +475,46 @@ def test_append_dream_entry_inserts_before_later_dated_heading() -> None:
     assert style_request["range"]["startIndex"] == 1
 
 
+def test_append_dream_entry_resets_body_to_normal_non_bold_text() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1,
+                    "endIndex": 20,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "20.05.26 - Later\n"}}],
+                    },
+                },
+                {"startIndex": 20, "endIndex": 21},
+            ]
+        }
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        client.append_dream_entry(
+            "doc-123",
+            "19.05.26",
+            "Earlier",
+            "Текст сна",
+        )
+
+    requests = mocked_service.documents.return_value.batchUpdate.call_args.kwargs["body"][
+        "requests"
+    ]
+    body_paragraph_style = requests[2]["updateParagraphStyle"]
+    body_text_style = requests[3]["updateTextStyle"]
+
+    assert body_paragraph_style["range"] == {"startIndex": 21, "endIndex": 30}
+    assert body_paragraph_style["paragraphStyle"] == {"namedStyleType": "NORMAL_TEXT"}
+    assert body_text_style["range"] == {"startIndex": 21, "endIndex": 30}
+    assert body_text_style["textStyle"] == {"bold": False}
+    assert body_text_style["fields"] == "bold"
+
+
 def test_append_dream_entry_inserts_before_later_plain_dated_paragraph() -> None:
     client = GDocsClient(settings=_build_settings())
     mocked_service = Mock()

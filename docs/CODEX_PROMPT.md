@@ -15,6 +15,7 @@ Phase: Phase 25 implemented — backdated Google Doc writes and duplicate rewrit
 - **Phase 23 result:** `get_dream` tool output no longer truncates `raw_text`; long Telegram replies split safely; English/manual Google Doc headings and English exact FTS are covered; numeric 1–5 feedback is disabled by default via `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=false`.
 - **Phase 24 result:** new Telegram dreams without explicit titles use an LLM title generator, and pattern analysis over a search/list selection loads full dream texts automatically.
 - **Phase 25 result:** save dates like `19.05` are accepted; `за 19.05:` is stripped from stored body text; Google Doc writes insert before the first later dated heading/paragraph; duplicate archive dreams can be written to Google Doc again with a plain success tool result; `повтори` repeats the latest chat dream when there is no failed write status.
+- **VPS cognition vault:** `/srv/codex-entropy/repos/product-3/engineering-cognition-vault` is a downstream navigation layer. Keep canonical findings, evals, and decisions in this repo first.
 - **Ruff:** Phase 25 touched-code ruff check and format-check are clean; rerun before any new implementation.
 - **Last CI run:** passing (2026-04-25)
 - **Last updated:** 2026-05-20 (backdated write closure)
@@ -36,6 +37,8 @@ Phase: Phase 25 implemented — backdated Google Doc writes and duplicate rewrit
 - **Decision log:** `docs/DECISION_LOG.md`
 - **Implementation journal:** `docs/IMPLEMENTATION_JOURNAL.md`
 - **Evidence index:** `docs/EVIDENCE_INDEX.md`
+- **Cognition manifest:** `docs/COGNITION_MANIFEST.md`
+- **VPS cognition vault policy:** `docs/VPS_COGNITION_VAULT.md`
 - **Mandatory local workflow:** `docs/prompts/ORCHESTRATOR.md`
 - **Latest task graph:** `docs/tasks_phase25.md` (backdated Google Doc writes and duplicate rewrites)
 - **Previous task graph:** `docs/tasks_phase24.md` (Test 10 titles and dream-set pattern analysis)

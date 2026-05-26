@@ -669,6 +669,32 @@ async def test_create_dream_extracts_inline_title_and_strips_record_command() ->
 
 
 @pytest.mark.asyncio
+async def test_create_dream_strips_text_record_command_word() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Поиск друзей")),
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 5, 1)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        await facade.create_dream(
+            "Можешь записать сон текстом. Сегодня мне приснилось, что я ищу друзей.",
+            chat_id=42,
+        )
+
+    added = session.add.call_args[0][0]
+    assert added.raw_text == "Сегодня мне приснилось, что я ищу друзей."
+
+
+@pytest.mark.asyncio
 async def test_create_dream_extracts_short_date_directive() -> None:
     session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
     analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())

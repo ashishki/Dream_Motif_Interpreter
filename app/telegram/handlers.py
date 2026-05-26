@@ -16,6 +16,7 @@ from telegram.ext import ApplicationHandlerStop, ContextTypes
 
 from app.assistant.chat import ChatResult, handle_chat_with_metadata
 from app.assistant.facade import AssistantFacade
+from app.assistant.facade import _prepare_dream_recording_input
 from app.assistant.session import (
     clear_pending_interpretation_request,
     clear_pending_dream_draft,
@@ -48,6 +49,31 @@ _FEEDBACK_STATE_KEY = "_feedback_pending_by_chat"
 _BOT_MESSAGE_IDS_KEY = "_bot_message_ids_by_chat"
 MAX_PENDING_FEEDBACK_REQUESTS = 10_000
 TELEGRAM_MESSAGE_CHUNK_SIZE = 3900
+MISSING_DREAM_TEXT_REPLY = (
+    "Пришлите текст сна одним сообщением: например, «Запиши сон: ...»."
+)
+_DIRECT_DREAM_RECORD_COMMAND_RE = re.compile(
+    r"(?is)^\s*(?:пожалуйста[,\s]+)?"
+    r"(?:(?:можешь|можно|давай|хочу|я\s+хочу)\s+)?"
+    r"(?:"
+    r"(?:запиши|сохрани|добавь|занеси|записать|сохранить|добавить|занести)"
+    r"(?:\s+(?:мой|этот|новый|следующий))?\s+сон\b"
+    r"|"
+    r"(?:запиши|сохрани|добавь|занеси|записать|сохранить|добавить|занести)"
+    r"\s+в\s+архив\b"
+    r")"
+)
+_EMPTY_DREAM_TEXT_WORDS = {
+    "архив",
+    "гугл",
+    "документ",
+    "запиши",
+    "записать",
+    "пожалуйста",
+    "сон",
+    "текст",
+    "текстом",
+}
 
 
 async def chat_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -170,6 +196,18 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await message.reply_text(reply)
         return
 
+    if chat_id is not None and _is_direct_dream_record_command(stripped_text):
+        if chat_key is not None:
+            pending_feedback.pop(chat_key, None)
+            bot_msg_ids.pop(chat_key, None)
+        if not _has_direct_dream_text(stripped_text):
+            await message.reply_text(MISSING_DREAM_TEXT_REPLY)
+            return
+        created = await _get_facade(context).create_dream(stripped_text, chat_id=chat_id)
+        clear_pending_dream_draft(chat_id)
+        await message.reply_text(_format_create_dream_reply(created))
+        return
+
     if chat_id is not None and _has_natural_dream_opening(stripped_text.casefold()):
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
@@ -201,6 +239,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             with contextlib.suppress(asyncio.CancelledError):
                 await typing_task
     reply_text = _format_reply_text(result, feedback_enabled=feedback_enabled)
+    if _claims_dream_saved_without_create_tool(stripped_text, result):
+        reply_text = MISSING_DREAM_TEXT_REPLY
     sent_message = await _reply_text(message, reply_text)
 
     if chat_id is not None:
@@ -631,6 +671,38 @@ def _is_pending_dream_confirmation_reply(text: str) -> bool:
             "сохранить",
             "добавить в архив",
             "занести в архив",
+        )
+    )
+
+
+def _is_direct_dream_record_command(text: str) -> bool:
+    return _DIRECT_DREAM_RECORD_COMMAND_RE.match(text) is not None
+
+
+def _has_direct_dream_text(text: str) -> bool:
+    prepared = _prepare_dream_recording_input(text)
+    words = re.findall(r"[0-9A-Za-zА-Яа-яЁё]+", prepared.raw_text.casefold())
+    if not words:
+        return False
+    return any(word not in _EMPTY_DREAM_TEXT_WORDS for word in words)
+
+
+def _claims_dream_saved_without_create_tool(request_text: str, result: ChatResult) -> bool:
+    if "create_dream" in result.tool_calls_made:
+        return False
+    if not _is_explicit_create_request(request_text):
+        return False
+    lowered = result.text.casefold()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "сон сохран",
+            "сон запис",
+            "записал сон",
+            "записала сон",
+            "добавлен в документ",
+            "добавлена в google doc",
+            "запись добавлена",
         )
     )
 

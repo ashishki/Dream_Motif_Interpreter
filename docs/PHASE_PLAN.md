@@ -1,9 +1,9 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 3.0
-Last updated: 2026-05-29 (Phase 26 planned — Dream Memory Map / Telegram mini app)
+Version: 3.1
+Last updated: 2026-05-29 (Phase 26 complete — Dream Memory Map / Telegram mini app)
 
-## 1. Current Status: Phases 1–25 Complete, Phase 26 Planned
+## 1. Current Status: Phases 1–26 Complete
 
 **Phases 1–5** — Backend platform complete:
 
@@ -52,7 +52,7 @@ Execution graph:
 - [docs/tasks_phase23.md](tasks_phase23.md) — historical Phase 23 graph (Test 9 full text, English entries, numeric feedback disablement)
 - [docs/tasks_phase24.md](tasks_phase24.md) — historical Phase 24 graph (Test 10 titles and dream-set pattern analysis)
 - [docs/tasks_phase25.md](tasks_phase25.md) — historical Phase 25 graph (backdated Google Doc writes and duplicate rewrites)
-- [docs/tasks_phase26.md](tasks_phase26.md) — planning Phase 26 graph (Dream Memory Map / Telegram mini app)
+- [docs/tasks_phase26.md](tasks_phase26.md) — historical Phase 26 graph (Dream Memory Map / Telegram mini app)
 
 ## 1.1 Phase 22 — Test 7/8 Reliability Loop
 
@@ -111,7 +111,7 @@ The canonical task graph is [docs/tasks_phase25.md](tasks_phase25.md).
 
 ## 1.5 Phase 26 — Dream Memory Map / Telegram Mini App
 
-Phase 26 is the next product-direction phase. It shifts focus from backend
+Phase 26 closed the product-direction phase that shifted focus from backend
 reliability fixes to a visual reflective memory product:
 
 1. Define Dream Memory Map as Telegram mini app + motif graph.
@@ -122,7 +122,8 @@ reliability fixes to a visual reflective memory product:
 4. Keep interpretations as suggestions until user-confirmed.
 5. Add privacy, export, and deletion controls before broadening the UI.
 
-The canonical task graph is [docs/tasks_phase26.md](tasks_phase26.md).
+The canonical task graph is [docs/tasks_phase26.md](tasks_phase26.md). Deep
+review is archived at [docs/archive/PHASE26_REVIEW.md](archive/PHASE26_REVIEW.md).
 
 ## 2. Planning Principle
 

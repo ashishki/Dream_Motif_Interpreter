@@ -1,7 +1,7 @@
 # Evidence Index — Dream Motif Interpreter
 
-Version: 1.4
-Last updated: 2026-05-20
+Version: 1.5
+Last updated: 2026-05-29
 Status: append-only
 
 ---
@@ -35,6 +35,7 @@ Lookup table for proof artifacts across review cycles, retrieval evaluations, an
 | EV-017 | review | Phase 23 implementation | 2026-05-15 | `docs/archive/PHASE23_REVIEW.md` | Deep review found no P0/P1/P2 issues for Test 9 closure and records residual risks | Active |
 | EV-018 | test-coverage | Phase 24 implementation | 2026-05-20 | `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_session.py`, full `tests/unit` | Missing-title dream saves use LLM title generation, model-supplied implicit titles are ignored, and dream-set pattern analysis loads full texts automatically | Active |
 | EV-019 | test-coverage | Phase 25 implementation | 2026-05-20 | `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_telegram_bot.py`, full `tests/unit` | Short numeric save dates parse, backdated Google Doc entries are inserted before later dated headings/paragraphs, duplicate archive dreams can be written to Google Doc again with success framing, `повтори` can repeat the latest chat dream without a failed status, and the full unit suite passes | Active |
+| EV-020 | review | Phase 26 implementation | 2026-05-29 | `docs/archive/PHASE26_REVIEW.md`, `docs/DREAM_MEMORY_MAP.md`, `app/models/dream_graph.py`, `app/models/dream_graph_privacy.py`, `docs/mockups/dream_memory_map_prototype.html` | Dream Memory Map product direction, graph schema, UX prototype, and privacy/export controls are complete; broad suite passes with local Postgres/Redis test infrastructure | Active |
 
 ---
 

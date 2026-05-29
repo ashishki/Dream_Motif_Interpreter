@@ -24,11 +24,12 @@ Full historical prompt archived at
   code-native privacy/export contract for deterministic graph export, normal
   graph filtering, hide/delete controls, and rejected AI-suggestion controls
   that preserve source dream fragment references.
+- Phase 26 review is complete and archived at `docs/archive/PHASE26_REVIEW.md`.
 - Active direction: Dream Memory Map with Obsidian-inspired structure and
   visualization.
 - Potential product surface: Telegram mini app after graph schema and privacy
   controls are clear.
-- Latest planned task graph: `docs/tasks_phase26.md`.
+- Latest completed task graph: `docs/tasks_phase26.md`.
 - Do not treat Obsidian as a dependency; use it as structure/visual reference.
 
 ## Active Inputs
@@ -42,7 +43,9 @@ Full historical prompt archived at
 
 ## Next Task
 
-Phase 26 implementation tasks are complete pending phase review/report.
+Plan the next phase for durable Dream Memory Map delivery: persistence,
+authenticated Telegram mini app surface, production graph UI, and export/delete
+routes.
 
 ## Latest Verification
 
@@ -60,13 +63,9 @@ Phase 26 implementation tasks are complete pending phase review/report.
   tests/unit/test_dream_graph_schema.py tests/unit/test_dream_graph_privacy.py
   tests/unit/test_dream_memory_map_prototype.py -q --tb=short` passes
   (`22 passed`).
-- `.venv/bin/python -m pytest tests/ -q --tb=short` no longer fails at
-  retrieval-eval collection; the broad suite is locally blocked by Postgres
-  connectivity. Fail-fast probe:
-  `timeout 120s .venv/bin/python -m pytest tests/ -q --tb=short -x` errors in
-  `tests/integration/test_analysis.py::test_analysis_saves_draft_themes` with
-  `ConnectionRefusedError: [Errno 111] Connect call failed ('127.0.0.1', 5433)`
-  while connecting during schema reset.
+- `PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m pytest tests/ -q
+  --tb=short` passes (`567 passed, 9 skipped, 1 warning`) with local
+  Postgres/pgvector on `127.0.0.1:5433` and Redis on `127.0.0.1:6379`.
 - `.venv/bin/ruff check app/ tests/` passes.
 - `.venv/bin/ruff format --check app/ tests/` passes.
 

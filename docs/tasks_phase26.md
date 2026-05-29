@@ -112,6 +112,7 @@ Owner: codex
 Phase: 26
 Type: privacy
 Priority: P1
+Status: Done 2026-05-29
 Depends-On: WS-26.1
 
 Objective:
@@ -129,9 +130,18 @@ Files:
   - app/
   - tests/unit/
 
+Result:
+  Code-native privacy/export contract created in
+  `app/models/dream_graph_privacy.py`. The contract provides deterministic
+  `dream-memory-graph-export.v1` JSON-compatible export data, normal graph
+  filtering that excludes hidden/rejected/deleted items, and explicit rejected
+  AI-suggestion controls that preserve source dream fragment references without
+  deleting source dreams. No backend route, auth surface, database migration,
+  worker, Redis path, frontend build tooling, or Obsidian dependency was added.
+
 ## Phase Gate
 
 - [x] Product spec exists and avoids diagnostic claims.
 - [x] Graph schema is reviewable and evidence-linked.
 - [x] Mini app prototype or mockup demonstrates the visual direction.
-- [ ] Privacy/export/delete controls are specified before broad UX expansion.
+- [x] Privacy/export/delete controls are specified before broad UX expansion.

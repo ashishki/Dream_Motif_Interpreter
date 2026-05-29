@@ -1,6 +1,6 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.23
+Version: 1.24
 Last updated: 2026-05-29
 Status: append-only
 
@@ -22,6 +22,15 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-29 — WS-26.4 — Privacy, Export, And Deletion Controls
+
+- Scope: `app/models/dream_graph_privacy.py`, `app/models/__init__.py`, `tests/unit/test_dream_graph_privacy.py`, `docs/DREAM_MEMORY_MAP.md`, `docs/tasks_phase26.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 26 needed explicit privacy, export, hiding, deletion, and AI-suggestion rejection controls before the Dream Memory Map graph becomes durable UI.
+- Decisions applied: D-021.
+- Evidence collected: baseline `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py tests/unit/test_dream_graph_schema.py tests/unit/test_dream_memory_map_prototype.py -q --tb=short` -> `13 passed`; baseline `.venv/bin/ruff check app/ tests/` -> pass; baseline `.venv/bin/ruff format --check app/ tests/` -> pass; baseline `timeout 120s .venv/bin/python -m pytest tests/ -q --tb=short -x` -> local integration blocker in `tests/integration/test_analysis.py::test_analysis_saves_draft_themes`, asyncpg `TimeoutError` while connecting during schema reset; proof `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py tests/unit/test_dream_graph_schema.py tests/unit/test_dream_graph_privacy.py tests/unit/test_dream_memory_map_prototype.py -q --tb=short` -> `22 passed`; final `timeout 120s .venv/bin/python -m pytest tests/ -q --tb=short -x` -> same local integration setup path blocked by `ConnectionRefusedError: [Errno 111] Connect call failed ('127.0.0.1', 5433)`; `.venv/bin/ruff check app/ tests/` -> pass; `.venv/bin/ruff format --check app/ tests/` -> pass.
+- Follow-ups: run the broad suite with a reachable local Postgres test database before phase review/report.
+- Notes for next agent: the export contract is deterministic JSON-compatible data with format id `dream-memory-graph-export.v1`; normal graph output excludes hidden, rejected, and deleted items; rejected AI suggestions retain source dream fragment references without deleting source dreams. No backend route, auth surface, database migration, worker, Redis path, frontend tooling, or Obsidian dependency was added.
 
 ### 2026-05-29 — WS-26.3 — Dream Memory Map UX Prototype
 

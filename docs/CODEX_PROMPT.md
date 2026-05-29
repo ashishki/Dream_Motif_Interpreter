@@ -20,6 +20,10 @@ Full historical prompt archived at
   a static browser-openable mini app mockup for the graph workspace and motif
   detail flow. No frontend stack, backend route, database table, or Obsidian
   dependency was added.
+- WS-26.4 is complete: `app/models/dream_graph_privacy.py` defines the
+  code-native privacy/export contract for deterministic graph export, normal
+  graph filtering, hide/delete controls, and rejected AI-suggestion controls
+  that preserve source dream fragment references.
 - Active direction: Dream Memory Map with Obsidian-inspired structure and
   visualization.
 - Potential product surface: Telegram mini app after graph schema and privacy
@@ -38,8 +42,7 @@ Full historical prompt archived at
 
 ## Next Task
 
-`WS-26.4`: Privacy, Export, And Deletion Controls, after reviewing the
-WS-26.1 product spec and WS-26.3 prototype boundaries.
+Phase 26 implementation tasks are complete pending phase review/report.
 
 ## Latest Verification
 
@@ -53,6 +56,10 @@ WS-26.1 product spec and WS-26.3 prototype boundaries.
   tests/unit/test_dream_graph_schema.py
   tests/unit/test_dream_memory_map_prototype.py -q --tb=short` passes
   (`13 passed`).
+- `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py
+  tests/unit/test_dream_graph_schema.py tests/unit/test_dream_graph_privacy.py
+  tests/unit/test_dream_memory_map_prototype.py -q --tb=short` passes
+  (`22 passed`).
 - `.venv/bin/python -m pytest tests/ -q --tb=short` no longer fails at
   retrieval-eval collection; the broad suite is locally blocked by Postgres
   connectivity. Fail-fast probe:

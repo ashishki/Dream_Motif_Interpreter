@@ -1,8 +1,8 @@
 # Dream Memory Map Product Spec
 
-Version: 1.2
-Status: Phase 26 product spec, graph schema contract, and UX prototype
-Task: WS-26.1, WS-26.2, WS-26.3
+Version: 1.3
+Status: Phase 26 product spec, graph schema contract, UX prototype, and privacy/export contract
+Task: WS-26.1, WS-26.2, WS-26.3, WS-26.4
 Last updated: 2026-05-29
 
 ## 1. Product Definition
@@ -290,3 +290,104 @@ The mockup deliberately avoids a frontend build stack, backend routes,
 database tables, persistent graph behavior, and Obsidian dependencies. It is
 only a review artifact for evaluating whether the Dream Memory Map direction
 feels inspectable and concrete before durable UI work begins.
+
+## 9. Privacy, Export, And Deletion Contract
+
+WS-26.4 adds a code-native privacy/export contract in
+`app/models/dream_graph_privacy.py`. It is not a backend route, database
+migration, auth surface, worker, Redis path, frontend dependency, or Obsidian
+integration.
+
+Normal graph output uses `normal_graph_output(snapshot)` or
+`filtered_graph_snapshot(snapshot)`. The default scope is
+`normal_graph_output`, which removes hidden, rejected, or deleted dreams,
+nodes, motifs, and edges from graph output. Edges are also removed when either
+endpoint is removed or when AI suggestion provenance points to a hidden or
+deleted source dream. This keeps ordinary graph, timeline, and motif-page views
+free of content the user has hidden, rejected, or deleted.
+
+The export helper `export_dream_graph(snapshot, options)` returns deterministic
+JSON-compatible data with format id `dream-memory-graph-export.v1`. The top
+level fields are:
+
+```json
+{
+  "format": "dream-memory-graph-export.v1",
+  "scope": "normal_graph_output",
+  "options": {
+    "default_excludes_hidden_rejected_deleted": true
+  },
+  "source_dreams": [
+    {
+      "dream_id": "dream-example-1",
+      "graph_node_id": "dream:dream-example-1",
+      "source_ref": "archive:dream-example-1"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "motif:stairs",
+      "type": "Motif",
+      "label": "stairs",
+      "confirmation_status": "unreviewed",
+      "hidden": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:stairs:dream-example-1",
+      "type": "appears_in",
+      "source_node_id": "motif:stairs",
+      "target_node_id": "dream:dream-example-1",
+      "confirmation_status": "unreviewed",
+      "hidden": false,
+      "suggestion": {
+        "model_name": "example-model",
+        "model_version": "v1",
+        "confidence": "moderate",
+        "source_fragments": [
+          {
+            "dream_id": "dream-example-1",
+            "chunk_id": "chunk-example-1",
+            "fragment_index": null,
+            "start_char": null,
+            "end_char": null
+          }
+        ]
+      }
+    }
+  ],
+  "privacy_controls": {
+    "hidden_dream_ids": [],
+    "deleted_dream_ids": [],
+    "hidden_node_ids": [],
+    "deleted_node_ids": [],
+    "hidden_edge_ids": [],
+    "deleted_edge_ids": [],
+    "rejected_node_ids": [],
+    "rejected_edge_ids": [],
+    "rejected_suggestions": []
+  }
+}
+```
+
+Supported export scopes:
+
+- `normal_graph_output`: default export; excludes hidden, rejected, and deleted
+  graph items while still including the separate privacy control state.
+- `all_with_controls`: includes all provided graph items and the privacy
+  control state for portable backup or inspection.
+- `confirmed_only`: starts from normal graph output and further limits nodes and
+  edges to user-confirmed graph memory.
+
+Privacy controls are immutable dataclass values under
+`DreamGraphPrivacyControls`. Hiding and deletion controls are explicit for
+source dreams, nodes, and edges. Motifs are controlled by their graph node IDs.
+Rejected AI suggestions are recorded as `RejectedGraphSuggestion` values with
+only source dream fragment references. Rejection never deletes the source dream
+reference or source fragment reference; it only removes the rejected suggested
+node or edge from normal graph output.
+
+Control state intentionally stores IDs and source references, not dream text,
+fragment text, dream titles, theme notes, or rejection justifications. Export
+examples in this document use fictional IDs and short motif labels only.

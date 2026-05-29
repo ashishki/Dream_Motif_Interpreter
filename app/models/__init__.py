@@ -10,6 +10,17 @@ from app.models.dream_graph import (
     ModelSuggestionProvenance,
     SourceDreamFragmentRef,
 )
+from app.models.dream_graph_privacy import (
+    DreamGraphExportOptions,
+    DreamGraphExportScope,
+    DreamGraphPrivacyControls,
+    DreamGraphSnapshot,
+    RejectedGraphSuggestion,
+    RejectedSuggestionSubject,
+    SourceDreamExportRef,
+    export_dream_graph,
+    normal_graph_output,
+)
 from app.models.motif import MotifInduction
 from app.models.note import DreamNote
 from app.models.reaction import MessageReaction
@@ -19,7 +30,12 @@ from app.models.write_status import DreamWriteStatus
 __all__ = [
     "AssistantFeedback",
     "DreamNote",
+    "DreamGraphExportOptions",
+    "DreamGraphExportScope",
+    "DreamGraphPrivacyControls",
+    "DreamGraphSnapshot",
     "DreamWriteStatus",
+    "SourceDreamExportRef",
     "GraphConfirmationStatus",
     "GraphEdge",
     "GraphEdgeType",
@@ -28,6 +44,10 @@ __all__ = [
     "MessageReaction",
     "MotifInduction",
     "ModelSuggestionProvenance",
+    "RejectedGraphSuggestion",
+    "RejectedSuggestionSubject",
     "ResearchResult",
     "SourceDreamFragmentRef",
+    "export_dream_graph",
+    "normal_graph_output",
 ]

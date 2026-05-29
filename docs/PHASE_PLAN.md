@@ -1,9 +1,9 @@
 # Dream Motif Interpreter — Phase Plan
 
-Version: 2.9
-Last updated: 2026-05-20 (Phase 25 implemented — backdated Google Doc writes and duplicate rewrites)
+Version: 3.0
+Last updated: 2026-05-29 (Phase 26 planned — Dream Memory Map / Telegram mini app)
 
-## 1. Current Status: Phases 1–25 Complete
+## 1. Current Status: Phases 1–25 Complete, Phase 26 Planned
 
 **Phases 1–5** — Backend platform complete:
 
@@ -52,6 +52,7 @@ Execution graph:
 - [docs/tasks_phase23.md](tasks_phase23.md) — historical Phase 23 graph (Test 9 full text, English entries, numeric feedback disablement)
 - [docs/tasks_phase24.md](tasks_phase24.md) — historical Phase 24 graph (Test 10 titles and dream-set pattern analysis)
 - [docs/tasks_phase25.md](tasks_phase25.md) — historical Phase 25 graph (backdated Google Doc writes and duplicate rewrites)
+- [docs/tasks_phase26.md](tasks_phase26.md) — planning Phase 26 graph (Dream Memory Map / Telegram mini app)
 
 ## 1.1 Phase 22 — Test 7/8 Reliability Loop
 
@@ -107,6 +108,21 @@ Phase 25 closed the 2026-05-20 follow-up on Google Doc write placement:
    archive row deduplicated by `content_hash`.
 
 The canonical task graph is [docs/tasks_phase25.md](tasks_phase25.md).
+
+## 1.5 Phase 26 — Dream Memory Map / Telegram Mini App
+
+Phase 26 is the next product-direction phase. It shifts focus from backend
+reliability fixes to a visual reflective memory product:
+
+1. Define Dream Memory Map as Telegram mini app + motif graph.
+2. Use Obsidian as structural/visual reference only: graph, backlinks, tags,
+   vault metaphor.
+3. Define graph nodes and edges for dreams, motifs, people, places, emotions,
+   events, and recurring patterns.
+4. Keep interpretations as suggestions until user-confirmed.
+5. Add privacy, export, and deletion controls before broadening the UI.
+
+The canonical task graph is [docs/tasks_phase26.md](tasks_phase26.md).
 
 ## 2. Planning Principle
 

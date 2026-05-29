@@ -99,3 +99,22 @@ The active implementation task graph for this product evolution is:
 - [docs/tasks_phase9.md](tasks_phase9.md) — Phase 9 planned task graph
 
 The older [docs/tasks.md](tasks.md) remains the historical backend execution record through Phase 5.
+
+## 9. Dream Memory Map Direction
+
+The next product direction is a Telegram mini app with an Obsidian-like memory
+graph. Obsidian is a visual and structural reference, not a dependency.
+
+The graph should connect:
+
+- dreams
+- motifs
+- people
+- places
+- emotions
+- events
+- recurring patterns
+
+AI can suggest motif links, but durable memory should distinguish suggestion
+from user confirmation. The product language must stay in reflective journaling
+and pattern memory territory, not diagnosis.

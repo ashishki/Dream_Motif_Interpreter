@@ -4,7 +4,9 @@
 
 Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом и обратной связью.
 
-**Статус: Phases 1–14 complete · 300 unit tests passing**
+**Статус: active creative experiment · Phases 1–14 complete · 300 unit tests passing**
+
+Следующий продуктовый фокус: Dream Memory Map - Telegram mini app with an Obsidian-like motif graph. Roadmap: `docs/PROJECT_PLAN.md`.
 
 ---
 

@@ -80,6 +80,7 @@ Owner: codex
 Phase: 26
 Type: product demo
 Priority: P1
+Status: Done 2026-05-29
 Depends-On: WS-26.1, WS-26.2
 
 Objective:
@@ -96,6 +97,14 @@ Files:
   - frontend/ or docs/mockups/
   - docs/DREAM_MEMORY_MAP.md
   - tests/ if implemented in app code
+
+Result:
+  Static self-contained mockup created at
+  `docs/mockups/dream_memory_map_prototype.html`. It renders one graph
+  workspace with Dream and Motif nodes plus schema-language edges, provides
+  motif detail panels with linked dreams and source fragments, and labels AI
+  suggestions separately from links confirmed by the user. Acceptance coverage
+  is guarded by `tests/unit/test_dream_memory_map_prototype.py`.
 
 ## WS-26.4: Privacy, Export, And Deletion Controls
 
@@ -124,5 +133,5 @@ Files:
 
 - [x] Product spec exists and avoids diagnostic claims.
 - [x] Graph schema is reviewable and evidence-linked.
-- [ ] Mini app prototype or mockup demonstrates the visual direction.
+- [x] Mini app prototype or mockup demonstrates the visual direction.
 - [ ] Privacy/export/delete controls are specified before broad UX expansion.

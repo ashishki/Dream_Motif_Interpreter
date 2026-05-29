@@ -23,6 +23,15 @@ Status: append-only
 
 ## Entries
 
+### 2026-05-29 — WS-26.3 — Dream Memory Map UX Prototype
+
+- Scope: `docs/mockups/dream_memory_map_prototype.html`, `tests/unit/test_dream_memory_map_prototype.py`, `docs/DREAM_MEMORY_MAP.md`, `docs/tasks_phase26.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 26 needed a first concrete mini app visual prototype to evaluate the Dream Memory Map direction without adding a production frontend stack or Obsidian dependency.
+- Decisions applied: D-021.
+- Evidence collected: baseline `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py tests/unit/test_dream_graph_schema.py -q --tb=short` -> `10 passed`; baseline `.venv/bin/ruff check app/ tests/` -> pass; baseline `.venv/bin/ruff format --check app/ tests/` -> pass; baseline `timeout 120s .venv/bin/python -m pytest tests/ -q --tb=short -x` -> local integration blocker in `tests/integration/test_analysis.py::test_analysis_saves_draft_themes`, asyncpg `TimeoutError` while connecting during schema reset; proof `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py tests/unit/test_dream_graph_schema.py tests/unit/test_dream_memory_map_prototype.py -q --tb=short` -> `13 passed`; final proof `timeout 120s .venv/bin/python -m pytest tests/ -q --tb=short -x` -> same local integration setup path blocked by `ConnectionRefusedError: [Errno 111] Connect call failed ('127.0.0.1', 5433)`; `.venv/bin/ruff check app/ tests/` -> pass; `.venv/bin/ruff format --check app/ tests/` -> pass.
+- Follow-ups: WS-26.4 should specify privacy, export, deletion, hiding, and rejection controls before broader UX expansion.
+- Notes for next agent: the prototype is a static browser-openable mockup only. It embeds fictional sample graph data, labels "AI suggestion" and "confirmed by user" distinctly, and adds no frontend stack, route, service, worker, database migration, persistent graph table, backend behavior, or Obsidian dependency.
+
 ### 2026-05-29 — WS-26.2 — Dream Graph Schema Contract
 
 - Scope: `app/models/dream_graph.py`, `app/models/__init__.py`, `tests/unit/test_dream_graph_schema.py`, `docs/DREAM_MEMORY_MAP.md`, `docs/tasks_phase26.md`, `docs/CODEX_PROMPT.md`

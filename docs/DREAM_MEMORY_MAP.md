@@ -1,8 +1,8 @@
 # Dream Memory Map Product Spec
 
-Version: 1.1
-Status: Phase 26 product spec and graph schema contract
-Task: WS-26.1, WS-26.2
+Version: 1.2
+Status: Phase 26 product spec, graph schema contract, and UX prototype
+Task: WS-26.1, WS-26.2, WS-26.3
 Last updated: 2026-05-29
 
 ## 1. Product Definition
@@ -272,3 +272,21 @@ WS-26.3 can use this spec to prototype:
 
 No backend schema, frontend framework, or Obsidian dependency is introduced by
 this spec.
+
+## 8. UX Prototype Mockup
+
+WS-26.3 adds a static, self-contained mockup at
+[`docs/mockups/dream_memory_map_prototype.html`](mockups/dream_memory_map_prototype.html).
+It opens directly in a browser and is not production UI.
+
+The prototype shows one mobile-first graph workspace with Dream, Motif, Person,
+Place, Emotion, and Event nodes connected by schema-language edges such as
+`appears_in`, `repeats_with`, `evolves_from`, and `user_confirmed`. Selecting a
+motif opens linked dreams and source fragments. AI-generated pattern language is
+labeled as "AI suggestion"; curated graph memory is labeled as "confirmed by
+user".
+
+The mockup deliberately avoids a frontend build stack, backend routes,
+database tables, persistent graph behavior, and Obsidian dependencies. It is
+only a review artifact for evaluating whether the Dream Memory Map direction
+feels inspectable and concrete before durable UI work begins.

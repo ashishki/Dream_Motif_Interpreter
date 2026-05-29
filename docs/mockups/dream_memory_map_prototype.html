@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dream Memory Map Prototype</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f4f7fb;
+        --ink: #1f2933;
+        --muted: #607080;
+        --line: #d6dde6;
+        --panel: #ffffff;
+        --motif: #4f8f8b;
+        --dream: #7f6fb2;
+        --entity: #c06b42;
+        --suggested: #b7791f;
+        --confirmed: #2f855a;
+        --shadow: 0 16px 36px rgba(31, 41, 51, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .app-shell {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(14px);
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+
+      .topbar h1 {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.2;
+      }
+
+      .topbar p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .status-pills {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+
+      .pill,
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 28px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 9px;
+        background: #ffffff;
+        color: var(--muted);
+        font-size: 0.74rem;
+        white-space: nowrap;
+      }
+
+      .pill.confirmed,
+      .legend-item.confirmed {
+        border-color: rgba(47, 133, 90, 0.34);
+        color: var(--confirmed);
+      }
+
+      .pill.suggested,
+      .legend-item.suggested {
+        border-color: rgba(183, 121, 31, 0.42);
+        color: var(--suggested);
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+
+      .graph-pane {
+        min-height: 58vh;
+        padding: 14px;
+      }
+
+      .graph-frame {
+        min-height: 520px;
+        border: 1px solid var(--line);
+        background:
+          linear-gradient(rgba(31, 41, 51, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(31, 41, 51, 0.045) 1px, transparent 1px),
+          #ffffff;
+        background-size: 28px 28px;
+        border-radius: 8px;
+        overflow: hidden;
+        position: relative;
+        box-shadow: var(--shadow);
+      }
+
+      .graph-toolbar {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        z-index: 2;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .graph-canvas {
+        display: block;
+        width: 100%;
+        height: 520px;
+      }
+
+      .edge {
+        stroke-width: 3;
+        fill: none;
+      }
+
+      .edge.suggested {
+        stroke: var(--suggested);
+        stroke-dasharray: 8 7;
+      }
+
+      .edge.confirmed {
+        stroke: var(--confirmed);
+      }
+
+      .edge-label {
+        fill: #41505f;
+        font-size: 12px;
+        paint-order: stroke;
+        stroke: #ffffff;
+        stroke-width: 4px;
+      }
+
+      .node-button {
+        cursor: pointer;
+      }
+
+      .node-button:focus-visible circle,
+      .node-button:hover circle {
+        stroke: #111827;
+        stroke-width: 3;
+      }
+
+      .node circle {
+        filter: drop-shadow(0 8px 12px rgba(31, 41, 51, 0.18));
+      }
+
+      .node .Dream {
+        fill: var(--dream);
+      }
+
+      .node .Motif {
+        fill: var(--motif);
+      }
+
+      .node .Person,
+      .node .Place,
+      .node .Emotion,
+      .node .Event {
+        fill: var(--entity);
+      }
+
+      .node-label {
+        fill: #111827;
+        font-size: 13px;
+        font-weight: 700;
+        text-anchor: middle;
+        paint-order: stroke;
+        stroke: #ffffff;
+        stroke-width: 5px;
+      }
+
+      .node-type {
+        fill: #4b5563;
+        font-size: 10px;
+        text-anchor: middle;
+        text-transform: uppercase;
+        paint-order: stroke;
+        stroke: #ffffff;
+        stroke-width: 4px;
+      }
+
+      .detail-pane {
+        border-top: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .detail-inner {
+        padding: 18px 16px 24px;
+      }
+
+      .detail-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 16px;
+      }
+
+      .detail-header h2 {
+        margin: 0;
+        font-size: 1.25rem;
+        line-height: 1.15;
+      }
+
+      .detail-header p {
+        margin: 7px 0 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .motif-tabs {
+        display: flex;
+        gap: 8px;
+        margin: 0 0 14px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+      }
+
+      .motif-tab {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #ffffff;
+        color: var(--ink);
+        min-height: 34px;
+        padding: 7px 11px;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+
+      .motif-tab[aria-selected="true"] {
+        background: #20313d;
+        border-color: #20313d;
+        color: white;
+      }
+
+      .section-title {
+        margin: 18px 0 9px;
+        color: #2c3a45;
+        font-size: 0.78rem;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .linked-dreams,
+      .fragment-list,
+      .edge-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .dream-card,
+      .fragment-card,
+      .edge-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: #ffffff;
+      }
+
+      .dream-card h3,
+      .fragment-card h3,
+      .edge-card h3 {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+
+      .dream-card p,
+      .fragment-card p,
+      .edge-card p {
+        margin: 7px 0 0;
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.45;
+      }
+
+      .card-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .fragment-card blockquote {
+        margin: 8px 0 0;
+        border-left: 3px solid var(--line);
+        padding-left: 10px;
+        color: #334155;
+        line-height: 1.45;
+      }
+
+      @media (min-width: 920px) {
+        .workspace {
+          grid-template-columns: minmax(0, 1fr) 390px;
+          min-height: calc(100vh - 69px);
+        }
+
+        .graph-pane {
+          min-height: calc(100vh - 69px);
+          padding: 18px;
+        }
+
+        .graph-frame,
+        .graph-canvas {
+          min-height: calc(100vh - 105px);
+          height: calc(100vh - 105px);
+        }
+
+        .detail-pane {
+          border-top: 0;
+          border-left: 1px solid var(--line);
+          max-height: calc(100vh - 69px);
+          overflow: auto;
+        }
+
+        .detail-inner {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Dream Memory Map</h1>
+          <p>Static WS-26.3 mockup. Reflective pattern memory, not diagnosis.</p>
+        </div>
+        <div class="status-pills" aria-label="connection status legend">
+          <span class="pill suggested">AI suggestion</span>
+          <span class="pill confirmed">confirmed by user</span>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="graph-pane" aria-label="Dream and motif graph workspace">
+          <div class="graph-frame">
+            <div class="graph-toolbar">
+              <div class="legend" aria-label="graph node legend">
+                <span class="legend-item">Dream nodes</span>
+                <span class="legend-item">Motif nodes</span>
+                <span class="legend-item">Person / Place / Emotion / Event</span>
+              </div>
+              <div class="legend" aria-label="graph edge legend">
+                <span class="legend-item suggested">dashed: AI suggestion may connect</span>
+                <span class="legend-item confirmed">solid: confirmed by user</span>
+              </div>
+            </div>
+            <svg
+              id="graphCanvas"
+              class="graph-canvas"
+              viewBox="0 0 760 620"
+              role="img"
+              aria-label="Graph view with dream nodes, motif nodes, and edges"
+            ></svg>
+          </div>
+        </section>
+
+        <aside class="detail-pane" aria-label="Motif details">
+          <div class="detail-inner">
+            <div class="motif-tabs" id="motifTabs" role="tablist"></div>
+            <section id="motifDetail" aria-live="polite"></section>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script type="application/json" id="dream-memory-map-prototype-data">
+      {
+        "nodes": [
+          {
+            "id": "dream:market-bridge",
+            "type": "Dream",
+            "label": "Market bridge",
+            "date": "2026-05-02",
+            "x": 170,
+            "y": 180
+          },
+          {
+            "id": "dream:quiet-station",
+            "type": "Dream",
+            "label": "Quiet station",
+            "date": "2026-05-09",
+            "x": 250,
+            "y": 440
+          },
+          {
+            "id": "dream:glass-room",
+            "type": "Dream",
+            "label": "Glass room",
+            "date": "2026-05-16",
+            "x": 585,
+            "y": 250
+          },
+          {
+            "id": "motif:threshold",
+            "type": "Motif",
+            "label": "Threshold",
+            "status": "unreviewed",
+            "x": 350,
+            "y": 250
+          },
+          {
+            "id": "motif:maps",
+            "type": "Motif",
+            "label": "Hand-drawn maps",
+            "status": "confirmed",
+            "x": 485,
+            "y": 420
+          },
+          {
+            "id": "person:guide",
+            "type": "Person",
+            "label": "Quiet guide",
+            "status": "confirmed",
+            "x": 110,
+            "y": 335
+          },
+          {
+            "id": "place:station",
+            "type": "Place",
+            "label": "Station",
+            "status": "unreviewed",
+            "x": 380,
+            "y": 105
+          },
+          {
+            "id": "emotion:curiosity",
+            "type": "Emotion",
+            "label": "Curiosity",
+            "status": "confirmed",
+            "x": 620,
+            "y": 490
+          },
+          {
+            "id": "event:crossing",
+            "type": "Event",
+            "label": "Crossing over",
+            "status": "unreviewed",
+            "x": 655,
+            "y": 115
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge:threshold:market-bridge",
+            "type": "appears_in",
+            "source": "motif:threshold",
+            "target": "dream:market-bridge",
+            "state": "suggested",
+            "label": "AI suggestion may connect",
+            "sourceFragments": ["fragment:market-bridge:threshold"]
+          },
+          {
+            "id": "edge:threshold:quiet-station",
+            "type": "appears_in",
+            "source": "motif:threshold",
+            "target": "dream:quiet-station",
+            "state": "confirmed",
+            "label": "confirmed by user",
+            "sourceFragments": ["fragment:quiet-station:threshold"]
+          },
+          {
+            "id": "edge:maps:quiet-station",
+            "type": "appears_in",
+            "source": "motif:maps",
+            "target": "dream:quiet-station",
+            "state": "confirmed",
+            "label": "confirmed by user",
+            "sourceFragments": ["fragment:quiet-station:map"]
+          },
+          {
+            "id": "edge:maps:glass-room",
+            "type": "repeats_with",
+            "source": "motif:maps",
+            "target": "dream:glass-room",
+            "state": "suggested",
+            "label": "AI suggestion appears with",
+            "sourceFragments": ["fragment:glass-room:map"]
+          },
+          {
+            "id": "edge:guide:market-bridge",
+            "type": "user_confirmed",
+            "source": "person:guide",
+            "target": "dream:market-bridge",
+            "state": "confirmed",
+            "label": "confirmed by user",
+            "sourceFragments": []
+          },
+          {
+            "id": "edge:station:threshold",
+            "type": "appears_in",
+            "source": "place:station",
+            "target": "motif:threshold",
+            "state": "suggested",
+            "label": "AI suggestion may connect",
+            "sourceFragments": ["fragment:quiet-station:threshold"]
+          },
+          {
+            "id": "edge:crossing:glass-room",
+            "type": "evolves_from",
+            "source": "event:crossing",
+            "target": "dream:glass-room",
+            "state": "suggested",
+            "label": "AI suggestion",
+            "sourceFragments": ["fragment:glass-room:crossing"]
+          },
+          {
+            "id": "edge:curiosity:maps",
+            "type": "repeats_with",
+            "source": "emotion:curiosity",
+            "target": "motif:maps",
+            "state": "confirmed",
+            "label": "confirmed by user",
+            "sourceFragments": []
+          }
+        ],
+        "motifs": [
+          {
+            "id": "motif:threshold",
+            "label": "Threshold",
+            "statusLabel": "AI suggestion",
+            "summary": "This may connect dreams where a door, platform, or bridge marks a change in scene.",
+            "linkedDreams": [
+              {
+                "id": "dream:market-bridge",
+                "title": "Market bridge",
+                "date": "2026-05-02",
+                "linkState": "AI suggestion",
+                "fragmentIds": ["fragment:market-bridge:threshold"]
+              },
+              {
+                "id": "dream:quiet-station",
+                "title": "Quiet station",
+                "date": "2026-05-09",
+                "linkState": "confirmed by user",
+                "fragmentIds": ["fragment:quiet-station:threshold"]
+              }
+            ],
+            "fragments": [
+              {
+                "id": "fragment:market-bridge:threshold",
+                "dreamId": "dream:market-bridge",
+                "label": "source fragment",
+                "state": "AI suggestion",
+                "text": "I paused before a narrow bridge above the covered market."
+              },
+              {
+                "id": "fragment:quiet-station:threshold",
+                "dreamId": "dream:quiet-station",
+                "label": "source fragment",
+                "state": "confirmed by user",
+                "text": "The platform door opened only after I named the station."
+              }
+            ]
+          },
+          {
+            "id": "motif:maps",
+            "label": "Hand-drawn maps",
+            "statusLabel": "confirmed by user",
+            "summary": "Confirmed memory link for dreams where a drawn route appears with curiosity or navigation.",
+            "linkedDreams": [
+              {
+                "id": "dream:quiet-station",
+                "title": "Quiet station",
+                "date": "2026-05-09",
+                "linkState": "confirmed by user",
+                "fragmentIds": ["fragment:quiet-station:map"]
+              },
+              {
+                "id": "dream:glass-room",
+                "title": "Glass room",
+                "date": "2026-05-16",
+                "linkState": "AI suggestion",
+                "fragmentIds": ["fragment:glass-room:map"]
+              }
+            ],
+            "fragments": [
+              {
+                "id": "fragment:quiet-station:map",
+                "dreamId": "dream:quiet-station",
+                "label": "source fragment",
+                "state": "confirmed by user",
+                "text": "A folded map showed a route drawn in blue pencil."
+              },
+              {
+                "id": "fragment:glass-room:map",
+                "dreamId": "dream:glass-room",
+                "label": "source fragment",
+                "state": "AI suggestion",
+                "text": "Lines on the glass looked like a simple street map."
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+
+    <script>
+      const graphData = JSON.parse(
+        document.getElementById("dream-memory-map-prototype-data").textContent,
+      );
+
+      const nodeById = new Map(graphData.nodes.map((node) => [node.id, node]));
+      const canvas = document.getElementById("graphCanvas");
+      const motifTabs = document.getElementById("motifTabs");
+      const motifDetail = document.getElementById("motifDetail");
+      let activeMotifId = graphData.motifs[0].id;
+
+      function svgElement(tag, attrs = {}) {
+        const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        for (const [name, value] of Object.entries(attrs)) {
+          el.setAttribute(name, value);
+        }
+        return el;
+      }
+
+      function renderGraph() {
+        canvas.innerHTML = "";
+
+        graphData.edges.forEach((edge) => {
+          const source = nodeById.get(edge.source);
+          const target = nodeById.get(edge.target);
+          const line = svgElement("line", {
+            class: `edge ${edge.state}`,
+            x1: source.x,
+            y1: source.y,
+            x2: target.x,
+            y2: target.y,
+            "data-edge-type": edge.type,
+            "data-link-state": edge.label,
+          });
+          canvas.append(line);
+
+          const label = svgElement("text", {
+            class: "edge-label",
+            x: (source.x + target.x) / 2,
+            y: (source.y + target.y) / 2 - 8,
+          });
+          label.textContent = edge.type;
+          canvas.append(label);
+        });
+
+        graphData.nodes.forEach((node) => {
+          const group = svgElement("g", {
+            class: "node node-button",
+            tabindex: node.type === "Motif" ? "0" : "-1",
+            role: node.type === "Motif" ? "button" : "img",
+            "aria-label": `${node.type} node ${node.label}`,
+            "data-node-type": node.type,
+            "data-node-id": node.id,
+          });
+
+          group.append(
+            svgElement("circle", {
+              class: node.type,
+              cx: node.x,
+              cy: node.y,
+              r: node.type === "Motif" ? 40 : 33,
+            }),
+          );
+
+          const label = svgElement("text", {
+            class: "node-label",
+            x: node.x,
+            y: node.y + 2,
+          });
+          label.textContent = node.label;
+          group.append(label);
+
+          const type = svgElement("text", {
+            class: "node-type",
+            x: node.x,
+            y: node.y + 19,
+          });
+          type.textContent = node.type;
+          group.append(type);
+
+          if (node.type === "Motif") {
+            group.addEventListener("click", () => openMotif(node.id));
+            group.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openMotif(node.id);
+              }
+            });
+          }
+
+          canvas.append(group);
+        });
+      }
+
+      function renderTabs() {
+        motifTabs.innerHTML = "";
+        graphData.motifs.forEach((motif) => {
+          const button = document.createElement("button");
+          button.className = "motif-tab";
+          button.type = "button";
+          button.setAttribute("role", "tab");
+          button.setAttribute("aria-selected", String(motif.id === activeMotifId));
+          button.dataset.motifId = motif.id;
+          button.textContent = motif.label;
+          button.addEventListener("click", () => openMotif(motif.id));
+          motifTabs.append(button);
+        });
+      }
+
+      function badgeClass(label) {
+        return label === "confirmed by user" ? "confirmed" : "suggested";
+      }
+
+      function renderMotifDetail() {
+        const motif = graphData.motifs.find((item) => item.id === activeMotifId);
+        const relatedEdges = graphData.edges.filter(
+          (edge) => edge.source === motif.id || edge.target === motif.id,
+        );
+
+        motifDetail.innerHTML = `
+          <div class="detail-header">
+            <div>
+              <h2>${motif.label}</h2>
+              <p>${motif.summary}</p>
+            </div>
+            <span class="pill ${badgeClass(motif.statusLabel)}">${motif.statusLabel}</span>
+          </div>
+
+          <h3 class="section-title">Linked dreams</h3>
+          <div class="linked-dreams">
+            ${motif.linkedDreams
+              .map(
+                (dream) => `
+                  <article class="dream-card" data-linked-dream="${dream.id}">
+                    <div class="card-row">
+                      <h3>${dream.title}</h3>
+                      <span class="pill ${badgeClass(dream.linkState)}">${dream.linkState}</span>
+                    </div>
+                    <p>${dream.date} - fragment refs: ${dream.fragmentIds.join(", ")}</p>
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
+
+          <h3 class="section-title">Evidence fragments</h3>
+          <div class="fragment-list">
+            ${motif.fragments
+              .map(
+                (fragment) => `
+                  <article class="fragment-card" data-source-fragment="${fragment.id}">
+                    <div class="card-row">
+                      <h3>${fragment.label}</h3>
+                      <span class="pill ${badgeClass(fragment.state)}">${fragment.state}</span>
+                    </div>
+                    <blockquote>${fragment.text}</blockquote>
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
+
+          <h3 class="section-title">Relationship labels</h3>
+          <div class="edge-list">
+            ${relatedEdges
+              .map(
+                (edge) => `
+                  <article class="edge-card" data-edge-id="${edge.id}">
+                    <div class="card-row">
+                      <h3>${edge.type}</h3>
+                      <span class="pill ${badgeClass(edge.label)}">${edge.label}</span>
+                    </div>
+                    <p>${nodeById.get(edge.source).label} appears with ${nodeById.get(edge.target).label}</p>
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
+        `;
+      }
+
+      function openMotif(motifId) {
+        activeMotifId = motifId;
+        renderTabs();
+        renderMotifDetail();
+      }
+
+      renderGraph();
+      renderTabs();
+      renderMotifDetail();
+    </script>
+  </body>
+</html>

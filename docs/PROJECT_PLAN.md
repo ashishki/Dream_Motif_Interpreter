@@ -66,6 +66,8 @@ Do not make Obsidian a dependency. Use the structural/visual idea only.
 - Add gentle language: pattern memory, not diagnosis.
 - Add user controls for accepting/rejecting interpretations.
 - Add export/import and data deletion path.
+- Use `docs/entropy_core_reference.md` if memory actions need receipt-style
+  verification. Do not apply Gensyn swarm/training patterns by default.
 
 ## AI-Development Tasks
 

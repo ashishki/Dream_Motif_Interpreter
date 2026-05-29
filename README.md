@@ -8,6 +8,8 @@
 
 Следующий продуктовый фокус: Dream Memory Map - Telegram mini app with an Obsidian-like motif graph. Roadmap: `docs/PROJECT_PLAN.md`.
 
+Optional verification reference: `docs/entropy_core_reference.md`.
+
 ---
 
 ## Возможности

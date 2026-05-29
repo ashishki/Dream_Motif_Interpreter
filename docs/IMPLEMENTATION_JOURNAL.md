@@ -23,6 +23,15 @@ Status: append-only
 
 ## Entries
 
+### 2026-05-29 — WS-26.2 — Dream Graph Schema Contract
+
+- Scope: `app/models/dream_graph.py`, `app/models/__init__.py`, `tests/unit/test_dream_graph_schema.py`, `docs/DREAM_MEMORY_MAP.md`, `docs/tasks_phase26.md`, `docs/CODEX_PROMPT.md`
+- Why this work happened: Phase 26 needed a reviewable graph schema boundary before mini app visualization work.
+- Decisions applied: D-021.
+- Evidence collected: baseline `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py -q --tb=short` -> `3 passed`; baseline `.venv/bin/ruff check app/ tests/` -> pass; baseline `.venv/bin/ruff format --check app/ tests/` -> pass; baseline `timeout 120s .venv/bin/python -m pytest tests/ -q --tb=short -x` -> blocked by asyncpg `TimeoutError` in `tests/integration/test_analysis.py::test_analysis_saves_draft_themes`; proof `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py tests/unit/test_dream_graph_schema.py -q --tb=short` -> `10 passed`; proof `timeout 120s .venv/bin/python -m pytest tests/ -q --tb=short -x` -> `ConnectionRefusedError: [Errno 111] Connect call failed ('127.0.0.1', 5433)` in the same integration setup path; `.venv/bin/ruff check app/ tests/` -> pass; `.venv/bin/ruff format --check app/ tests/` -> pass.
+- Follow-ups: WS-26.3 can prototype against the code-native schema; persistence, export controls, and deletion behavior remain later Phase 26 work.
+- Notes for next agent: no database migration was added. AI-suggested edges require source dream fragment references; user confirmation state is stored separately from model suggestion provenance.
+
 ### 2026-05-29 — FIX-WS-26.1-LIGHT-1 — Light Review Blockers
 
 - Scope: `app/assistant/chat.py`, `app/services/segmentation.py`, `app/shared/config.py`, `app/telegram/handlers.py`, `scripts/eval.py`, `docs/CODEX_PROMPT.md`

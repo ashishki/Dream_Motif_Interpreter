@@ -1,6 +1,15 @@
-"""Database model package."""
+"""Model package."""
 
 from app.models.feedback import AssistantFeedback
+from app.models.dream_graph import (
+    GraphConfirmationStatus,
+    GraphEdge,
+    GraphEdgeType,
+    GraphNode,
+    GraphNodeType,
+    ModelSuggestionProvenance,
+    SourceDreamFragmentRef,
+)
 from app.models.motif import MotifInduction
 from app.models.note import DreamNote
 from app.models.reaction import MessageReaction
@@ -11,7 +20,14 @@ __all__ = [
     "AssistantFeedback",
     "DreamNote",
     "DreamWriteStatus",
+    "GraphConfirmationStatus",
+    "GraphEdge",
+    "GraphEdgeType",
+    "GraphNode",
+    "GraphNodeType",
     "MessageReaction",
     "MotifInduction",
+    "ModelSuggestionProvenance",
     "ResearchResult",
+    "SourceDreamFragmentRef",
 ]

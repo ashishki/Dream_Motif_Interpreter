@@ -1,8 +1,8 @@
 # Dream Memory Map Product Spec
 
-Version: 1.0
-Status: Phase 26 product spec
-Task: WS-26.1
+Version: 1.1
+Status: Phase 26 product spec and graph schema contract
+Task: WS-26.1, WS-26.2
 Last updated: 2026-05-29
 
 ## 1. Product Definition
@@ -222,11 +222,45 @@ Every AI-suggested relationship should be traceable to source dream fragments in
 the future schema. User confirmation status must be represented separately from
 the model suggestion that produced the relationship.
 
-## 6. Implementation Readiness For WS-26.2 And WS-26.3
+## 6. Graph Schema Contract
 
-WS-26.2 can use this spec to produce the graph schema by formalizing node
-types, edge types, evidence references, confirmation status, hidden state, and
-export shape.
+WS-26.2 defines a code-native schema contract in
+`app/models/dream_graph.py`. This is not a database migration and does not add
+Obsidian as a dependency. Persistence, export controls, and deletion behavior
+remain later Phase 26 implementation work.
+
+Required node types:
+
+- Dream
+- Motif
+- Person
+- Place
+- Emotion
+- Event
+
+Required edge types:
+
+- appears_in
+- repeats_with
+- contradicts
+- evolves_from
+- user_confirmed
+
+Graph nodes and edges carry a `confirmation_status` separate from model
+suggestion provenance. A relationship may be suggested by a model, confirmed by
+the user, rejected, hidden, or asserted directly by the user without model
+evidence. This keeps user memory curation distinct from AI pattern suggestions.
+
+Every model-suggested edge must include source dream fragment references. The
+schema stores references such as dream ID, chunk ID, fragment index, or character
+offsets rather than duplicating dream text in the graph contract. User-confirmed
+or user-asserted edges are allowed without model suggestion evidence.
+
+## 7. Implementation Readiness For WS-26.3
+
+WS-26.2 produced the graph schema contract by formalizing node types, edge
+types, evidence references, confirmation status, hidden state, and the
+suggestion-provenance boundary.
 
 WS-26.3 can use this spec to prototype:
 

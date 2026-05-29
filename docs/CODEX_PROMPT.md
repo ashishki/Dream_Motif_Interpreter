@@ -13,6 +13,9 @@ Full historical prompt archived at
 - WS-26.1 is complete: `docs/DREAM_MEMORY_MAP.md` defines the Dream Memory Map
   product spec for Telegram mini app screens, non-diagnostic framing, and the
   bot/mini-app split.
+- WS-26.2 is complete: `app/models/dream_graph.py` defines the reviewable
+  code-native graph schema contract for Dream, Motif, Person, Place, Emotion,
+  Event nodes and evidence-linked graph edges. No database migration was added.
 - Active direction: Dream Memory Map with Obsidian-inspired structure and
   visualization.
 - Potential product surface: Telegram mini app after graph schema and privacy
@@ -31,22 +34,22 @@ Full historical prompt archived at
 
 ## Next Task
 
-`WS-26.2`: Graph Schema For Dreams And Motifs.
+`WS-26.3`: Mini App UX Prototype, after reviewing the WS-26.2 schema contract.
 
 ## Latest Verification
 
 - `python -m pytest tests/ -q --tb=short` blocked locally because `python` is
   not on PATH.
+- `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py -q
+  --tb=short` passes (`3 passed`).
 - `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py
-  tests/unit/test_eval_script.py tests/integration/test_retrieval_eval.py -q
-  --tb=short` passes (`5 passed, 2 skipped`; integration eval tests skip
-  without `TEST_DATABASE_URL`).
+  tests/unit/test_dream_graph_schema.py -q --tb=short` passes (`10 passed`).
 - `.venv/bin/python -m pytest tests/ -q --tb=short` no longer fails at
   retrieval-eval collection; the broad suite is locally blocked by Postgres
   connectivity. Fail-fast probe:
   `timeout 120s .venv/bin/python -m pytest tests/ -q --tb=short -x` errors in
   `tests/integration/test_analysis.py::test_analysis_saves_draft_themes` with
-  asyncpg `TimeoutError` while connecting during schema reset.
+  `ConnectionRefusedError: [Errno 111] Connect call failed ('127.0.0.1', 5433)`.
 - `.venv/bin/ruff check app/ tests/` passes.
 - `.venv/bin/ruff format --check app/ tests/` passes.
 

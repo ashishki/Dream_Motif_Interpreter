@@ -2,7 +2,7 @@
 
 Version: 1.0
 Last updated: 2026-05-29
-Status: Planning - Dream Memory Map / Telegram mini app direction
+Status: In progress - Dream Memory Map / Telegram mini app direction
 
 ## Purpose
 
@@ -47,6 +47,7 @@ Owner: codex
 Phase: 26
 Type: schema design
 Priority: P1
+Status: Done 2026-05-29
 Depends-On: WS-26.1
 
 Objective:
@@ -65,6 +66,13 @@ Files:
   - docs/DREAM_MEMORY_MAP.md
   - app/models/
   - tests/unit/
+
+Result:
+  Code-native graph schema contract created in `app/models/dream_graph.py`.
+  The schema defines required node and edge types, requires source dream
+  fragment references for model-suggested edges, and keeps user confirmation
+  status separate from model suggestion provenance. No database migration was
+  added; persistence/export controls remain later Phase 26 work.
 
 ## WS-26.3: Mini App UX Prototype
 
@@ -115,6 +123,6 @@ Files:
 ## Phase Gate
 
 - [x] Product spec exists and avoids diagnostic claims.
-- [ ] Graph schema is reviewable and evidence-linked.
+- [x] Graph schema is reviewable and evidence-linked.
 - [ ] Mini app prototype or mockup demonstrates the visual direction.
 - [ ] Privacy/export/delete controls are specified before broad UX expansion.

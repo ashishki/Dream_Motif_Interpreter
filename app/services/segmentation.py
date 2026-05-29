@@ -30,9 +30,7 @@ _DATE_PATTERNS = (
     ("%d/%m/%Y", re.compile(r"^(?P<value>\d{1,2}/\d{1,2}/\d{4})$")),
 )
 _HEADING_DATE_TITLE_PATTERNS = (
-    re.compile(
-        r"^(?P<date>\d{1,2}\.\d{1,2}\.(?:\d{2}|\d{4}))\s*[-–—]\s*(?P<title>.+)$"
-    ),
+    re.compile(r"^(?P<date>\d{1,2}\.\d{1,2}\.(?:\d{2}|\d{4}))\s*[-–—]\s*(?P<title>.+)$"),
     re.compile(r"^(?P<date>\d{4}-\d{1,2}-\d{1,2})\s*[-–—]\s*(?P<title>.+)$"),
     re.compile(r"^(?P<date>\d{1,2}/\d{1,2}/(?:\d{2}|\d{4}))\s*[-–—]\s*(?P<title>.+)$"),
     re.compile(r"^(?P<date>[A-Za-z]+ \d{1,2}, \d{4})\s*[-–—]\s*(?P<title>.+)$"),

@@ -40,6 +40,19 @@ BASELINE_SECTION = "## Baseline Metrics"
 CURRENT_SECTION = "## Current Metrics"
 NO_ANSWER_SECTION = "## No-Answer Behavior Quality"
 HISTORY_SECTION = "## Evaluation History"
+
+
+def _current_eval_date() -> str:
+    return os.getenv("EVAL_DATE") or date.today().isoformat()
+
+
+def _eval_source(run_date: str) -> str:
+    return f"scripts/eval.py against §Evaluation Dataset (10 queries), run {run_date}"
+
+
+EVAL_DATE = _current_eval_date()
+EVAL_SOURCE = _eval_source(EVAL_DATE)
+
 _STOPWORDS = {
     "a",
     "across",
@@ -515,7 +528,7 @@ def _evaluation_history_row(
         "Date": run_date,
         "Task": task_id,
         "Corpus Version": CORPUS_VERSION,
-        "Eval Source": f"scripts/eval.py against §Evaluation Dataset (10 queries), run {run_date}",
+        "Eval Source": _eval_source(run_date),
         "hit@3": _fmt(metrics.hit_at_3),
         "MRR": _fmt(metrics.mrr),
         "No-answer acc.": _fmt(metrics.no_answer_accuracy),
@@ -651,7 +664,7 @@ def _fmt(value: float) -> str:
 
 
 def _eval_date() -> str:
-    return os.getenv("EVAL_DATE") or date.today().isoformat()
+    return _current_eval_date()
 
 
 def _should_use_stub_embeddings() -> bool:

@@ -156,7 +156,9 @@ async def handle_chat_with_metadata(
             model=model,
         )
     except Exception:
-        LOGGER.warning("Direct dream-set pattern analysis failed; falling back to LLM", exc_info=True)
+        LOGGER.warning(
+            "Direct dream-set pattern analysis failed; falling back to LLM", exc_info=True
+        )
         pattern_result = None
     if pattern_result is not None:
         await _save_turn_history(
@@ -373,7 +375,11 @@ async def _try_direct_dream_set_pattern_analysis(
     tool_calls = ["analyze_dream_set_patterns"]
 
     recent = load_recent_dream_set(chat_id) if chat_id is not None else None
-    if recent is not None and recent.dream_ids and _should_use_recent_dream_set(message_text, query, recent.query):
+    if (
+        recent is not None
+        and recent.dream_ids
+        and _should_use_recent_dream_set(message_text, query, recent.query)
+    ):
         query = query or recent.query
         dream_ids = _coerce_uuid_list(recent.dream_ids)
 
@@ -453,7 +459,10 @@ async def _try_direct_dream_set_pattern_analysis(
 
 def _is_dream_set_pattern_request(message_text: str) -> bool:
     text = message_text.casefold()
-    has_pattern = any(marker in text for marker in ("паттерн", "закономер", "общие мотив", "общий мотив", "повторя"))
+    has_pattern = any(
+        marker in text
+        for marker in ("паттерн", "закономер", "общие мотив", "общий мотив", "повторя")
+    )
     has_set_context = any(
         marker in text
         for marker in (
@@ -515,7 +524,9 @@ def _should_use_recent_dream_set(message_text: str, query: str | None, recent_qu
         return True
     if not query:
         return True
-    return query.casefold() in recent_query.casefold() or recent_query.casefold() in query.casefold()
+    return (
+        query.casefold() in recent_query.casefold() or recent_query.casefold() in query.casefold()
+    )
 
 
 def _coerce_uuid_list(values: list[str]) -> list[uuid.UUID]:
@@ -688,11 +699,7 @@ def _format_full_dream_detail_reply(detail: Any) -> str:
     title = str(getattr(detail, "title", "") or "").strip()
     date_value = _format_tool_date(str(getattr(detail, "date", "") or "").strip())
     dream_text = str(getattr(detail, "raw_text", "") or "").rstrip()
-    notes = [
-        str(note).strip()
-        for note in getattr(detail, "notes", [])
-        if str(note).strip()
-    ]
+    notes = [str(note).strip() for note in getattr(detail, "notes", []) if str(note).strip()]
 
     header_parts = [part for part in (date_value, title) if part and part != "unknown"]
     response_parts: list[str] = []

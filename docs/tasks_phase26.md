@@ -19,6 +19,7 @@ Owner: human + codex
 Phase: 26
 Type: product strategy
 Priority: P0
+Status: Done 2026-05-29
 
 Objective:
   Define the mini app experience, privacy posture, graph entities, and
@@ -35,6 +36,10 @@ Files:
   - docs/DREAM_MEMORY_MAP.md
   - docs/PRODUCT_OVERVIEW.md
   - README.md
+
+Result:
+  Product spec created in docs/DREAM_MEMORY_MAP.md. Acceptance coverage is
+  guarded by tests/unit/test_dream_memory_map_spec.py.
 
 ## WS-26.2: Graph Schema For Dreams And Motifs
 
@@ -109,7 +114,7 @@ Files:
 
 ## Phase Gate
 
-- [ ] Product spec exists and avoids diagnostic claims.
+- [x] Product spec exists and avoids diagnostic claims.
 - [ ] Graph schema is reviewable and evidence-linked.
 - [ ] Mini app prototype or mockup demonstrates the visual direction.
 - [ ] Privacy/export/delete controls are specified before broad UX expansion.

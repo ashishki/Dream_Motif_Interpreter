@@ -4,9 +4,12 @@
 
 Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом и обратной связью.
 
-**Статус: active creative experiment · Phases 1–14 complete · 300 unit tests passing**
+**Статус: active creative experiment · Phases 1–25 complete · Phase 26 product spec drafted**
 
-Следующий продуктовый фокус: Dream Memory Map - Telegram mini app with an Obsidian-like motif graph. Roadmap: `docs/PROJECT_PLAN.md`.
+Следующий продуктовый фокус: Dream Memory Map — Telegram mini app with an
+Obsidian-like motif graph for reflective journaling and pattern memory, not
+psychological diagnosis. Spec: `docs/DREAM_MEMORY_MAP.md`. Roadmap:
+`docs/PROJECT_PLAN.md`.
 
 Optional verification reference: `docs/entropy_core_reference.md`.
 
@@ -210,6 +213,7 @@ docker compose up
 | [**Phase 12 Release Notes**](docs/PHASE12_RELEASE_NOTES.md) | UX-исправления по итогам первого теста |
 | [Architecture](docs/ARCHITECTURE.md) | Форма системы, границы выполнения |
 | [Feature Spec](docs/spec.md) | Scope backend и интерфейса |
+| [Dream Memory Map](docs/DREAM_MEMORY_MAP.md) | Phase 26 Telegram mini app / motif graph product spec |
 | [Phase Plan](docs/PHASE_PLAN.md) | Декомпозиция фаз 1–11 |
 | [Environment](docs/ENVIRONMENT.md) | Runtime-переменные |
 | [Deployment](docs/DEPLOY.md) | Топология деплоя |

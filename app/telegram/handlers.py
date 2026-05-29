@@ -49,9 +49,7 @@ _FEEDBACK_STATE_KEY = "_feedback_pending_by_chat"
 _BOT_MESSAGE_IDS_KEY = "_bot_message_ids_by_chat"
 MAX_PENDING_FEEDBACK_REQUESTS = 10_000
 TELEGRAM_MESSAGE_CHUNK_SIZE = 3900
-MISSING_DREAM_TEXT_REPLY = (
-    "Пришлите текст сна одним сообщением: например, «Запиши сон: ...»."
-)
+MISSING_DREAM_TEXT_REPLY = "Пришлите текст сна одним сообщением: например, «Запиши сон: ...»."
 _DIRECT_DREAM_RECORD_COMMAND_RE = re.compile(
     r"(?is)^\s*(?:пожалуйста[,\s]+)?"
     r"(?:(?:можешь|можно|давай|хочу|я\s+хочу)\s+)?"

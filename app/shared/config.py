@@ -185,11 +185,7 @@ def _persist_extra_docs() -> None:
     payload = {
         "primary": primary,
         "extras": entries,
-        "names": {
-            doc_id: name
-            for doc_id, name in _doc_names.items()
-            if doc_id and name
-        },
+        "names": {doc_id: name for doc_id, name in _doc_names.items() if doc_id and name},
     }
     try:
         _EXTRA_DOCS_FILE.write_text(json.dumps(payload), encoding="utf-8")

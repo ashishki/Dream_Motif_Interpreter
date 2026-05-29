@@ -1,7 +1,7 @@
 # Implementation Journal — Dream Motif Interpreter
 
-Version: 1.22
-Last updated: 2026-05-20
+Version: 1.23
+Last updated: 2026-05-29
 Status: append-only
 
 ---
@@ -22,6 +22,24 @@ Status: append-only
 ---
 
 ## Entries
+
+### 2026-05-29 — FIX-WS-26.1-LIGHT-1 — Light Review Blockers
+
+- Scope: `app/assistant/chat.py`, `app/services/segmentation.py`, `app/shared/config.py`, `app/telegram/handlers.py`, `scripts/eval.py`, `docs/CODEX_PROMPT.md`
+- Why this work happened: WS-26.1 light review found mandatory format drift and retrieval-eval collection drift.
+- Decisions applied: none.
+- Evidence collected: `.venv/bin/python -m pytest tests/unit/test_dream_memory_map_spec.py tests/unit/test_eval_script.py tests/integration/test_retrieval_eval.py -q --tb=short` -> `5 passed, 2 skipped`; `.venv/bin/python -m pytest tests/ -q --tb=short` no longer fails at retrieval-eval collection but was killed after several minutes with only error markers; fail-fast probe `timeout 120s .venv/bin/python -m pytest tests/ -q --tb=short -x` -> first blocker is `tests/integration/test_analysis.py::test_analysis_saves_draft_themes` timing out while asyncpg connects during schema reset; `.venv/bin/ruff check app/ tests/` -> pass; `.venv/bin/ruff format --check app/ tests/` -> pass.
+- Follow-ups: run the broad suite with a reachable local Postgres test database.
+- Notes for next agent: `scripts.eval` again exports `EVAL_DATE` and `EVAL_SOURCE`; retrieval behavior was not changed.
+
+### 2026-05-29 — WS-26.1 — Dream Memory Map Product Spec
+
+- Scope: `docs/DREAM_MEMORY_MAP.md`, `docs/PRODUCT_OVERVIEW.md`, `README.md`, `docs/tasks_phase26.md`, `docs/CODEX_PROMPT.md`, `docs/DECISION_LOG.md`, and focused doc tests.
+- Why this work happened: Phase 26 needed an implementation-ready product spec before graph schema or mini app prototype work.
+- Decisions applied: D-021.
+- Evidence collected: baseline `python -m pytest tests/ -q --tb=short` blocked because `python` is not on PATH; `.venv/bin/python -m pytest tests/ -q --tb=short` blocked by pre-existing `tests/integration/test_retrieval_eval.py` import drift for `EVAL_DATE`; focused WS-26.1 doc tests pass; `ruff check app/ tests/` passes; `ruff format --check app/ tests/` blocked by pre-existing app formatting drift.
+- Follow-ups: WS-26.2 should define graph schema for nodes, edges, evidence references, confirmation status, hidden state, and export shape.
+- Notes for next agent: the spec explicitly keeps the product in reflective journaling / pattern memory, separates Telegram bot from mini app responsibilities, preserves privacy/export/deletion controls, and treats Obsidian as inspiration only.
 
 ### 2026-05-20 — Phase 25 Implementation — Backdated Writes and Duplicate Rewrites
 

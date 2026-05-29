@@ -1,7 +1,7 @@
 # Decision Log — Dream Motif Interpreter
 
-Version: 2.7
-Last updated: 2026-05-15 (Phase 23 numeric feedback disablement)
+Version: 2.8
+Last updated: 2026-05-29 (Phase 26 Dream Memory Map product boundary)
 
 ## Rules
 
@@ -33,8 +33,9 @@ Last updated: 2026-05-15 (Phase 23 numeric feedback disablement)
 | D-018 | 2026-05-09 | Active | Phase 22 treats Google Docs freshness as a P0 user-facing invariant: duplicate source content must not abort the entire sync, and failed/stale sync states must be visible before the assistant relies on missing archive evidence | `docs/tasks_phase22.md §WS-22.1-22.3`, `docs/archive/PHASE22_REVIEW.md` |
 | D-019 | 2026-05-09 | Active | Whole-dream LLM interpretation must be a separate explicit-approval flow, distinct from motif induction and external research; interpretation output is subjective and is not persisted as archive fact in Phase 22 | `docs/tasks_phase22.md §WS-22.6`, `docs/IMPLEMENTATION_CONTRACT.md §LLM Output Framing`, `docs/archive/PHASE22_REVIEW.md` |
 | D-020 | 2026-05-15 | Active | Telegram numeric 1–5 feedback prompt and digit capture are disabled by default because they interfere with numbered-choice conversation; legacy capture remains behind `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=true` | `docs/tasks_phase23.md §WS-23.3`, `docs/FEEDBACK_LOOP.md §2`, `docs/archive/PHASE23_REVIEW.md` |
+| D-021 | 2026-05-29 | Active | Dream Memory Map is reflective journaling and pattern memory, not diagnosis; Telegram bot remains capture/conversation while the Telegram mini app owns graph, timeline, search, recurring motif, and privacy/export UX | `docs/DREAM_MEMORY_MAP.md`, `docs/tasks_phase26.md §WS-26.1` |
 
 ## Notes
 
-- Decisions through D-014, D-016, and D-018 through D-020 are Active; D-017 is superseded by D-020; D-015 remains planned until the broader recording reliability plan is fully superseded.
+- Decisions through D-014, D-016, and D-018 through D-021 are Active; D-017 is superseded by D-020; D-015 remains planned until the broader recording reliability plan is fully superseded.
 - The presence of a decision in this log implies the corresponding implementation exists unless explicitly marked otherwise.

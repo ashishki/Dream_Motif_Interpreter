@@ -3,7 +3,9 @@
 ## 1. What This Product Is
 
 Dream Motif Interpreter is a private dream-analysis system for one user.
-It turns a long-form dream journal into a structured archive that can be searched, curated, and reviewed over time.
+It turns a long-form dream journal into a structured archive that can be
+searched, curated, reviewed, and explored as reflective pattern memory over
+time.
 
 It is not a generic chatbot.
 It is not a public dream-sharing product.
@@ -97,6 +99,7 @@ The active implementation task graph for this product evolution is:
 
 - [docs/tasks_phase6.md](tasks_phase6.md) — Phase 6–8 complete
 - [docs/tasks_phase9.md](tasks_phase9.md) — Phase 9 planned task graph
+- [docs/tasks_phase26.md](tasks_phase26.md) — Phase 26 Dream Memory Map task graph
 
 The older [docs/tasks.md](tasks.md) remains the historical backend execution record through Phase 5.
 
@@ -118,3 +121,8 @@ The graph should connect:
 AI can suggest motif links, but durable memory should distinguish suggestion
 from user confirmation. The product language must stay in reflective journaling
 and pattern memory territory, not diagnosis.
+
+The implementation-ready Phase 26 product spec is
+[docs/DREAM_MEMORY_MAP.md](DREAM_MEMORY_MAP.md). The bot remains the fast
+capture/conversation surface; the mini app becomes the visual graph, timeline,
+search, recurring motif, and privacy/export workspace.

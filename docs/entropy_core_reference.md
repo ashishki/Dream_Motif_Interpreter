@@ -56,13 +56,17 @@ Implemented now:
 - `build_edge_memory_receipt(...)` records graph edge actions and links model
   suggestions to dream fragment refs when available.
 - Edge suggestions without source fragments are marked `needs_review`.
+- Motif confirmation now stores private-local node and `appears_in` edge
+  receipts in the append-only `AnnotationVersion.snapshot` for the
+  `motif_induction` mutation.
 - `tests/unit/test_proof_receipts.py` covers node receipts, fragment-linked
   edge receipts, and source-less edge review status.
+- `tests/unit/test_motifs_api.py` covers motif confirmation receipt wiring.
 
 Next implementation tasks:
 
-1. Wire memory receipts into motif graph persistence only after the mini-app
-   memory map workflow stabilizes.
+1. Extend receipt wiring to future durable graph node/edge persistence after the
+   mini-app memory map workflow stabilizes.
 2. Add privacy export/deletion receipts before exposing export or deletion
    controls in a Telegram mini app.
 3. Keep receipts private-local; do not sync dream evidence into Entropy Core.

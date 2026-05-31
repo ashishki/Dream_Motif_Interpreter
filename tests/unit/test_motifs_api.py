@@ -49,6 +49,7 @@ def _make_motif(
     m.confidence = confidence
     m.status = status
     m.fragments = fragments if fragments is not None else []
+    m.model_version = "test-model-v1"
     m.created_at = _NOW
     return m
 
@@ -345,6 +346,73 @@ async def test_patch_motif_annotation_entity_type_is_motif_induction() -> None:
     annotation = session.added[0]
     assert annotation.entity_type == "motif_induction"
     assert annotation.snapshot["entity_type"] == "motif_induction"
+
+
+@pytest.mark.asyncio
+async def test_patch_motif_confirm_writes_local_memory_action_receipts() -> None:
+    dream_id = uuid.uuid4()
+    motif = _make_motif(
+        dream_id=dream_id,
+        status="draft",
+        fragments=[
+            {
+                "text": "crumbling stairs",
+                "start_offset": 10,
+                "end_offset": 26,
+            }
+        ],
+    )
+    session = _FakeSession(execute_results=[_FakeResult([motif])])
+    factory = _FakeSessionFactory(session)
+
+    payload = MotifStatusUpdateRequest(status="confirmed")
+
+    with patch("app.api.motifs.get_session_factory", return_value=factory):
+        await update_motif_status(
+            dream_id=dream_id,
+            motif_id=motif.id,
+            payload=payload,
+        )
+
+    annotation = session.added[0]
+    receipts = annotation.snapshot["local_memory_action_receipts"]
+    assert [item["receipt"]["action"] for item in receipts] == [
+        "node_confirmed",
+        "edge_confirmed",
+    ]
+    assert [item["receipt"]["subject_id"] for item in receipts] == [
+        f"motif_induction:{motif.id}",
+        f"edge:motif_induction:{motif.id}:appears_in:dream:{dream_id}",
+    ]
+    assert all(len(item["receipt_sha256"]) == 64 for item in receipts)
+
+    edge_receipt = receipts[1]["receipt"]
+    assert "dream_fragment" in {ref["ref_type"] for ref in edge_receipt["evidence_refs"]}
+    assert f"dream_fragment:{dream_id}:offsets:10-26" in {
+        ref["ref_id"] for ref in edge_receipt["evidence_refs"]
+    }
+    assert edge_receipt["verifier_status"] == "passed"
+    assert edge_receipt["entropy_core_level"] == "receipt_compatible"
+
+
+@pytest.mark.asyncio
+async def test_patch_motif_reject_does_not_write_confirmation_receipts() -> None:
+    dream_id = uuid.uuid4()
+    motif = _make_motif(dream_id=dream_id, status="draft")
+    session = _FakeSession(execute_results=[_FakeResult([motif])])
+    factory = _FakeSessionFactory(session)
+
+    payload = MotifStatusUpdateRequest(status="rejected")
+
+    with patch("app.api.motifs.get_session_factory", return_value=factory):
+        await update_motif_status(
+            dream_id=dream_id,
+            motif_id=motif.id,
+            payload=payload,
+        )
+
+    annotation = session.added[0]
+    assert "local_memory_action_receipts" not in annotation.snapshot
 
 
 # ---------------------------------------------------------------------------

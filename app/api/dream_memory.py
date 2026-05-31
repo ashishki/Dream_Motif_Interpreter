@@ -13,6 +13,7 @@ from app.models.dream_graph_control import DreamGraphPrivacyControl
 from app.models.dream_graph_privacy import (
     DreamGraphExportOptions,
     DreamGraphExportScope,
+    DreamGraphSnapshot,
     DreamGraphPrivacyControls,
     RejectedGraphSuggestion,
     RejectedSuggestionSubject,
@@ -33,6 +34,7 @@ from app.shared.tracing import get_tracer
 
 router = APIRouter()
 DELETION_CONTROL_EFFECT_NOTE = "This records a graph-output deletion control only; source archive deletion is not implemented by this route."
+MINI_APP_STATE_FORMAT = "dream-memory-mini-app-state.v1"
 
 
 class DreamMemoryReceiptResponse(BaseModel):
@@ -43,6 +45,13 @@ class DreamMemoryReceiptResponse(BaseModel):
 class DreamMemoryExportResponse(BaseModel):
     export: dict[str, Any]
     receipt: DreamMemoryReceiptResponse
+
+
+class DreamMemoryGraphStateResponse(BaseModel):
+    format: Literal["dream-memory-mini-app-state.v1"] = MINI_APP_STATE_FORMAT
+    scope: DreamGraphExportScope
+    graph: dict[str, Any]
+    privacy_controls: dict[str, Any]
 
 
 class DreamMemoryDeletionControlRequest(BaseModel):
@@ -93,10 +102,37 @@ class DreamMemoryRejectionControlResponse(BaseModel):
     receipt: DreamMemoryReceiptResponse
 
 
+@router.get("/dream-memory/state", response_model=DreamMemoryGraphStateResponse)
+async def read_dream_memory_state(
+    scope: DreamGraphExportScope = Query(default=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT),
+) -> DreamMemoryGraphStateResponse:
+    snapshot = await _load_dream_memory_snapshot()
+    export_payload = export_dream_graph(snapshot, DreamGraphExportOptions(scope=scope))
+    return DreamMemoryGraphStateResponse(
+        scope=scope,
+        graph={
+            "source_dreams": export_payload["source_dreams"],
+            "nodes": export_payload["nodes"],
+            "edges": export_payload["edges"],
+        },
+        privacy_controls=export_payload["privacy_controls"],
+    )
+
+
 @router.get("/dream-memory/export", response_model=DreamMemoryExportResponse)
 async def export_dream_memory(
     scope: DreamGraphExportScope = Query(default=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT),
 ) -> DreamMemoryExportResponse:
+    snapshot = await _load_dream_memory_snapshot()
+    export_payload = export_dream_graph(snapshot, DreamGraphExportOptions(scope=scope))
+    receipt = build_privacy_export_receipt(export_payload=export_payload)
+    return DreamMemoryExportResponse(
+        export=export_payload,
+        receipt=_receipt_payload(receipt),
+    )
+
+
+async def _load_dream_memory_snapshot() -> DreamGraphSnapshot:
     tracer = get_tracer(__name__)
     async with get_session_factory()() as session:
         with tracer.start_as_current_span("db.query.dream_memory.load_dreams"):
@@ -124,12 +160,7 @@ async def export_dream_memory(
             privacy_controls=_privacy_controls_from_rows(list(control_result.scalars().all())),
         )
 
-    export_payload = export_dream_graph(snapshot, DreamGraphExportOptions(scope=scope))
-    receipt = build_privacy_export_receipt(export_payload=export_payload)
-    return DreamMemoryExportResponse(
-        export=export_payload,
-        receipt=_receipt_payload(receipt),
-    )
+    return snapshot
 
 
 @router.post(

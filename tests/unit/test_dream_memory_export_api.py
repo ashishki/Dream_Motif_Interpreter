@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.api.dream_memory import (
     DreamMemoryDeletionControlRequest,
     DreamMemoryExportResponse,
+    DreamMemoryGraphStateResponse,
     DreamMemoryHideControlRequest,
     DreamMemoryRejectionControlRequest,
     DreamMemorySourceFragmentRequest,
@@ -19,6 +20,7 @@ from app.api.dream_memory import (
     create_dream_memory_hide_control,
     create_dream_memory_rejection_control,
     export_dream_memory,
+    read_dream_memory_state,
 )
 from app.models.dream_graph_privacy import DreamGraphExportScope
 
@@ -154,6 +156,39 @@ async def test_export_dream_memory_returns_graph_export_with_receipt() -> None:
     assert response.receipt.receipt["type"] == "privacy_export_receipt"
     assert response.receipt.receipt["action"] == "graph_exported"
     assert len(response.receipt.receipt_sha256) == 64
+
+
+@pytest.mark.asyncio
+async def test_read_dream_memory_state_returns_filtered_graph_and_privacy_controls() -> None:
+    dream = _make_dream()
+    motif = _make_motif(dream_id=dream.id)
+    subject_id = f"motif_induction:{motif.id}"
+    control = _make_privacy_control(
+        subject_type="graph_node",
+        subject_id=subject_id,
+        action="hide",
+    )
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult([dream]),
+            _FakeResult([motif]),
+            _FakeResult([control]),
+        ]
+    )
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await read_dream_memory_state(scope=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT)
+
+    assert isinstance(response, DreamMemoryGraphStateResponse)
+    assert response.format == "dream-memory-mini-app-state.v1"
+    assert response.scope == DreamGraphExportScope.NORMAL_GRAPH_OUTPUT
+    assert subject_id not in {node["id"] for node in response.graph["nodes"]}
+    assert response.graph["edges"] == []
+    assert response.privacy_controls["hidden_node_ids"] == [subject_id]
+    assert "receipt" not in response.model_dump()
 
 
 @pytest.mark.asyncio
@@ -332,7 +367,22 @@ def test_dream_memory_export_router_registered_in_app() -> None:
     app = main_module.app
 
     paths = [route.path for route in app.routes if hasattr(route, "path")]
+    assert "/dream-memory/state" in paths
     assert "/dream-memory/export" in paths
+
+
+def test_dream_memory_state_requires_api_key() -> None:
+    import importlib
+    import sys
+
+    sys.modules.pop("app.main", None)
+    main_module = importlib.import_module("app.main")
+
+    with TestClient(main_module.app) as client:
+        response = client.get("/dream-memory/state")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
 
 
 def test_dream_memory_export_requires_api_key() -> None:

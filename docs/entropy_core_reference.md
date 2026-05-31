@@ -80,6 +80,9 @@ Implemented now:
 - `POST /dream-memory/privacy/reject` returns a rejected-AI-suggestion graph
   control with a `privacy_control_receipt` and stores source dream fragment
   references without storing dream text.
+- `GET /dream-memory/state` returns the mini-app-facing
+  `dream-memory-mini-app-state.v1` read contract with filtered graph state and
+  current privacy controls, without generating an export receipt.
 - `GET /dream-memory/export` applies persisted graph-output hide, deletion, and
   rejected-suggestion controls before returning normal graph output.
 - `tests/unit/test_proof_receipts.py` covers node receipts, fragment-linked
@@ -96,6 +99,6 @@ Next implementation tasks:
 
 1. Extend receipt wiring to future durable graph node/edge persistence after the
    mini-app memory map workflow stabilizes.
-2. Add a mini-app-facing read contract for privacy controls and filtered graph
-   state before building production UI.
+2. Start production mini-app UI wiring against `GET /dream-memory/state` and
+   the existing privacy-control write routes.
 3. Keep receipts private-local; do not sync dream evidence into Entropy Core.

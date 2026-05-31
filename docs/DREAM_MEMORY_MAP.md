@@ -1,9 +1,9 @@
 # Dream Memory Map Product Spec
 
-Version: 1.3
+Version: 1.4
 Status: Phase 26 complete product spec, graph schema contract, UX prototype, and privacy/export contract
 Task: WS-26.1, WS-26.2, WS-26.3, WS-26.4
-Last updated: 2026-05-29
+Last updated: 2026-05-31
 
 ## 1. Product Definition
 
@@ -297,12 +297,14 @@ WS-26.4 added a code-native privacy/export contract in
 `app/models/dream_graph_privacy.py`. That task did not add a database
 migration, worker, Redis path, frontend dependency, or Obsidian integration.
 
-Current backend wiring also exposes `GET /dream-memory/export`, protected by
-the existing API-key middleware. The route builds a graph export from persisted
-`DreamEntry` and `MotifInduction` rows, returns the deterministic export
-payload, and includes a private-local `privacy_export_receipt`. The export route
-does not include raw dream text, dream titles, Google Doc IDs, or source
-document IDs.
+Current backend wiring exposes `GET /dream-memory/state` for the mini app and
+`GET /dream-memory/export` for portable export. Both routes are protected by
+the existing API-key middleware and build graph output from persisted
+`DreamEntry`, `MotifInduction`, and `dream_graph_privacy_controls` rows. The
+state route returns the filtered graph and current privacy controls without a
+receipt. The export route returns the deterministic export payload and includes
+a private-local `privacy_export_receipt`. Neither route includes raw dream text,
+dream titles, Google Doc IDs, or source document IDs.
 
 `POST /dream-memory/privacy/delete`, `POST /dream-memory/privacy/hide`, and
 `POST /dream-memory/privacy/reject` create authenticated graph-output privacy
@@ -323,6 +325,39 @@ nodes, motifs, and edges from graph output. Edges are also removed when either
 endpoint is removed or when AI suggestion provenance points to a hidden or
 deleted source dream. This keeps ordinary graph, timeline, and motif-page views
 free of content the user has hidden, rejected, or deleted.
+
+The mini-app read contract uses format id `dream-memory-mini-app-state.v1`.
+It is intentionally smaller than export output and is shaped for graph, motif
+page, timeline, and privacy settings reads:
+
+```json
+{
+  "format": "dream-memory-mini-app-state.v1",
+  "scope": "normal_graph_output",
+  "graph": {
+    "source_dreams": [],
+    "nodes": [],
+    "edges": []
+  },
+  "privacy_controls": {
+    "hidden_dream_ids": [],
+    "deleted_dream_ids": [],
+    "hidden_node_ids": [],
+    "deleted_node_ids": [],
+    "hidden_edge_ids": [],
+    "deleted_edge_ids": [],
+    "rejected_node_ids": [],
+    "rejected_edge_ids": [],
+    "rejected_suggestions": []
+  }
+}
+```
+
+The state endpoint accepts the same `scope` values as export. The default
+`normal_graph_output` scope is the production UI default; `confirmed_only` is
+for stricter reflective views; `all_with_controls` is reserved for privacy
+settings or owner inspection screens where hidden, rejected, and deleted graph
+IDs need to be visible next to the control state.
 
 The export helper `export_dream_graph(snapshot, options)` returns deterministic
 JSON-compatible data with format id `dream-memory-graph-export.v1`. The top

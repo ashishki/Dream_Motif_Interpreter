@@ -59,14 +59,20 @@ Implemented now:
 - Motif confirmation now stores private-local node and `appears_in` edge
   receipts in the append-only `AnnotationVersion.snapshot` for the
   `motif_induction` mutation.
+- `build_privacy_export_receipt(...)` records deterministic graph export
+  checksums without storing dream text in the receipt.
+- `build_deletion_receipt(...)` records dream, graph node, or graph edge
+  deletion controls and marks receipts `needs_review` when the deletion control
+  does not include the requested subject.
 - `tests/unit/test_proof_receipts.py` covers node receipts, fragment-linked
-  edge receipts, and source-less edge review status.
+  edge receipts, source-less edge review status, graph export receipts, and
+  deletion receipts.
 - `tests/unit/test_motifs_api.py` covers motif confirmation receipt wiring.
 
 Next implementation tasks:
 
 1. Extend receipt wiring to future durable graph node/edge persistence after the
    mini-app memory map workflow stabilizes.
-2. Add privacy export/deletion receipts before exposing export or deletion
-   controls in a Telegram mini app.
+2. Wire privacy export/deletion receipts into future authenticated export and
+   deletion routes before exposing those controls in a Telegram mini app.
 3. Keep receipts private-local; do not sync dream evidence into Entropy Core.

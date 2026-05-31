@@ -9,7 +9,7 @@ from collections.abc import MutableMapping
 from datetime import date
 from typing import Any
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
 from telegram.constants import ChatAction
 from telegram.error import TelegramError
 from telegram.ext import ApplicationHandlerStop, ContextTypes
@@ -39,6 +39,9 @@ GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
 VOICE_PROCESSING_ACK = "Обрабатываю голосовое сообщение..."
 FEEDBACK_PROMPT = "Ответьте 1–5, можно с коротким комментарием."
 FEEDBACK_ACK = "Thanks, noted."
+MINI_APP_OPEN_MESSAGE = "Dream Memory Map"
+MINI_APP_OPEN_BUTTON = "Открыть карту"
+MINI_APP_UNCONFIGURED_MESSAGE = "Dream Memory Map ещё не настроен."
 VOICE_TRANSCRIPT_PROCESSING = (
     "Расшифровка голосового сообщения ещё выполняется. Повторите команду после завершения."
 )
@@ -82,6 +85,27 @@ async def chat_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if chat.id != allowed_chat_id:
         LOGGER.warning("Dropped update from unauthorized chat_id=%s", chat.id)
         raise ApplicationHandlerStop
+
+
+async def dream_memory_map_command_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    message = update.effective_message
+    if message is None:
+        return
+
+    mini_app_url = str(context.bot_data.get("mini_app_url") or "").strip()
+    if not mini_app_url:
+        await message.reply_text(MINI_APP_UNCONFIGURED_MESSAGE)
+        return
+
+    await message.reply_text(
+        MINI_APP_OPEN_MESSAGE,
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(MINI_APP_OPEN_BUTTON, web_app=WebAppInfo(url=mini_app_url))]]
+        ),
+    )
 
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

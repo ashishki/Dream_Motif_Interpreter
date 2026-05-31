@@ -51,6 +51,11 @@ The bot should not become the primary graph canvas. It can summarize graph
 relationships in text, but dense browsing, layout, filters, and export controls
 belong in the mini app.
 
+The bot exposes `/map` as the handoff into the mini app when
+`TELEGRAM_MINI_APP_URL` is configured. The command sends a Telegram Web App
+button only; graph data still comes from protected backend routes such as
+`GET /dream-memory/state`.
+
 ### Telegram Mini App
 
 The mini app is the visual memory workspace:

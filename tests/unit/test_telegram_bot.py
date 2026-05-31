@@ -21,6 +21,9 @@ from app.assistant.session import (
 from app.telegram.bot import handle_message_reaction
 from app.telegram.handlers import (
     FEEDBACK_PROMPT,
+    MINI_APP_OPEN_BUTTON,
+    MINI_APP_OPEN_MESSAGE,
+    MINI_APP_UNCONFIGURED_MESSAGE,
     MAX_PENDING_FEEDBACK_REQUESTS,
     MISSING_DREAM_TEXT_REPLY,
     VOICE_PROCESSING_ACK,
@@ -29,6 +32,7 @@ from app.telegram.handlers import (
     _format_create_dream_reply,
     _split_telegram_text,
     chat_guard,
+    dream_memory_map_command_handler,
     text_message_handler,
 )
 
@@ -48,6 +52,31 @@ async def test_chat_guard_allows_authorized_chat_id() -> None:
     context = SimpleNamespace(bot_data={"allowed_chat_id": 111})
 
     await chat_guard(update, context)
+
+
+@pytest.mark.asyncio
+async def test_dream_memory_map_command_sends_telegram_web_app_button() -> None:
+    update, message = _make_text_message_update("/map", chat_id=42)
+    context = SimpleNamespace(bot_data={"mini_app_url": "https://example.com/dream-map"})
+
+    await dream_memory_map_command_handler(update, context)
+
+    message.reply_text.assert_awaited_once()
+    args, kwargs = message.reply_text.await_args
+    assert args == (MINI_APP_OPEN_MESSAGE,)
+    button = kwargs["reply_markup"].inline_keyboard[0][0]
+    assert button.text == MINI_APP_OPEN_BUTTON
+    assert button.web_app.url == "https://example.com/dream-map"
+
+
+@pytest.mark.asyncio
+async def test_dream_memory_map_command_handles_missing_mini_app_url() -> None:
+    update, message = _make_text_message_update("/map", chat_id=42)
+    context = SimpleNamespace(bot_data={"mini_app_url": ""})
+
+    await dream_memory_map_command_handler(update, context)
+
+    message.reply_text.assert_awaited_once_with(MINI_APP_UNCONFIGURED_MESSAGE)
 
 
 # ---------------------------------------------------------------------------

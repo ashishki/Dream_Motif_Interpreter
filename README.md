@@ -150,6 +150,7 @@ tests/           unit + integration (300 unit passed)
 | `OPENAI_API_KEY` | Whisper + embeddings | — |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot | — |
 | `TELEGRAM_ALLOWED_CHAT_ID` | Allowlist chat_id | — |
+| `TELEGRAM_MINI_APP_URL` | URL для кнопки `/map`, открывающей Dream Memory Map как Telegram Web App | `""` |
 | `API_KEY` | Backend REST auth | — |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Путь к service-account JSON для Google Docs | `""` |
 | `AUTO_SYNC_ENABLED` | Включить лёгкий metadata-ping и автосинк из Google Docs | `false` |

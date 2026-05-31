@@ -9,6 +9,7 @@ from telegram import ReactionTypeCustomEmoji, ReactionTypeEmoji, Update
 from telegram.ext import (
     Application,
     ApplicationBuilder,
+    CommandHandler,
     MessageHandler,
     MessageReactionHandler,
     TypeHandler,
@@ -20,6 +21,7 @@ from app.models.reaction import MessageReaction
 from app.shared.config import Settings, get_settings
 from app.telegram.handlers import (
     chat_guard,
+    dream_memory_map_command_handler,
     error_handler,
     text_message_handler,
     voice_message_handler,
@@ -50,8 +52,10 @@ def build_application(
     application.bot_data["session_factory"] = session_factory
     application.bot_data["voice_media_dir"] = voice_media_dir
     application.bot_data["bot_token"] = settings.TELEGRAM_BOT_TOKEN
+    application.bot_data["mini_app_url"] = settings.TELEGRAM_MINI_APP_URL.strip()
 
     application.add_handler(TypeHandler(Update, chat_guard), group=-1000)
+    application.add_handler(CommandHandler("map", dream_memory_map_command_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
     application.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
     application.add_handler(

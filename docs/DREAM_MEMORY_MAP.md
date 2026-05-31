@@ -304,13 +304,15 @@ payload, and includes a private-local `privacy_export_receipt`. The export route
 does not include raw dream text, dream titles, Google Doc IDs, or source
 document IDs.
 
-`POST /dream-memory/privacy/delete` creates an authenticated graph-output
-deletion control for a dream, graph node, or graph edge and returns a
-private-local `deletion_receipt`. This route does not delete source archive
-rows, dream text, Google Docs content, or persisted motif rows; it records the
-control shape in the append-only `dream_graph_privacy_controls` table for future
-mini-app controls to read back and enforce. The export route applies persisted
-privacy controls before returning normal graph output.
+`POST /dream-memory/privacy/delete` and `POST /dream-memory/privacy/hide`
+create authenticated graph-output privacy controls for a dream, graph node, or
+graph edge and return private-local receipts. Deletion controls return a
+`deletion_receipt`; hide controls return a `privacy_control_receipt`. These
+routes do not delete source archive rows, dream text, Google Docs content, or
+persisted motif rows; they record the control shape in the append-only
+`dream_graph_privacy_controls` table for future mini-app controls to read back
+and enforce. The export route applies persisted privacy controls before
+returning normal graph output.
 
 Normal graph output uses `normal_graph_output(snapshot)` or
 `filtered_graph_snapshot(snapshot)`. The default scope is

@@ -51,10 +51,18 @@ class DreamMemoryActionReceipt:
 
 @dataclass(frozen=True)
 class DreamPrivacyActionReceipt:
-    type: Literal["privacy_export_receipt", "deletion_receipt"]
+    type: Literal["privacy_export_receipt", "deletion_receipt", "privacy_control_receipt"]
     schema_version: Literal["entropy_core.product_receipt.v1"]
     product_id: Literal["dream-motif-interpreter"]
-    action: Literal["graph_exported", "dream_deleted", "node_deleted", "edge_deleted"]
+    action: Literal[
+        "graph_exported",
+        "dream_deleted",
+        "node_deleted",
+        "edge_deleted",
+        "dream_hidden",
+        "node_hidden",
+        "edge_hidden",
+    ]
     subject_id: str
     verifier_status: Literal["passed", "needs_review", "failed"]
     evidence_refs: tuple[DreamProofEvidenceRef, ...]
@@ -186,6 +194,58 @@ def build_deletion_receipt(
     )
     return DreamPrivacyActionReceipt(
         type="deletion_receipt",
+        schema_version=PROOF_RECEIPT_SCHEMA_VERSION,
+        product_id=PRODUCT_ID,
+        action=action,
+        subject_id=subject_id,
+        verifier_status=verifier_status,
+        evidence_refs=(
+            DreamProofEvidenceRef(
+                ref_id=f"privacy_control:{subject_type}:{subject_id}",
+                ref_type="privacy_control",
+                supports=action,
+                checksum_sha256=_hash_json(_privacy_controls_payload(privacy_controls)),
+            ),
+            DreamProofEvidenceRef(
+                ref_id=f"{subject_type}:{subject_id}",
+                ref_type=ref_type,
+                supports=action,
+                checksum_sha256=_hash_text(f"{subject_type}:{subject_id}"),
+            ),
+        ),
+        generated_at=generated_at or datetime.now(UTC),
+        entropy_core_level="receipt_compatible",
+    )
+
+
+def build_hide_receipt(
+    *,
+    subject_id: str,
+    subject_type: Literal["dream", "graph_node", "graph_edge"],
+    privacy_controls: DreamGraphPrivacyControls,
+    generated_at: datetime | None = None,
+) -> DreamPrivacyActionReceipt:
+    action: Literal["dream_hidden", "node_hidden", "edge_hidden"]
+    ref_type: Literal["source_dream", "graph_node", "graph_edge"]
+    hidden_ids: frozenset[str]
+    if subject_type == "dream":
+        action = "dream_hidden"
+        ref_type = "source_dream"
+        hidden_ids = privacy_controls.hidden_dream_ids
+    elif subject_type == "graph_node":
+        action = "node_hidden"
+        ref_type = "graph_node"
+        hidden_ids = privacy_controls.hidden_node_ids
+    else:
+        action = "edge_hidden"
+        ref_type = "graph_edge"
+        hidden_ids = privacy_controls.hidden_edge_ids
+
+    verifier_status: Literal["passed", "needs_review", "failed"] = (
+        "passed" if subject_id in hidden_ids else "needs_review"
+    )
+    return DreamPrivacyActionReceipt(
+        type="privacy_control_receipt",
         schema_version=PROOF_RECEIPT_SCHEMA_VERSION,
         product_id=PRODUCT_ID,
         action=action,

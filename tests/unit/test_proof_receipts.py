@@ -14,6 +14,7 @@ from app.models.dream_graph_privacy import DreamGraphPrivacyControls
 from app.services.proof_receipts import (
     build_deletion_receipt,
     build_edge_memory_receipt,
+    build_hide_receipt,
     build_node_memory_receipt,
     build_privacy_export_receipt,
 )
@@ -150,3 +151,23 @@ def test_deletion_receipt_needs_review_when_subject_is_not_deleted() -> None:
 
     assert receipt.action == "node_deleted"
     assert receipt.verifier_status == "needs_review"
+
+
+def test_hide_receipt_passes_when_privacy_controls_include_subject() -> None:
+    controls = DreamGraphPrivacyControls().hide_edge("edge-1")
+
+    receipt = build_hide_receipt(
+        subject_id="edge-1",
+        subject_type="graph_edge",
+        privacy_controls=controls,
+        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+    )
+
+    assert receipt.type == "privacy_control_receipt"
+    assert receipt.action == "edge_hidden"
+    assert receipt.subject_id == "edge-1"
+    assert receipt.verifier_status == "passed"
+    assert {ref.ref_type for ref in receipt.evidence_refs} == {
+        "privacy_control",
+        "graph_edge",
+    }

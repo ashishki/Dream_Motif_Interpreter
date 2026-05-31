@@ -12,7 +12,9 @@ from fastapi.testclient import TestClient
 from app.api.dream_memory import (
     DreamMemoryDeletionControlRequest,
     DreamMemoryExportResponse,
+    DreamMemoryHideControlRequest,
     create_dream_memory_deletion_control,
+    create_dream_memory_hide_control,
     export_dream_memory,
 )
 from app.models.dream_graph_privacy import DreamGraphExportScope
@@ -200,6 +202,70 @@ async def test_export_dream_memory_applies_persisted_deletion_controls() -> None
     ]
 
 
+@pytest.mark.asyncio
+async def test_export_dream_memory_applies_persisted_hide_controls() -> None:
+    dream = _make_dream()
+    motif = _make_motif(dream_id=dream.id)
+    control = _make_privacy_control(
+        subject_type="graph_node",
+        subject_id=f"motif_induction:{motif.id}",
+        action="hide",
+    )
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult([dream]),
+            _FakeResult([motif]),
+            _FakeResult([control]),
+        ]
+    )
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await export_dream_memory(scope=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT)
+
+    assert f"motif_induction:{motif.id}" not in {node["id"] for node in response.export["nodes"]}
+    assert response.export["edges"] == []
+    assert response.export["privacy_controls"]["hidden_node_ids"] == [f"motif_induction:{motif.id}"]
+
+
+@pytest.mark.asyncio
+async def test_export_dream_memory_delete_overrides_prior_hide_control() -> None:
+    dream = _make_dream()
+    motif = _make_motif(dream_id=dream.id)
+    subject_id = f"motif_induction:{motif.id}"
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult([dream]),
+            _FakeResult([motif]),
+            _FakeResult(
+                [
+                    _make_privacy_control(
+                        subject_type="graph_node",
+                        subject_id=subject_id,
+                        action="hide",
+                    ),
+                    _make_privacy_control(
+                        subject_type="graph_node",
+                        subject_id=subject_id,
+                        action="delete",
+                    ),
+                ]
+            ),
+        ]
+    )
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await export_dream_memory(scope=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT)
+
+    assert response.export["privacy_controls"]["hidden_node_ids"] == []
+    assert response.export["privacy_controls"]["deleted_node_ids"] == [subject_id]
+
+
 def test_dream_memory_export_router_registered_in_app() -> None:
     import importlib
     import sys
@@ -302,6 +368,52 @@ def test_dream_memory_delete_control_requires_api_key() -> None:
         response = client.post(
             "/dream-memory/privacy/delete",
             json={"subject_type": "dream", "subject_id": "dream-1"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+
+
+@pytest.mark.asyncio
+async def test_create_hide_control_returns_receipt_for_hidden_node() -> None:
+    session = _FakeSession(execute_results=[])
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await create_dream_memory_hide_control(
+            DreamMemoryHideControlRequest(
+                subject_type="graph_node",
+                subject_id="motif_induction:1",
+            )
+        )
+
+    assert response.subject_type == "graph_node"
+    assert response.subject_id == "motif_induction:1"
+    assert response.privacy_controls["hidden_node_ids"] == ["motif_induction:1"]
+    assert response.receipt.receipt["type"] == "privacy_control_receipt"
+    assert response.receipt.receipt["action"] == "node_hidden"
+    assert response.receipt.receipt["verifier_status"] == "passed"
+    assert session.committed is True
+    persisted = session.added[0]
+    assert persisted.subject_type == "graph_node"
+    assert persisted.subject_id == "motif_induction:1"
+    assert persisted.action == "hide"
+    assert persisted.control_payload["hidden_node_ids"] == ["motif_induction:1"]
+
+
+def test_dream_memory_hide_control_requires_api_key() -> None:
+    import importlib
+    import sys
+
+    sys.modules.pop("app.main", None)
+    main_module = importlib.import_module("app.main")
+
+    with TestClient(main_module.app) as client:
+        response = client.post(
+            "/dream-memory/privacy/hide",
+            json={"subject_type": "graph_node", "subject_id": "motif_induction:1"},
         )
 
     assert response.status_code == 401

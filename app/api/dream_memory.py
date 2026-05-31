@@ -21,6 +21,7 @@ from app.services.dream_memory_graph import build_dream_memory_snapshot
 from app.services.proof_receipts import (
     DreamPrivacyActionReceipt,
     build_deletion_receipt,
+    build_hide_receipt,
     build_privacy_export_receipt,
 )
 from app.shared.database import get_session_factory
@@ -53,6 +54,18 @@ class DreamMemoryDeletionControlResponse(BaseModel):
     effect_note: Literal[
         "This records a graph-output deletion control only; source archive deletion is not implemented by this route."
     ] = DELETION_CONTROL_EFFECT_NOTE
+
+
+class DreamMemoryHideControlRequest(BaseModel):
+    subject_type: Literal["dream", "graph_node", "graph_edge"]
+    subject_id: str = Field(min_length=1)
+
+
+class DreamMemoryHideControlResponse(BaseModel):
+    subject_type: Literal["dream", "graph_node", "graph_edge"]
+    subject_id: str
+    privacy_controls: dict[str, Any]
+    receipt: DreamMemoryReceiptResponse
 
 
 @router.get("/dream-memory/export", response_model=DreamMemoryExportResponse)
@@ -108,19 +121,43 @@ async def create_dream_memory_deletion_control(
         privacy_controls=privacy_controls,
     )
     receipt_payload = _receipt_payload(receipt)
-    async with get_session_factory()() as session:
-        session.add(
-            DreamGraphPrivacyControl(
-                subject_type=payload.subject_type,
-                subject_id=payload.subject_id,
-                action="delete",
-                control_payload=privacy_controls_to_dict(privacy_controls),
-                receipt_payload=receipt_payload.model_dump(),
-                changed_by="user",
-            )
-        )
-        await session.commit()
+    await _persist_privacy_control(
+        subject_type=payload.subject_type,
+        subject_id=payload.subject_id,
+        action="delete",
+        privacy_controls=privacy_controls,
+        receipt_payload=receipt_payload,
+    )
     return DreamMemoryDeletionControlResponse(
+        subject_type=payload.subject_type,
+        subject_id=payload.subject_id,
+        privacy_controls=privacy_controls_to_dict(privacy_controls),
+        receipt=receipt_payload,
+    )
+
+
+@router.post(
+    "/dream-memory/privacy/hide",
+    response_model=DreamMemoryHideControlResponse,
+)
+async def create_dream_memory_hide_control(
+    payload: DreamMemoryHideControlRequest,
+) -> DreamMemoryHideControlResponse:
+    privacy_controls = _hide_control_for(payload.subject_type, payload.subject_id)
+    receipt = build_hide_receipt(
+        subject_id=payload.subject_id,
+        subject_type=payload.subject_type,
+        privacy_controls=privacy_controls,
+    )
+    receipt_payload = _receipt_payload(receipt)
+    await _persist_privacy_control(
+        subject_type=payload.subject_type,
+        subject_id=payload.subject_id,
+        action="hide",
+        privacy_controls=privacy_controls,
+        receipt_payload=receipt_payload,
+    )
+    return DreamMemoryHideControlResponse(
         subject_type=payload.subject_type,
         subject_id=payload.subject_id,
         privacy_controls=privacy_controls_to_dict(privacy_controls),
@@ -140,20 +177,75 @@ def _deletion_control_for(
     return controls.delete_edge(subject_id)
 
 
+def _hide_control_for(
+    subject_type: Literal["dream", "graph_node", "graph_edge"],
+    subject_id: str,
+) -> DreamGraphPrivacyControls:
+    controls = DreamGraphPrivacyControls()
+    if subject_type == "dream":
+        return controls.hide_dream(subject_id)
+    if subject_type == "graph_node":
+        return controls.hide_node(subject_id)
+    return controls.hide_edge(subject_id)
+
+
+async def _persist_privacy_control(
+    *,
+    subject_type: Literal["dream", "graph_node", "graph_edge"],
+    subject_id: str,
+    action: Literal["delete", "hide"],
+    privacy_controls: DreamGraphPrivacyControls,
+    receipt_payload: DreamMemoryReceiptResponse,
+) -> None:
+    async with get_session_factory()() as session:
+        session.add(
+            DreamGraphPrivacyControl(
+                subject_type=subject_type,
+                subject_id=subject_id,
+                action=action,
+                control_payload=privacy_controls_to_dict(privacy_controls),
+                receipt_payload=receipt_payload.model_dump(),
+                changed_by="user",
+            )
+        )
+        await session.commit()
+
+
 def _privacy_controls_from_rows(
     rows: list[DreamGraphPrivacyControl],
 ) -> DreamGraphPrivacyControls:
-    controls = DreamGraphPrivacyControls()
+    hidden_dream_ids: set[str] = set()
+    deleted_dream_ids: set[str] = set()
+    hidden_node_ids: set[str] = set()
+    deleted_node_ids: set[str] = set()
+    hidden_edge_ids: set[str] = set()
+    deleted_edge_ids: set[str] = set()
     for row in rows:
-        if row.action != "delete":
-            continue
-        if row.subject_type == "dream":
-            controls = controls.delete_dream(row.subject_id)
-        elif row.subject_type == "graph_node":
-            controls = controls.delete_node(row.subject_id)
-        elif row.subject_type == "graph_edge":
-            controls = controls.delete_edge(row.subject_id)
-    return controls
+        if row.action == "delete":
+            if row.subject_type == "dream":
+                deleted_dream_ids.add(row.subject_id)
+                hidden_dream_ids.discard(row.subject_id)
+            elif row.subject_type == "graph_node":
+                deleted_node_ids.add(row.subject_id)
+                hidden_node_ids.discard(row.subject_id)
+            elif row.subject_type == "graph_edge":
+                deleted_edge_ids.add(row.subject_id)
+                hidden_edge_ids.discard(row.subject_id)
+        elif row.action == "hide":
+            if row.subject_type == "dream" and row.subject_id not in deleted_dream_ids:
+                hidden_dream_ids.add(row.subject_id)
+            elif row.subject_type == "graph_node" and row.subject_id not in deleted_node_ids:
+                hidden_node_ids.add(row.subject_id)
+            elif row.subject_type == "graph_edge" and row.subject_id not in deleted_edge_ids:
+                hidden_edge_ids.add(row.subject_id)
+    return DreamGraphPrivacyControls(
+        hidden_dream_ids=frozenset(hidden_dream_ids),
+        deleted_dream_ids=frozenset(deleted_dream_ids),
+        hidden_node_ids=frozenset(hidden_node_ids),
+        deleted_node_ids=frozenset(deleted_node_ids),
+        hidden_edge_ids=frozenset(hidden_edge_ids),
+        deleted_edge_ids=frozenset(deleted_edge_ids),
+    )
 
 
 def _receipt_payload(receipt: DreamPrivacyActionReceipt) -> DreamMemoryReceiptResponse:

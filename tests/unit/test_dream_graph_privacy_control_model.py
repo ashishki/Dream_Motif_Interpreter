@@ -10,6 +10,9 @@ from app.models.dream_graph_control import DreamGraphPrivacyControl
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION_PATH = PROJECT_ROOT / "alembic" / "versions" / "018_add_dream_graph_privacy_controls.py"
+ALLOW_HIDE_MIGRATION_PATH = (
+    PROJECT_ROOT / "alembic" / "versions" / "019_allow_hide_graph_privacy_controls.py"
+)
 
 
 def _column_map(model: type) -> dict[str, sa.Column]:
@@ -49,6 +52,7 @@ def test_privacy_control_model_limits_subject_types_and_actions() -> None:
     for value in ("dream", "graph_node", "graph_edge"):
         assert value in combined
     assert "delete" in combined
+    assert "hide" in combined
 
 
 def test_privacy_control_migration_exists_and_imports_cleanly() -> None:
@@ -73,3 +77,18 @@ def test_privacy_control_migration_only_creates_privacy_control_table() -> None:
     assert "op.alter_table" not in content
     assert 'op.drop_table("dream_entries"' not in content
     assert 'op.drop_table("motif_inductions"' not in content
+
+
+def test_allow_hide_migration_updates_action_constraint() -> None:
+    assert ALLOW_HIDE_MIGRATION_PATH.exists()
+
+    spec = importlib.util.spec_from_file_location("migration_019", ALLOW_HIDE_MIGRATION_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[arg-type]
+
+    assert module.revision == "019_allow_hide_graph_privacy_controls"
+    assert module.down_revision == "018_add_dream_graph_privacy_controls"
+    content = ALLOW_HIDE_MIGRATION_PATH.read_text(encoding="utf-8")
+    assert "action IN ('delete', 'hide')" in content
+    assert "ck_dream_graph_privacy_controls_action" in content

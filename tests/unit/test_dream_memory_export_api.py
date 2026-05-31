@@ -9,7 +9,12 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dream_memory import DreamMemoryExportResponse, export_dream_memory
+from app.api.dream_memory import (
+    DreamMemoryDeletionControlRequest,
+    DreamMemoryExportResponse,
+    create_dream_memory_deletion_control,
+    export_dream_memory,
+)
 from app.models.dream_graph_privacy import DreamGraphExportScope
 
 _NOW = datetime(2026, 5, 31, tzinfo=timezone.utc)
@@ -160,6 +165,62 @@ def test_dream_memory_export_requires_api_key() -> None:
 
     with TestClient(main_module.app) as client:
         response = client.get("/dream-memory/export")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+
+
+@pytest.mark.asyncio
+async def test_create_deletion_control_returns_receipt_for_deleted_dream() -> None:
+    response = await create_dream_memory_deletion_control(
+        DreamMemoryDeletionControlRequest(
+            subject_type="dream",
+            subject_id="dream-1",
+        )
+    )
+
+    assert response.subject_type == "dream"
+    assert response.subject_id == "dream-1"
+    assert response.privacy_controls["deleted_dream_ids"] == ["dream-1"]
+    assert response.receipt.receipt["type"] == "deletion_receipt"
+    assert response.receipt.receipt["action"] == "dream_deleted"
+    assert response.receipt.receipt["verifier_status"] == "passed"
+    assert "source archive deletion is not implemented" in response.effect_note
+
+
+@pytest.mark.asyncio
+async def test_create_deletion_control_supports_graph_node_and_edge_subjects() -> None:
+    node_response = await create_dream_memory_deletion_control(
+        DreamMemoryDeletionControlRequest(
+            subject_type="graph_node",
+            subject_id="motif_induction:1",
+        )
+    )
+    edge_response = await create_dream_memory_deletion_control(
+        DreamMemoryDeletionControlRequest(
+            subject_type="graph_edge",
+            subject_id="edge:1",
+        )
+    )
+
+    assert node_response.privacy_controls["deleted_node_ids"] == ["motif_induction:1"]
+    assert node_response.receipt.receipt["action"] == "node_deleted"
+    assert edge_response.privacy_controls["deleted_edge_ids"] == ["edge:1"]
+    assert edge_response.receipt.receipt["action"] == "edge_deleted"
+
+
+def test_dream_memory_delete_control_requires_api_key() -> None:
+    import importlib
+    import sys
+
+    sys.modules.pop("app.main", None)
+    main_module = importlib.import_module("app.main")
+
+    with TestClient(main_module.app) as client:
+        response = client.post(
+            "/dream-memory/privacy/delete",
+            json={"subject_type": "dream", "subject_id": "dream-1"},
+        )
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}

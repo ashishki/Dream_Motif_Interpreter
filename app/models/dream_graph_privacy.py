@@ -292,6 +292,10 @@ def export_dream_graph(
     }
 
 
+def privacy_controls_to_dict(controls: DreamGraphPrivacyControls) -> dict[str, Any]:
+    return _privacy_controls_to_dict(controls)
+
+
 def _node_is_visible(
     node: GraphNode,
     controls: DreamGraphPrivacyControls,

@@ -60,6 +60,8 @@ Do not make Obsidian a dependency. Use the structural/visual idea only.
   - contradicts
   - evolves_from
   - user_confirmed
+- Use `app/services/proof_receipts.py` for local memory action receipts when
+  graph nodes or edges become durable user-facing state.
 
 ### P2 - Reflective UX
 
@@ -68,6 +70,7 @@ Do not make Obsidian a dependency. Use the structural/visual idea only.
 - Add export/import and data deletion path.
 - Use `docs/entropy_core_reference.md` if memory actions need receipt-style
   verification. Do not apply Gensyn swarm/training patterns by default.
+- Add privacy export/deletion receipts before mini-app export/deletion controls.
 
 ## AI-Development Tasks
 
@@ -75,6 +78,7 @@ Do not make Obsidian a dependency. Use the structural/visual idea only.
 - Require user confirmation for durable motif memory.
 - Keep all interpretations marked as suggestions.
 - Use evidence links back to dream fragments.
+- Treat source-fragment-linked memory receipts as private-local proof only.
 
 ## Stop Conditions
 

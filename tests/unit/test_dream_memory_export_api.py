@@ -49,6 +49,21 @@ def _make_motif(*, dream_id: uuid.UUID, status: str = "confirmed") -> SimpleName
     return motif
 
 
+def _make_privacy_control(
+    *,
+    subject_type: str,
+    subject_id: str,
+    action: str = "delete",
+) -> SimpleNamespace:
+    control = SimpleNamespace()
+    control.id = uuid.uuid4()
+    control.subject_type = subject_type
+    control.subject_id = subject_id
+    control.action = action
+    control.created_at = _NOW
+    return control
+
+
 class _FakeScalars:
     def __init__(self, items):
         self._items = list(items)
@@ -68,10 +83,18 @@ class _FakeResult:
 class _FakeSession:
     def __init__(self, execute_results: list[_FakeResult]) -> None:
         self._execute_results = list(execute_results)
+        self.added: list[object] = []
+        self.committed = False
 
     async def execute(self, stmt):
         del stmt
         return self._execute_results.pop(0)
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def commit(self):
+        self.committed = True
 
 
 class _SessionCtx:
@@ -97,7 +120,9 @@ class _FakeSessionFactory:
 async def test_export_dream_memory_returns_graph_export_with_receipt() -> None:
     dream = _make_dream()
     motif = _make_motif(dream_id=dream.id)
-    session = _FakeSession(execute_results=[_FakeResult([dream]), _FakeResult([motif])])
+    session = _FakeSession(
+        execute_results=[_FakeResult([dream]), _FakeResult([motif]), _FakeResult([])]
+    )
 
     with patch(
         "app.api.dream_memory.get_session_factory",
@@ -130,7 +155,9 @@ async def test_export_dream_memory_returns_graph_export_with_receipt() -> None:
 async def test_export_dream_memory_does_not_include_raw_dream_text_or_titles() -> None:
     dream = _make_dream()
     motif = _make_motif(dream_id=dream.id)
-    session = _FakeSession(execute_results=[_FakeResult([dream]), _FakeResult([motif])])
+    session = _FakeSession(
+        execute_results=[_FakeResult([dream]), _FakeResult([motif]), _FakeResult([])]
+    )
 
     with patch(
         "app.api.dream_memory.get_session_factory",
@@ -142,6 +169,35 @@ async def test_export_dream_memory_does_not_include_raw_dream_text_or_titles() -
     assert dream.title not in serialized_export
     assert dream.raw_text not in serialized_export
     assert dream.source_doc_id not in serialized_export
+
+
+@pytest.mark.asyncio
+async def test_export_dream_memory_applies_persisted_deletion_controls() -> None:
+    dream = _make_dream()
+    motif = _make_motif(dream_id=dream.id)
+    control = _make_privacy_control(
+        subject_type="graph_node",
+        subject_id=f"motif_induction:{motif.id}",
+    )
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult([dream]),
+            _FakeResult([motif]),
+            _FakeResult([control]),
+        ]
+    )
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await export_dream_memory(scope=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT)
+
+    assert f"motif_induction:{motif.id}" not in {node["id"] for node in response.export["nodes"]}
+    assert response.export["edges"] == []
+    assert response.export["privacy_controls"]["deleted_node_ids"] == [
+        f"motif_induction:{motif.id}"
+    ]
 
 
 def test_dream_memory_export_router_registered_in_app() -> None:
@@ -172,12 +228,18 @@ def test_dream_memory_export_requires_api_key() -> None:
 
 @pytest.mark.asyncio
 async def test_create_deletion_control_returns_receipt_for_deleted_dream() -> None:
-    response = await create_dream_memory_deletion_control(
-        DreamMemoryDeletionControlRequest(
-            subject_type="dream",
-            subject_id="dream-1",
+    session = _FakeSession(execute_results=[])
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await create_dream_memory_deletion_control(
+            DreamMemoryDeletionControlRequest(
+                subject_type="dream",
+                subject_id="dream-1",
+            )
         )
-    )
 
     assert response.subject_type == "dream"
     assert response.subject_id == "dream-1"
@@ -186,27 +248,47 @@ async def test_create_deletion_control_returns_receipt_for_deleted_dream() -> No
     assert response.receipt.receipt["action"] == "dream_deleted"
     assert response.receipt.receipt["verifier_status"] == "passed"
     assert "source archive deletion is not implemented" in response.effect_note
+    assert session.committed is True
+    persisted = session.added[0]
+    assert persisted.subject_type == "dream"
+    assert persisted.subject_id == "dream-1"
+    assert persisted.action == "delete"
+    assert persisted.control_payload["deleted_dream_ids"] == ["dream-1"]
+    assert persisted.receipt_payload["receipt"]["type"] == "deletion_receipt"
 
 
 @pytest.mark.asyncio
 async def test_create_deletion_control_supports_graph_node_and_edge_subjects() -> None:
-    node_response = await create_dream_memory_deletion_control(
-        DreamMemoryDeletionControlRequest(
-            subject_type="graph_node",
-            subject_id="motif_induction:1",
+    node_session = _FakeSession(execute_results=[])
+    edge_session = _FakeSession(execute_results=[])
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(node_session),
+    ):
+        node_response = await create_dream_memory_deletion_control(
+            DreamMemoryDeletionControlRequest(
+                subject_type="graph_node",
+                subject_id="motif_induction:1",
+            )
         )
-    )
-    edge_response = await create_dream_memory_deletion_control(
-        DreamMemoryDeletionControlRequest(
-            subject_type="graph_edge",
-            subject_id="edge:1",
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(edge_session),
+    ):
+        edge_response = await create_dream_memory_deletion_control(
+            DreamMemoryDeletionControlRequest(
+                subject_type="graph_edge",
+                subject_id="edge:1",
+            )
         )
-    )
 
     assert node_response.privacy_controls["deleted_node_ids"] == ["motif_induction:1"]
     assert node_response.receipt.receipt["action"] == "node_deleted"
     assert edge_response.privacy_controls["deleted_edge_ids"] == ["edge:1"]
     assert edge_response.receipt.receipt["action"] == "edge_deleted"
+    assert node_session.added[0].control_payload["deleted_node_ids"] == ["motif_induction:1"]
+    assert edge_session.added[0].control_payload["deleted_edge_ids"] == ["edge:1"]
 
 
 def test_dream_memory_delete_control_requires_api_key() -> None:

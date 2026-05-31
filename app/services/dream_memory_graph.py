@@ -15,6 +15,7 @@ from app.models.dream_graph import (
     SourceDreamFragmentRef,
 )
 from app.models.dream_graph_privacy import DreamGraphSnapshot, SourceDreamExportRef
+from app.models.dream_graph_privacy import DreamGraphPrivacyControls
 from app.models.motif import MotifInduction
 
 
@@ -22,6 +23,7 @@ def build_dream_memory_snapshot(
     *,
     dreams: Iterable[DreamEntry],
     motifs: Iterable[MotifInduction],
+    privacy_controls: DreamGraphPrivacyControls | None = None,
 ) -> DreamGraphSnapshot:
     dream_items = list(dreams)
     motif_items = list(motifs)
@@ -39,6 +41,7 @@ def build_dream_memory_snapshot(
         source_dreams=source_dreams,
         nodes=dream_nodes + motif_nodes,
         edges=motif_edges,
+        privacy_controls=privacy_controls or DreamGraphPrivacyControls(),
     )
 
 

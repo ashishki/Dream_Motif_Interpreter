@@ -10,6 +10,7 @@ from app.models.dream_graph import (
     ModelSuggestionProvenance,
     SourceDreamFragmentRef,
 )
+from app.models.dream_graph_control import DreamGraphPrivacyControl
 from app.models.dream_graph_privacy import (
     DreamGraphExportOptions,
     DreamGraphExportScope,
@@ -32,6 +33,7 @@ __all__ = [
     "DreamNote",
     "DreamGraphExportOptions",
     "DreamGraphExportScope",
+    "DreamGraphPrivacyControl",
     "DreamGraphPrivacyControls",
     "DreamGraphSnapshot",
     "DreamWriteStatus",

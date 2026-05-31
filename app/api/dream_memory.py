@@ -8,10 +8,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.models.dream import DreamEntry
+from app.models.dream_graph_control import DreamGraphPrivacyControl
 from app.models.dream_graph_privacy import (
-    DreamGraphPrivacyControls,
     DreamGraphExportOptions,
     DreamGraphExportScope,
+    DreamGraphPrivacyControls,
     export_dream_graph,
     privacy_controls_to_dict,
 )
@@ -71,10 +72,18 @@ async def export_dream_memory(
                     MotifInduction.id.asc(),
                 )
             )
+        with tracer.start_as_current_span("db.query.dream_memory.load_privacy_controls"):
+            control_result = await session.execute(
+                select(DreamGraphPrivacyControl).order_by(
+                    DreamGraphPrivacyControl.created_at.asc(),
+                    DreamGraphPrivacyControl.id.asc(),
+                )
+            )
 
         snapshot = build_dream_memory_snapshot(
             dreams=list(dream_result.scalars().all()),
             motifs=list(motif_result.scalars().all()),
+            privacy_controls=_privacy_controls_from_rows(list(control_result.scalars().all())),
         )
 
     export_payload = export_dream_graph(snapshot, DreamGraphExportOptions(scope=scope))
@@ -98,11 +107,24 @@ async def create_dream_memory_deletion_control(
         subject_type=payload.subject_type,
         privacy_controls=privacy_controls,
     )
+    receipt_payload = _receipt_payload(receipt)
+    async with get_session_factory()() as session:
+        session.add(
+            DreamGraphPrivacyControl(
+                subject_type=payload.subject_type,
+                subject_id=payload.subject_id,
+                action="delete",
+                control_payload=privacy_controls_to_dict(privacy_controls),
+                receipt_payload=receipt_payload.model_dump(),
+                changed_by="user",
+            )
+        )
+        await session.commit()
     return DreamMemoryDeletionControlResponse(
         subject_type=payload.subject_type,
         subject_id=payload.subject_id,
         privacy_controls=privacy_controls_to_dict(privacy_controls),
-        receipt=_receipt_payload(receipt),
+        receipt=receipt_payload,
     )
 
 
@@ -116,6 +138,22 @@ def _deletion_control_for(
     if subject_type == "graph_node":
         return controls.delete_node(subject_id)
     return controls.delete_edge(subject_id)
+
+
+def _privacy_controls_from_rows(
+    rows: list[DreamGraphPrivacyControl],
+) -> DreamGraphPrivacyControls:
+    controls = DreamGraphPrivacyControls()
+    for row in rows:
+        if row.action != "delete":
+            continue
+        if row.subject_type == "dream":
+            controls = controls.delete_dream(row.subject_id)
+        elif row.subject_type == "graph_node":
+            controls = controls.delete_node(row.subject_id)
+        elif row.subject_type == "graph_edge":
+            controls = controls.delete_edge(row.subject_id)
+    return controls
 
 
 def _receipt_payload(receipt: DreamPrivacyActionReceipt) -> DreamMemoryReceiptResponse:

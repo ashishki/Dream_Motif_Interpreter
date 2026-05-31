@@ -67,19 +67,24 @@ Implemented now:
 - `GET /dream-memory/export` returns the deterministic graph export with a
   `privacy_export_receipt` and is protected by the existing API-key middleware.
 - `POST /dream-memory/privacy/delete` returns a graph-output deletion control
-  with a `deletion_receipt`; it does not delete source archive rows.
+  with a `deletion_receipt`, stores it in `dream_graph_privacy_controls`, and
+  does not delete source archive rows.
+- `GET /dream-memory/export` applies persisted graph-output deletion controls
+  before returning normal graph output.
 - `tests/unit/test_proof_receipts.py` covers node receipts, fragment-linked
   edge receipts, source-less edge review status, graph export receipts, and
   deletion receipts.
 - `tests/unit/test_dream_memory_export_api.py` covers the authenticated export
   and graph-output deletion control surfaces, and verifies raw dream text,
   titles, and source document IDs are not included in the export payload.
+- `tests/unit/test_dream_graph_privacy_control_model.py` covers the durable
+  privacy-control ORM model and migration.
 - `tests/unit/test_motifs_api.py` covers motif confirmation receipt wiring.
 
 Next implementation tasks:
 
 1. Extend receipt wiring to future durable graph node/edge persistence after the
    mini-app memory map workflow stabilizes.
-2. Add durable privacy-control persistence before exposing deletion controls in
-   a Telegram mini app.
+2. Add durable hide/reject privacy-control routes before exposing those controls
+   in a Telegram mini app.
 3. Keep receipts private-local; do not sync dream evidence into Entropy Core.

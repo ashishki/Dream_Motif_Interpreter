@@ -308,8 +308,9 @@ document IDs.
 deletion control for a dream, graph node, or graph edge and returns a
 private-local `deletion_receipt`. This route does not delete source archive
 rows, dream text, Google Docs content, or persisted motif rows; it records the
-control shape that future durable privacy-control storage and mini-app controls
-must preserve.
+control shape in the append-only `dream_graph_privacy_controls` table for future
+mini-app controls to read back and enforce. The export route applies persisted
+privacy controls before returning normal graph output.
 
 Normal graph output uses `normal_graph_output(snapshot)` or
 `filtered_graph_snapshot(snapshot)`. The default scope is

@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.api.dream_memory import DreamMemoryExportResponse, export_dream_memory
+from app.models.dream_graph_privacy import DreamGraphExportScope
+
+_NOW = datetime(2026, 5, 31, tzinfo=timezone.utc)
+
+
+def _make_dream() -> SimpleNamespace:
+    dream = SimpleNamespace()
+    dream.id = uuid.uuid4()
+    dream.title = "private flying dream"
+    dream.raw_text = "I flew over a private city."
+    dream.source_doc_id = "private-doc-id"
+    dream.created_at = _NOW
+    return dream
+
+
+def _make_motif(*, dream_id: uuid.UUID, status: str = "confirmed") -> SimpleNamespace:
+    motif = SimpleNamespace()
+    motif.id = uuid.uuid4()
+    motif.dream_id = dream_id
+    motif.label = "flying"
+    motif.status = status
+    motif.confidence = "high"
+    motif.model_version = "test-model-v1"
+    motif.fragments = [
+        {
+            "text": "flew over",
+            "start_offset": 2,
+            "end_offset": 11,
+        }
+    ]
+    motif.created_at = _NOW
+    return motif
+
+
+class _FakeScalars:
+    def __init__(self, items):
+        self._items = list(items)
+
+    def all(self):
+        return list(self._items)
+
+
+class _FakeResult:
+    def __init__(self, items):
+        self._items = list(items)
+
+    def scalars(self):
+        return _FakeScalars(self._items)
+
+
+class _FakeSession:
+    def __init__(self, execute_results: list[_FakeResult]) -> None:
+        self._execute_results = list(execute_results)
+
+    async def execute(self, stmt):
+        del stmt
+        return self._execute_results.pop(0)
+
+
+class _SessionCtx:
+    def __init__(self, session: _FakeSession) -> None:
+        self._session = session
+
+    async def __aenter__(self):
+        return self._session
+
+    async def __aexit__(self, *args):
+        return False
+
+
+class _FakeSessionFactory:
+    def __init__(self, session: _FakeSession) -> None:
+        self._session = session
+
+    def __call__(self):
+        return _SessionCtx(self._session)
+
+
+@pytest.mark.asyncio
+async def test_export_dream_memory_returns_graph_export_with_receipt() -> None:
+    dream = _make_dream()
+    motif = _make_motif(dream_id=dream.id)
+    session = _FakeSession(execute_results=[_FakeResult([dream]), _FakeResult([motif])])
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await export_dream_memory(scope=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT)
+
+    assert isinstance(response, DreamMemoryExportResponse)
+    assert response.export["format"] == "dream-memory-graph-export.v1"
+    assert response.export["scope"] == "normal_graph_output"
+    assert {node["id"] for node in response.export["nodes"]} == {
+        f"dream:{dream.id}",
+        f"motif_induction:{motif.id}",
+    }
+    assert response.export["edges"][0]["suggestion"]["source_fragments"] == [
+        {
+            "dream_id": str(dream.id),
+            "chunk_id": None,
+            "fragment_index": None,
+            "start_char": 2,
+            "end_char": 11,
+        }
+    ]
+    assert response.receipt.receipt["type"] == "privacy_export_receipt"
+    assert response.receipt.receipt["action"] == "graph_exported"
+    assert len(response.receipt.receipt_sha256) == 64
+
+
+@pytest.mark.asyncio
+async def test_export_dream_memory_does_not_include_raw_dream_text_or_titles() -> None:
+    dream = _make_dream()
+    motif = _make_motif(dream_id=dream.id)
+    session = _FakeSession(execute_results=[_FakeResult([dream]), _FakeResult([motif])])
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await export_dream_memory(scope=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT)
+
+    serialized_export = json.dumps(response.export, sort_keys=True)
+    assert dream.title not in serialized_export
+    assert dream.raw_text not in serialized_export
+    assert dream.source_doc_id not in serialized_export
+
+
+def test_dream_memory_export_router_registered_in_app() -> None:
+    import importlib
+    import sys
+
+    sys.modules.pop("app.main", None)
+    main_module = importlib.import_module("app.main")
+    app = main_module.app
+
+    paths = [route.path for route in app.routes if hasattr(route, "path")]
+    assert "/dream-memory/export" in paths
+
+
+def test_dream_memory_export_requires_api_key() -> None:
+    import importlib
+    import sys
+
+    sys.modules.pop("app.main", None)
+    main_module = importlib.import_module("app.main")
+
+    with TestClient(main_module.app) as client:
+        response = client.get("/dream-memory/export")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}

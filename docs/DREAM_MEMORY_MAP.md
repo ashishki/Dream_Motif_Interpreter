@@ -293,10 +293,17 @@ feels inspectable and concrete before durable UI work begins.
 
 ## 9. Privacy, Export, And Deletion Contract
 
-WS-26.4 adds a code-native privacy/export contract in
-`app/models/dream_graph_privacy.py`. It is not a backend route, database
-migration, auth surface, worker, Redis path, frontend dependency, or Obsidian
-integration.
+WS-26.4 added a code-native privacy/export contract in
+`app/models/dream_graph_privacy.py`. That task did not add a database
+migration, worker, Redis path, frontend dependency, or Obsidian integration.
+
+Current backend wiring also exposes `GET /dream-memory/export`, protected by
+the existing API-key middleware. The route builds a graph export from persisted
+`DreamEntry` and `MotifInduction` rows, returns the deterministic export
+payload, and includes a private-local `privacy_export_receipt`. The export route
+does not include raw dream text, dream titles, Google Doc IDs, or source
+document IDs. Deletion routes remain future work and must include local
+deletion receipts before mini-app controls expose them.
 
 Normal graph output uses `normal_graph_output(snapshot)` or
 `filtered_graph_snapshot(snapshot)`. The default scope is

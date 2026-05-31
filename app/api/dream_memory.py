@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -35,6 +37,7 @@ from app.shared.tracing import get_tracer
 router = APIRouter()
 DELETION_CONTROL_EFFECT_NOTE = "This records a graph-output deletion control only; source archive deletion is not implemented by this route."
 MINI_APP_STATE_FORMAT = "dream-memory-mini-app-state.v1"
+MINI_APP_HTML_PATH = Path(__file__).resolve().parents[1] / "static" / "dream_memory_map.html"
 
 
 class DreamMemoryReceiptResponse(BaseModel):
@@ -100,6 +103,11 @@ class DreamMemoryRejectionControlResponse(BaseModel):
     subject_id: str
     privacy_controls: dict[str, Any]
     receipt: DreamMemoryReceiptResponse
+
+
+@router.get("/dream-memory/mini-app", response_class=FileResponse)
+async def dream_memory_mini_app() -> FileResponse:
+    return FileResponse(MINI_APP_HTML_PATH, media_type="text/html")
 
 
 @router.get("/dream-memory/state", response_model=DreamMemoryGraphStateResponse)

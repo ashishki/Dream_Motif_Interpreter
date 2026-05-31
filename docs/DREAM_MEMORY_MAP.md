@@ -53,8 +53,11 @@ belong in the mini app.
 
 The bot exposes `/map` as the handoff into the mini app when
 `TELEGRAM_MINI_APP_URL` is configured. The command sends a Telegram Web App
-button only; graph data still comes from protected backend routes such as
-`GET /dream-memory/state`.
+button only. The backend can also serve the static shell at
+`GET /dream-memory/mini-app`; that shell is public because it contains no dream
+data. Graph data still comes from protected backend routes such as
+`GET /dream-memory/state`, authenticated by either `X-API-Key` or verified
+Telegram WebApp `initData`.
 
 ### Telegram Mini App
 
@@ -302,14 +305,17 @@ WS-26.4 added a code-native privacy/export contract in
 `app/models/dream_graph_privacy.py`. That task did not add a database
 migration, worker, Redis path, frontend dependency, or Obsidian integration.
 
-Current backend wiring exposes `GET /dream-memory/state` for the mini app and
-`GET /dream-memory/export` for portable export. Both routes are protected by
-the existing API-key middleware and build graph output from persisted
-`DreamEntry`, `MotifInduction`, and `dream_graph_privacy_controls` rows. The
-state route returns the filtered graph and current privacy controls without a
-receipt. The export route returns the deterministic export payload and includes
-a private-local `privacy_export_receipt`. Neither route includes raw dream text,
-dream titles, Google Doc IDs, or source document IDs.
+Current backend wiring exposes `GET /dream-memory/mini-app` for the Telegram
+Web App shell, `GET /dream-memory/state` for mini-app data, and
+`GET /dream-memory/export` for portable export. The shell route is public and
+contains no dream data. State and export routes are protected by the existing
+API-key middleware or by verified Telegram WebApp `initData`; both build graph
+output from persisted `DreamEntry`, `MotifInduction`, and
+`dream_graph_privacy_controls` rows. The state route returns the filtered graph
+and current privacy controls without a receipt. The export route returns the
+deterministic export payload and includes a private-local
+`privacy_export_receipt`. Neither route includes raw dream text, dream titles,
+Google Doc IDs, or source document IDs.
 
 `POST /dream-memory/privacy/delete`, `POST /dream-memory/privacy/hide`, and
 `POST /dream-memory/privacy/reject` create authenticated graph-output privacy

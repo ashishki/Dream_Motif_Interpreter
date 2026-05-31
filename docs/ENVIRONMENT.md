@@ -30,6 +30,7 @@ BULK_CONFIRM_TOKEN_TTL_SECONDS=600
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ALLOWED_CHAT_ID=0
 TELEGRAM_MINI_APP_URL=
+TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS=86400
 TELEGRAM_NUMERIC_FEEDBACK_ENABLED=false
 ASSISTANT_MODEL=claude-haiku-4-5-20251001
 VOICE_MEDIA_DIR=/tmp/dream_voice
@@ -56,6 +57,9 @@ command as a Telegram Web App button. The URL should point at the deployed
 Dream Memory Map mini app surface; data reads still go through protected backend
 routes such as `GET /dream-memory/state`.
 
+`TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS` — maximum accepted age for Telegram
+WebApp `initData` authentication on protected backend routes. Default: `86400`.
+
 ## 2. Phase 6 Telegram Variables
 
 The Telegram bot runtime requires:
@@ -64,6 +68,7 @@ The Telegram bot runtime requires:
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_ALLOWED_CHAT_ID=...
 TELEGRAM_MINI_APP_URL=
+TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS=86400
 TELEGRAM_NUMERIC_FEEDBACK_ENABLED=false
 ANTHROPIC_API_KEY=...
 ```
@@ -74,6 +79,8 @@ Phase 6 contract:
 - `TELEGRAM_ALLOWED_CHAT_ID` is the single authorized chat ID.
 - `TELEGRAM_MINI_APP_URL` enables the `/map` command to open the Dream Memory
   Map mini app as a Telegram Web App button.
+- `TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS` bounds replay age for Telegram WebApp
+  `initData` accepted by protected backend routes.
 - `TELEGRAM_NUMERIC_FEEDBACK_ENABLED=false` keeps digit-only user replies available for numbered choices.
 - `ANTHROPIC_API_KEY` is required for the bounded tool-use conversation loop.
 - The bot runtime uses long polling: `python3 -m app.telegram`.

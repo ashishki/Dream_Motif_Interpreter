@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dream Memory Map</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --ink: #18202c;
+      --muted: #647184;
+      --line: #d9dee7;
+      --accent: #0f7b6c;
+      --warn: #a24b2a;
+      --dream: #276fbf;
+      --motif: #8f4f88;
+      --edge: #7a8698;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12151a;
+        --panel: #1a2029;
+        --ink: #eef2f7;
+        --muted: #a6b0bf;
+        --line: #303846;
+        --accent: #4db6a7;
+        --warn: #d57a55;
+        --dream: #73a8e8;
+        --motif: #c58bd2;
+        --edge: #8792a2;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button, select {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+
+    .title {
+      min-width: 0;
+      font-size: 18px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    select, .icon-button, .action-button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 8px;
+      min-height: 36px;
+    }
+
+    select {
+      padding: 0 10px;
+    }
+
+    .icon-button {
+      width: 38px;
+      display: inline-grid;
+      place-items: center;
+      cursor: pointer;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+      min-height: 0;
+    }
+
+    .graph-wrap {
+      min-width: 0;
+      min-height: calc(100vh - 65px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      min-height: calc(100vh - 65px);
+      display: block;
+      background: var(--bg);
+    }
+
+    .side {
+      border-left: 1px solid var(--line);
+      background: var(--panel);
+      padding: 14px;
+      overflow: auto;
+    }
+
+    .panel-title {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .meta {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 8px;
+      margin: 12px 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .detail-list li {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 14px 0;
+    }
+
+    .action-button {
+      padding: 0 8px;
+      cursor: pointer;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .action-button:disabled {
+      color: var(--muted);
+      cursor: not-allowed;
+      opacity: 0.58;
+    }
+
+    .danger {
+      border-color: color-mix(in srgb, var(--warn), var(--line) 45%);
+      color: var(--warn);
+    }
+
+    .status {
+      position: absolute;
+      left: 16px;
+      bottom: 16px;
+      max-width: min(440px, calc(100% - 32px));
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .node {
+      cursor: pointer;
+    }
+
+    .node circle {
+      stroke: var(--panel);
+      stroke-width: 3;
+    }
+
+    .node text {
+      fill: var(--ink);
+      font-size: 12px;
+      text-anchor: middle;
+      paint-order: stroke;
+      stroke: var(--bg);
+      stroke-width: 4;
+      stroke-linejoin: round;
+    }
+
+    .edge {
+      stroke: var(--edge);
+      stroke-width: 1.7;
+      opacity: 0.82;
+      cursor: pointer;
+    }
+
+    .edge.confirmed {
+      stroke: var(--accent);
+      stroke-width: 2.4;
+    }
+
+    .selected circle {
+      stroke: var(--accent);
+      stroke-width: 4;
+    }
+
+    @media (max-width: 780px) {
+      .layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(420px, 58vh) auto;
+      }
+
+      .graph-wrap, svg {
+        min-height: 420px;
+      }
+
+      .side {
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="title">Dream Memory Map</div>
+      <div class="toolbar">
+        <select id="scope" aria-label="Scope">
+          <option value="normal_graph_output">Normal</option>
+          <option value="confirmed_only">Confirmed</option>
+          <option value="all_with_controls">All</option>
+        </select>
+        <button class="icon-button" id="refresh" type="button" title="Refresh" aria-label="Refresh">R</button>
+      </div>
+    </header>
+    <section class="layout">
+      <div class="graph-wrap">
+        <svg id="graph" role="img" aria-label="Dream graph"></svg>
+        <div class="status" id="status">Loading graph state...</div>
+      </div>
+      <aside class="side">
+        <h2 class="panel-title" id="detail-title">Graph</h2>
+        <p class="meta" id="detail-meta">Select a node or edge.</p>
+        <div class="actions">
+          <button class="action-button" id="hide" type="button" disabled>Hide</button>
+          <button class="action-button danger" id="delete" type="button" disabled>Delete</button>
+          <button class="action-button danger" id="reject" type="button" disabled>Reject</button>
+        </div>
+        <h3 class="panel-title">Privacy Controls</h3>
+        <ul class="detail-list" id="privacy"></ul>
+      </aside>
+    </section>
+  </main>
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    const state = {
+      payload: null,
+      selected: null
+    };
+
+    const graphEl = document.getElementById("graph");
+    const statusEl = document.getElementById("status");
+    const scopeEl = document.getElementById("scope");
+    const detailTitleEl = document.getElementById("detail-title");
+    const detailMetaEl = document.getElementById("detail-meta");
+    const privacyEl = document.getElementById("privacy");
+    const buttons = {
+      hide: document.getElementById("hide"),
+      delete: document.getElementById("delete"),
+      reject: document.getElementById("reject")
+    };
+
+    document.getElementById("refresh").addEventListener("click", () => loadState());
+    scopeEl.addEventListener("change", () => loadState());
+    buttons.hide.addEventListener("click", () => submitControl("hide"));
+    buttons.delete.addEventListener("click", () => submitControl("delete"));
+    buttons.reject.addEventListener("click", () => submitControl("reject"));
+
+    loadState();
+
+    async function loadState() {
+      statusEl.textContent = "Loading graph state...";
+      const headers = {};
+      if (tg && tg.initData) {
+        headers["X-Telegram-Init-Data"] = tg.initData;
+      }
+      const response = await fetch(`/dream-memory/state?scope=${encodeURIComponent(scopeEl.value)}`, {
+        headers
+      });
+      if (!response.ok) {
+        statusEl.textContent = response.status === 401
+          ? "Telegram authorization required."
+          : `State unavailable (${response.status}).`;
+        renderEmpty();
+        return;
+      }
+      state.payload = await response.json();
+      state.selected = null;
+      render();
+    }
+
+    function renderEmpty() {
+      graphEl.replaceChildren();
+      detailTitleEl.textContent = "Graph";
+      detailMetaEl.textContent = "No state loaded.";
+      privacyEl.replaceChildren();
+      setActionsEnabled();
+    }
+
+    function render() {
+      const graph = state.payload.graph;
+      const width = graphEl.clientWidth || 720;
+      const height = graphEl.clientHeight || 520;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = Math.max(120, Math.min(width, height) * 0.34);
+      const nodes = graph.nodes.map((node, index) => {
+        const angle = (Math.PI * 2 * index) / Math.max(graph.nodes.length, 1) - Math.PI / 2;
+        return {
+          ...node,
+          x: centerX + Math.cos(angle) * radius,
+          y: centerY + Math.sin(angle) * radius
+        };
+      });
+      const byId = new Map(nodes.map((node) => [node.id, node]));
+      const edges = graph.edges.filter((edge) => byId.has(edge.source_node_id) && byId.has(edge.target_node_id));
+      graphEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      graphEl.replaceChildren();
+
+      for (const edge of edges) {
+        const source = byId.get(edge.source_node_id);
+        const target = byId.get(edge.target_node_id);
+        const line = svg("line", {
+          x1: source.x,
+          y1: source.y,
+          x2: target.x,
+          y2: target.y,
+          class: `edge ${edge.confirmation_status === "confirmed" ? "confirmed" : ""}`
+        });
+        line.addEventListener("click", () => selectItem({ kind: "edge", item: edge }));
+        graphEl.appendChild(line);
+      }
+
+      for (const node of nodes) {
+        const group = svg("g", { class: "node" });
+        group.appendChild(svg("circle", {
+          cx: node.x,
+          cy: node.y,
+          r: node.type === "Dream" ? 22 : 18,
+          fill: node.type === "Dream" ? "var(--dream)" : "var(--motif)"
+        }));
+        group.appendChild(svg("text", {
+          x: node.x,
+          y: node.y + 36
+        }, label(node.label, 24)));
+        group.addEventListener("click", () => selectItem({ kind: "node", item: node }));
+        graphEl.appendChild(group);
+      }
+
+      renderPrivacy();
+      statusEl.textContent = `${nodes.length} nodes, ${edges.length} edges`;
+      renderSelection();
+    }
+
+    function selectItem(selection) {
+      state.selected = selection;
+      renderSelection();
+    }
+
+    function renderSelection() {
+      graphEl.querySelectorAll(".selected").forEach((item) => item.classList.remove("selected"));
+      if (!state.selected) {
+        detailTitleEl.textContent = "Graph";
+        detailMetaEl.textContent = state.payload
+          ? `${state.payload.graph.nodes.length} nodes in ${state.payload.scope}.`
+          : "No state loaded.";
+        setActionsEnabled();
+        return;
+      }
+
+      const { kind, item } = state.selected;
+      detailTitleEl.textContent = kind === "node" ? item.label : item.type;
+      detailMetaEl.textContent = kind === "node"
+        ? `${item.type} - ${item.confirmation_status}`
+        : `${item.source_node_id} -> ${item.target_node_id}`;
+      setActionsEnabled();
+    }
+
+    function renderPrivacy() {
+      const controls = state.payload.privacy_controls;
+      privacyEl.replaceChildren();
+      for (const [key, value] of Object.entries(controls)) {
+        const li = document.createElement("li");
+        li.textContent = `${key}: ${Array.isArray(value) ? value.length : 0}`;
+        privacyEl.appendChild(li);
+      }
+    }
+
+    function setActionsEnabled() {
+      const selected = state.selected;
+      const hasSelection = Boolean(selected);
+      buttons.hide.disabled = !hasSelection;
+      buttons.delete.disabled = !hasSelection;
+      buttons.reject.disabled = !hasSelection || selected.kind !== "edge" || !selected.item.suggestion;
+    }
+
+    async function submitControl(action) {
+      if (!state.selected) {
+        return;
+      }
+      const subjectType = state.selected.kind === "node" ? "graph_node" : "graph_edge";
+      const subjectId = state.selected.item.id;
+      const body = { subject_type: subjectType, subject_id: subjectId };
+      if (action === "reject") {
+        body.source_fragments = state.selected.item.suggestion.source_fragments;
+      }
+
+      const headers = { "Content-Type": "application/json" };
+      if (tg && tg.initData) {
+        headers["X-Telegram-Init-Data"] = tg.initData;
+      }
+      const response = await fetch(`/dream-memory/privacy/${action}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body)
+      });
+      statusEl.textContent = response.ok ? `${action} saved.` : `${action} failed (${response.status}).`;
+      if (response.ok) {
+        await loadState();
+      }
+    }
+
+    function svg(tag, attributes, text) {
+      const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      for (const [key, value] of Object.entries(attributes)) {
+        element.setAttribute(key, value);
+      }
+      if (text) {
+        element.textContent = text;
+      }
+      return element;
+    }
+
+    function label(value, maxLength) {
+      return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+    }
+  </script>
+</body>
+</html>

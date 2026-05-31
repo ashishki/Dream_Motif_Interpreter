@@ -16,9 +16,12 @@ from app.api.search import router as search_router
 from app.api.themes import router as themes_router
 from app.api.versioning import router as versioning_router
 from app.shared.config import get_settings
+from app.shared.telegram_auth import is_valid_telegram_web_app_init_data
 from app.shared.tracing import configure_logging, get_logger, get_tracer
 
-PUBLIC_PATHS = {"/health", "/auth/callback"}
+# The mini-app HTML shell is public by design because it contains no dream data.
+# Data APIs still require X-API-Key or verified Telegram WebApp init data.
+PUBLIC_PATHS = {"/health", "/auth/callback", "/dream-memory/mini-app"}
 
 
 def create_app() -> FastAPI:
@@ -47,8 +50,7 @@ def create_app() -> FastAPI:
     @application.middleware("http")
     async def require_authentication(request: Request, call_next):
         if request.url.path not in PUBLIC_PATHS:
-            api_key = request.headers.get("X-API-Key")
-            if not is_valid_api_key(api_key):
+            if not _has_valid_auth_headers(request.headers):
                 return JSONResponse(
                     status_code=_unauthorized_status_code(request.url.path),
                     content={"detail": "Unauthorized"},
@@ -79,6 +81,20 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def _has_valid_auth_headers(headers) -> bool:
+    api_key = headers.get("X-API-Key")
+    if is_valid_api_key(api_key):
+        return True
+
+    settings = get_settings()
+    return is_valid_telegram_web_app_init_data(
+        headers.get("X-Telegram-Init-Data"),
+        bot_token=settings.TELEGRAM_BOT_TOKEN,
+        allowed_user_id=settings.TELEGRAM_ALLOWED_CHAT_ID,
+        max_age_seconds=settings.TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS,
+    )
 
 
 def _unauthorized_status_code(path: str) -> int:

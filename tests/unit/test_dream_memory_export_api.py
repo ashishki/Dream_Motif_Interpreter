@@ -367,8 +367,25 @@ def test_dream_memory_export_router_registered_in_app() -> None:
     app = main_module.app
 
     paths = [route.path for route in app.routes if hasattr(route, "path")]
+    assert "/dream-memory/mini-app" in paths
     assert "/dream-memory/state" in paths
     assert "/dream-memory/export" in paths
+
+
+def test_dream_memory_mini_app_shell_is_public_and_uses_telegram_init_data() -> None:
+    import importlib
+    import sys
+
+    sys.modules.pop("app.main", None)
+    main_module = importlib.import_module("app.main")
+
+    with TestClient(main_module.app) as client:
+        response = client.get("/dream-memory/mini-app")
+
+    assert response.status_code == 200
+    assert "fetch(`/dream-memory/state?scope=" in response.text
+    assert "X-Telegram-Init-Data" in response.text
+    assert "X-API-Key" not in response.text
 
 
 def test_dream_memory_state_requires_api_key() -> None:

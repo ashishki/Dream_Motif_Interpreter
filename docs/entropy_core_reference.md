@@ -87,6 +87,9 @@ Implemented now:
   rejected-suggestion controls before returning normal graph output.
 - Telegram `/map` opens the configured `TELEGRAM_MINI_APP_URL` as a Telegram
   Web App button; graph data still comes from protected backend routes.
+- `GET /dream-memory/mini-app` serves the static mini-app shell without dream
+  data; protected state and privacy-control routes accept verified Telegram
+  WebApp `initData` as an alternative to `X-API-Key`.
 - `tests/unit/test_proof_receipts.py` covers node receipts, fragment-linked
   edge receipts, source-less edge review status, graph export receipts, and
   deletion receipts.
@@ -101,6 +104,6 @@ Next implementation tasks:
 
 1. Extend receipt wiring to future durable graph node/edge persistence after the
    mini-app memory map workflow stabilizes.
-2. Build the actual mini-app UI surface against `GET /dream-memory/state` and
-   the existing privacy-control write routes.
+2. Expand the mini-app UI beyond the first graph/privacy shell: motif pages,
+   timeline, search, and production Telegram launch settings.
 3. Keep receipts private-local; do not sync dream evidence into Entropy Core.

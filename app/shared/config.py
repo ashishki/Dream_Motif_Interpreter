@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ALLOWED_CHAT_ID: int = 0
     TELEGRAM_MINI_APP_URL: str = ""
+    TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS: int = 86_400
     TELEGRAM_NUMERIC_FEEDBACK_ENABLED: bool = False
     TELEGRAM_REACTION_FEEDBACK_MAPPING: dict[str, ReactionFeedbackMeaning] = Field(
         default_factory=dict

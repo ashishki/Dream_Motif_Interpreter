@@ -67,6 +67,8 @@ Implemented now:
 - `build_hide_receipt(...)` records dream, graph node, or graph edge hide
   controls and marks receipts `needs_review` when the hide control does not
   include the requested subject.
+- `build_rejection_receipt(...)` records rejected AI-suggestion controls and
+  links them to source dream fragment references.
 - `GET /dream-memory/export` returns the deterministic graph export with a
   `privacy_export_receipt` and is protected by the existing API-key middleware.
 - `POST /dream-memory/privacy/delete` returns a graph-output deletion control
@@ -75,8 +77,11 @@ Implemented now:
 - `POST /dream-memory/privacy/hide` returns a reversible graph-output hide
   control with a `privacy_control_receipt` and stores it in
   `dream_graph_privacy_controls`.
-- `GET /dream-memory/export` applies persisted graph-output hide and deletion
-  controls before returning normal graph output.
+- `POST /dream-memory/privacy/reject` returns a rejected-AI-suggestion graph
+  control with a `privacy_control_receipt` and stores source dream fragment
+  references without storing dream text.
+- `GET /dream-memory/export` applies persisted graph-output hide, deletion, and
+  rejected-suggestion controls before returning normal graph output.
 - `tests/unit/test_proof_receipts.py` covers node receipts, fragment-linked
   edge receipts, source-less edge review status, graph export receipts, and
   deletion receipts.
@@ -91,6 +96,6 @@ Next implementation tasks:
 
 1. Extend receipt wiring to future durable graph node/edge persistence after the
    mini-app memory map workflow stabilizes.
-2. Add durable rejected-AI-suggestion privacy-control routes before exposing
-   rejection controls in a Telegram mini app.
+2. Add a mini-app-facing read contract for privacy controls and filtered graph
+   state before building production UI.
 3. Keep receipts private-local; do not sync dream evidence into Entropy Core.

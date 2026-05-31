@@ -13,6 +13,9 @@ MIGRATION_PATH = PROJECT_ROOT / "alembic" / "versions" / "018_add_dream_graph_pr
 ALLOW_HIDE_MIGRATION_PATH = (
     PROJECT_ROOT / "alembic" / "versions" / "019_allow_hide_graph_privacy_controls.py"
 )
+ALLOW_REJECT_MIGRATION_PATH = (
+    PROJECT_ROOT / "alembic" / "versions" / "020_allow_reject_graph_privacy_controls.py"
+)
 
 
 def _column_map(model: type) -> dict[str, sa.Column]:
@@ -53,6 +56,7 @@ def test_privacy_control_model_limits_subject_types_and_actions() -> None:
         assert value in combined
     assert "delete" in combined
     assert "hide" in combined
+    assert "reject" in combined
 
 
 def test_privacy_control_migration_exists_and_imports_cleanly() -> None:
@@ -91,4 +95,19 @@ def test_allow_hide_migration_updates_action_constraint() -> None:
     assert module.down_revision == "018_add_dream_graph_privacy_controls"
     content = ALLOW_HIDE_MIGRATION_PATH.read_text(encoding="utf-8")
     assert "action IN ('delete', 'hide')" in content
+    assert "ck_dream_graph_privacy_controls_action" in content
+
+
+def test_allow_reject_migration_updates_action_constraint() -> None:
+    assert ALLOW_REJECT_MIGRATION_PATH.exists()
+
+    spec = importlib.util.spec_from_file_location("migration_020", ALLOW_REJECT_MIGRATION_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[arg-type]
+
+    assert module.revision == "020_allow_reject_graph_privacy_controls"
+    assert module.down_revision == "019_allow_hide_graph_privacy_controls"
+    content = ALLOW_REJECT_MIGRATION_PATH.read_text(encoding="utf-8")
+    assert "action IN ('delete', 'hide', 'reject')" in content
     assert "ck_dream_graph_privacy_controls_action" in content

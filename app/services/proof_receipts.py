@@ -6,7 +6,12 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Mapping
 
-from app.models.dream_graph import GraphEdge, GraphNode, ModelSuggestionProvenance
+from app.models.dream_graph import (
+    GraphEdge,
+    GraphNode,
+    ModelSuggestionProvenance,
+    SourceDreamFragmentRef,
+)
 from app.models.dream_graph_privacy import DreamGraphPrivacyControls
 
 PROOF_RECEIPT_SCHEMA_VERSION = "entropy_core.product_receipt.v1"
@@ -62,6 +67,8 @@ class DreamPrivacyActionReceipt:
         "dream_hidden",
         "node_hidden",
         "edge_hidden",
+        "node_rejected",
+        "edge_rejected",
     ]
     subject_id: str
     verifier_status: Literal["passed", "needs_review", "failed"]
@@ -270,17 +277,78 @@ def build_hide_receipt(
     )
 
 
+def build_rejection_receipt(
+    *,
+    subject_id: str,
+    subject_type: Literal["graph_node", "graph_edge"],
+    privacy_controls: DreamGraphPrivacyControls,
+    generated_at: datetime | None = None,
+) -> DreamPrivacyActionReceipt:
+    action: Literal["node_rejected", "edge_rejected"]
+    ref_type: Literal["graph_node", "graph_edge"]
+    rejected_ids: frozenset[str]
+    if subject_type == "graph_node":
+        action = "node_rejected"
+        ref_type = "graph_node"
+        rejected_ids = privacy_controls.rejected_node_ids
+    else:
+        action = "edge_rejected"
+        ref_type = "graph_edge"
+        rejected_ids = privacy_controls.rejected_edge_ids
+
+    evidence_refs: list[DreamProofEvidenceRef] = [
+        DreamProofEvidenceRef(
+            ref_id=f"privacy_control:{subject_type}:{subject_id}",
+            ref_type="privacy_control",
+            supports=action,
+            checksum_sha256=_hash_json(_privacy_controls_payload(privacy_controls)),
+        ),
+        DreamProofEvidenceRef(
+            ref_id=f"{subject_type}:{subject_id}",
+            ref_type=ref_type,
+            supports=action,
+            checksum_sha256=_hash_text(f"{subject_type}:{subject_id}"),
+        ),
+    ]
+    for suggestion in privacy_controls.rejected_suggestions:
+        if suggestion.subject_id != subject_id:
+            continue
+        for fragment in suggestion.source_fragments:
+            ref_id = _fragment_ref_id(fragment)
+            evidence_refs.append(
+                DreamProofEvidenceRef(
+                    ref_id=ref_id,
+                    ref_type="dream_fragment",
+                    supports=action,
+                    checksum_sha256=_hash_text(ref_id),
+                )
+            )
+
+    verifier_status: Literal["passed", "needs_review", "failed"] = (
+        "passed"
+        if subject_id in rejected_ids
+        and any(ref.ref_type == "dream_fragment" for ref in evidence_refs)
+        else "needs_review"
+    )
+    return DreamPrivacyActionReceipt(
+        type="privacy_control_receipt",
+        schema_version=PROOF_RECEIPT_SCHEMA_VERSION,
+        product_id=PRODUCT_ID,
+        action=action,
+        subject_id=subject_id,
+        verifier_status=verifier_status,
+        evidence_refs=tuple(evidence_refs),
+        generated_at=generated_at or datetime.now(UTC),
+        entropy_core_level="receipt_compatible",
+    )
+
+
 def _suggestion_refs(
     suggestion: ModelSuggestionProvenance,
 ) -> tuple[DreamProofEvidenceRef, ...]:
     refs: list[DreamProofEvidenceRef] = []
     for fragment in suggestion.source_fragments:
-        locator = fragment.chunk_id or (
-            f"fragment:{fragment.fragment_index}"
-            if fragment.fragment_index is not None
-            else f"offsets:{fragment.start_char}-{fragment.end_char}"
-        )
-        ref_id = f"dream_fragment:{fragment.dream_id}:{locator}"
+        ref_id = _fragment_ref_id(fragment)
         refs.append(
             DreamProofEvidenceRef(
                 ref_id=ref_id,
@@ -290,6 +358,15 @@ def _suggestion_refs(
             )
         )
     return tuple(refs)
+
+
+def _fragment_ref_id(fragment: SourceDreamFragmentRef) -> str:
+    locator = fragment.chunk_id or (
+        f"fragment:{fragment.fragment_index}"
+        if fragment.fragment_index is not None
+        else f"offsets:{fragment.start_char}-{fragment.end_char}"
+    )
+    return f"dream_fragment:{fragment.dream_id}:{locator}"
 
 
 def _hash_text(value: str) -> str:

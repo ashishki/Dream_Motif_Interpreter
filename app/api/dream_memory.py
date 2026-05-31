@@ -3,16 +3,19 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.models.dream import DreamEntry
+from app.models.dream_graph import SourceDreamFragmentRef
 from app.models.dream_graph_control import DreamGraphPrivacyControl
 from app.models.dream_graph_privacy import (
     DreamGraphExportOptions,
     DreamGraphExportScope,
     DreamGraphPrivacyControls,
+    RejectedGraphSuggestion,
+    RejectedSuggestionSubject,
     export_dream_graph,
     privacy_controls_to_dict,
 )
@@ -23,6 +26,7 @@ from app.services.proof_receipts import (
     build_deletion_receipt,
     build_hide_receipt,
     build_privacy_export_receipt,
+    build_rejection_receipt,
 )
 from app.shared.database import get_session_factory
 from app.shared.tracing import get_tracer
@@ -63,6 +67,27 @@ class DreamMemoryHideControlRequest(BaseModel):
 
 class DreamMemoryHideControlResponse(BaseModel):
     subject_type: Literal["dream", "graph_node", "graph_edge"]
+    subject_id: str
+    privacy_controls: dict[str, Any]
+    receipt: DreamMemoryReceiptResponse
+
+
+class DreamMemorySourceFragmentRequest(BaseModel):
+    dream_id: str = Field(min_length=1)
+    chunk_id: str | None = None
+    fragment_index: int | None = Field(default=None, ge=0)
+    start_char: int | None = Field(default=None, ge=0)
+    end_char: int | None = Field(default=None, ge=1)
+
+
+class DreamMemoryRejectionControlRequest(BaseModel):
+    subject_type: Literal["graph_node", "graph_edge"]
+    subject_id: str = Field(min_length=1)
+    source_fragments: list[DreamMemorySourceFragmentRequest] = Field(min_length=1)
+
+
+class DreamMemoryRejectionControlResponse(BaseModel):
+    subject_type: Literal["graph_node", "graph_edge"]
     subject_id: str
     privacy_controls: dict[str, Any]
     receipt: DreamMemoryReceiptResponse
@@ -165,6 +190,40 @@ async def create_dream_memory_hide_control(
     )
 
 
+@router.post(
+    "/dream-memory/privacy/reject",
+    response_model=DreamMemoryRejectionControlResponse,
+)
+async def create_dream_memory_rejection_control(
+    payload: DreamMemoryRejectionControlRequest,
+) -> DreamMemoryRejectionControlResponse:
+    source_fragments = _source_fragment_refs_from_request(payload.source_fragments)
+    privacy_controls = _rejection_control_for(
+        payload.subject_type,
+        payload.subject_id,
+        source_fragments,
+    )
+    receipt = build_rejection_receipt(
+        subject_id=payload.subject_id,
+        subject_type=payload.subject_type,
+        privacy_controls=privacy_controls,
+    )
+    receipt_payload = _receipt_payload(receipt)
+    await _persist_privacy_control(
+        subject_type=payload.subject_type,
+        subject_id=payload.subject_id,
+        action="reject",
+        privacy_controls=privacy_controls,
+        receipt_payload=receipt_payload,
+    )
+    return DreamMemoryRejectionControlResponse(
+        subject_type=payload.subject_type,
+        subject_id=payload.subject_id,
+        privacy_controls=privacy_controls_to_dict(privacy_controls),
+        receipt=receipt_payload,
+    )
+
+
 def _deletion_control_for(
     subject_type: Literal["dream", "graph_node", "graph_edge"],
     subject_id: str,
@@ -189,11 +248,39 @@ def _hide_control_for(
     return controls.hide_edge(subject_id)
 
 
+def _rejection_control_for(
+    subject_type: Literal["graph_node", "graph_edge"],
+    subject_id: str,
+    source_fragments: tuple[SourceDreamFragmentRef, ...],
+) -> DreamGraphPrivacyControls:
+    if subject_type == "graph_node":
+        return DreamGraphPrivacyControls(
+            rejected_node_ids=frozenset((subject_id,)),
+            rejected_suggestions=(
+                RejectedGraphSuggestion(
+                    subject_type=RejectedSuggestionSubject.NODE,
+                    subject_id=subject_id,
+                    source_fragments=source_fragments,
+                ),
+            ),
+        )
+    return DreamGraphPrivacyControls(
+        rejected_edge_ids=frozenset((subject_id,)),
+        rejected_suggestions=(
+            RejectedGraphSuggestion(
+                subject_type=RejectedSuggestionSubject.EDGE,
+                subject_id=subject_id,
+                source_fragments=source_fragments,
+            ),
+        ),
+    )
+
+
 async def _persist_privacy_control(
     *,
     subject_type: Literal["dream", "graph_node", "graph_edge"],
     subject_id: str,
-    action: Literal["delete", "hide"],
+    action: Literal["delete", "hide", "reject"],
     privacy_controls: DreamGraphPrivacyControls,
     receipt_payload: DreamMemoryReceiptResponse,
 ) -> None:
@@ -220,6 +307,9 @@ def _privacy_controls_from_rows(
     deleted_node_ids: set[str] = set()
     hidden_edge_ids: set[str] = set()
     deleted_edge_ids: set[str] = set()
+    rejected_node_ids: set[str] = set()
+    rejected_edge_ids: set[str] = set()
+    rejected_suggestions: dict[tuple[str, str], RejectedGraphSuggestion] = {}
     for row in rows:
         if row.action == "delete":
             if row.subject_type == "dream":
@@ -228,16 +318,44 @@ def _privacy_controls_from_rows(
             elif row.subject_type == "graph_node":
                 deleted_node_ids.add(row.subject_id)
                 hidden_node_ids.discard(row.subject_id)
+                rejected_node_ids.discard(row.subject_id)
+                rejected_suggestions.pop(("node", row.subject_id), None)
             elif row.subject_type == "graph_edge":
                 deleted_edge_ids.add(row.subject_id)
                 hidden_edge_ids.discard(row.subject_id)
+                rejected_edge_ids.discard(row.subject_id)
+                rejected_suggestions.pop(("edge", row.subject_id), None)
         elif row.action == "hide":
             if row.subject_type == "dream" and row.subject_id not in deleted_dream_ids:
                 hidden_dream_ids.add(row.subject_id)
-            elif row.subject_type == "graph_node" and row.subject_id not in deleted_node_ids:
+            elif (
+                row.subject_type == "graph_node"
+                and row.subject_id not in deleted_node_ids
+                and row.subject_id not in rejected_node_ids
+            ):
                 hidden_node_ids.add(row.subject_id)
-            elif row.subject_type == "graph_edge" and row.subject_id not in deleted_edge_ids:
+            elif (
+                row.subject_type == "graph_edge"
+                and row.subject_id not in deleted_edge_ids
+                and row.subject_id not in rejected_edge_ids
+            ):
                 hidden_edge_ids.add(row.subject_id)
+        elif row.action == "reject":
+            for suggestion in _rejected_suggestions_from_payload(row.control_payload):
+                if (
+                    suggestion.subject_type is RejectedSuggestionSubject.NODE
+                    and suggestion.subject_id not in deleted_node_ids
+                ):
+                    rejected_node_ids.add(suggestion.subject_id)
+                    hidden_node_ids.discard(suggestion.subject_id)
+                    rejected_suggestions[("node", suggestion.subject_id)] = suggestion
+                elif (
+                    suggestion.subject_type is RejectedSuggestionSubject.EDGE
+                    and suggestion.subject_id not in deleted_edge_ids
+                ):
+                    rejected_edge_ids.add(suggestion.subject_id)
+                    hidden_edge_ids.discard(suggestion.subject_id)
+                    rejected_suggestions[("edge", suggestion.subject_id)] = suggestion
     return DreamGraphPrivacyControls(
         hidden_dream_ids=frozenset(hidden_dream_ids),
         deleted_dream_ids=frozenset(deleted_dream_ids),
@@ -245,7 +363,91 @@ def _privacy_controls_from_rows(
         deleted_node_ids=frozenset(deleted_node_ids),
         hidden_edge_ids=frozenset(hidden_edge_ids),
         deleted_edge_ids=frozenset(deleted_edge_ids),
+        rejected_node_ids=frozenset(rejected_node_ids),
+        rejected_edge_ids=frozenset(rejected_edge_ids),
+        rejected_suggestions=tuple(rejected_suggestions.values()),
     )
+
+
+def _source_fragment_refs_from_request(
+    fragments: list[DreamMemorySourceFragmentRequest],
+) -> tuple[SourceDreamFragmentRef, ...]:
+    refs: list[SourceDreamFragmentRef] = []
+    for fragment in fragments:
+        try:
+            refs.append(
+                SourceDreamFragmentRef(
+                    dream_id=fragment.dream_id,
+                    chunk_id=fragment.chunk_id,
+                    fragment_index=fragment.fragment_index,
+                    start_char=fragment.start_char,
+                    end_char=fragment.end_char,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return tuple(refs)
+
+
+def _rejected_suggestions_from_payload(
+    payload: dict[str, Any],
+) -> tuple[RejectedGraphSuggestion, ...]:
+    suggestions = payload.get("rejected_suggestions", [])
+    if not isinstance(suggestions, list):
+        return ()
+
+    parsed: list[RejectedGraphSuggestion] = []
+    for suggestion in suggestions:
+        if not isinstance(suggestion, dict):
+            continue
+        subject_type = suggestion.get("subject_type")
+        subject_id = suggestion.get("subject_id")
+        source_fragments = suggestion.get("source_fragments")
+        if subject_type not in {"node", "edge"} or not isinstance(subject_id, str):
+            continue
+        if not isinstance(source_fragments, list):
+            continue
+        fragment_refs = _source_fragment_refs_from_payload(source_fragments)
+        if not fragment_refs:
+            continue
+        parsed.append(
+            RejectedGraphSuggestion(
+                subject_type=RejectedSuggestionSubject(subject_type),
+                subject_id=subject_id,
+                source_fragments=fragment_refs,
+            )
+        )
+    return tuple(parsed)
+
+
+def _source_fragment_refs_from_payload(
+    fragments: list[object],
+) -> tuple[SourceDreamFragmentRef, ...]:
+    refs: list[SourceDreamFragmentRef] = []
+    for fragment in fragments:
+        if not isinstance(fragment, dict):
+            continue
+        try:
+            refs.append(
+                SourceDreamFragmentRef(
+                    dream_id=str(fragment.get("dream_id") or ""),
+                    chunk_id=fragment.get("chunk_id")
+                    if isinstance(fragment.get("chunk_id"), str)
+                    else None,
+                    fragment_index=fragment.get("fragment_index")
+                    if isinstance(fragment.get("fragment_index"), int)
+                    else None,
+                    start_char=fragment.get("start_char")
+                    if isinstance(fragment.get("start_char"), int)
+                    else None,
+                    end_char=fragment.get("end_char")
+                    if isinstance(fragment.get("end_char"), int)
+                    else None,
+                )
+            )
+        except ValueError:
+            continue
+    return tuple(refs)
 
 
 def _receipt_payload(receipt: DreamPrivacyActionReceipt) -> DreamMemoryReceiptResponse:

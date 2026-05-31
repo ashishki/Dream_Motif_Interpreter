@@ -13,8 +13,11 @@ from app.api.dream_memory import (
     DreamMemoryDeletionControlRequest,
     DreamMemoryExportResponse,
     DreamMemoryHideControlRequest,
+    DreamMemoryRejectionControlRequest,
+    DreamMemorySourceFragmentRequest,
     create_dream_memory_deletion_control,
     create_dream_memory_hide_control,
+    create_dream_memory_rejection_control,
     export_dream_memory,
 )
 from app.models.dream_graph_privacy import DreamGraphExportScope
@@ -266,6 +269,60 @@ async def test_export_dream_memory_delete_overrides_prior_hide_control() -> None
     assert response.export["privacy_controls"]["deleted_node_ids"] == [subject_id]
 
 
+@pytest.mark.asyncio
+async def test_export_dream_memory_applies_persisted_rejection_controls() -> None:
+    dream = _make_dream()
+    motif = _make_motif(dream_id=dream.id)
+    subject_id = f"motif_induction:{motif.id}"
+    control = _make_privacy_control(
+        subject_type="graph_node",
+        subject_id=subject_id,
+        action="reject",
+    )
+    control.control_payload = {
+        "rejected_suggestions": [
+            {
+                "subject_type": "node",
+                "subject_id": subject_id,
+                "source_fragments": [
+                    {
+                        "dream_id": str(dream.id),
+                        "chunk_id": None,
+                        "fragment_index": 0,
+                        "start_char": None,
+                        "end_char": None,
+                    }
+                ],
+            }
+        ]
+    }
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult([dream]),
+            _FakeResult([motif]),
+            _FakeResult([control]),
+        ]
+    )
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await export_dream_memory(scope=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT)
+
+    assert subject_id not in {node["id"] for node in response.export["nodes"]}
+    assert response.export["privacy_controls"]["rejected_node_ids"] == [subject_id]
+    assert response.export["privacy_controls"]["rejected_suggestions"][0]["source_fragments"] == [
+        {
+            "dream_id": str(dream.id),
+            "chunk_id": None,
+            "fragment_index": 0,
+            "start_char": None,
+            "end_char": None,
+        }
+    ]
+
+
 def test_dream_memory_export_router_registered_in_app() -> None:
     import importlib
     import sys
@@ -414,6 +471,68 @@ def test_dream_memory_hide_control_requires_api_key() -> None:
         response = client.post(
             "/dream-memory/privacy/hide",
             json={"subject_type": "graph_node", "subject_id": "motif_induction:1"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+
+
+@pytest.mark.asyncio
+async def test_create_rejection_control_returns_receipt_for_rejected_edge() -> None:
+    session = _FakeSession(execute_results=[])
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await create_dream_memory_rejection_control(
+            DreamMemoryRejectionControlRequest(
+                subject_type="graph_edge",
+                subject_id="edge:1",
+                source_fragments=[
+                    DreamMemorySourceFragmentRequest(
+                        dream_id="dream-1",
+                        chunk_id="chunk-1",
+                    )
+                ],
+            )
+        )
+
+    assert response.subject_type == "graph_edge"
+    assert response.subject_id == "edge:1"
+    assert response.privacy_controls["rejected_edge_ids"] == ["edge:1"]
+    assert response.receipt.receipt["type"] == "privacy_control_receipt"
+    assert response.receipt.receipt["action"] == "edge_rejected"
+    assert response.receipt.receipt["verifier_status"] == "passed"
+    assert session.committed is True
+    persisted = session.added[0]
+    assert persisted.subject_type == "graph_edge"
+    assert persisted.subject_id == "edge:1"
+    assert persisted.action == "reject"
+    assert persisted.control_payload["rejected_suggestions"][0]["source_fragments"][0] == {
+        "dream_id": "dream-1",
+        "chunk_id": "chunk-1",
+        "fragment_index": None,
+        "start_char": None,
+        "end_char": None,
+    }
+
+
+def test_dream_memory_reject_control_requires_api_key() -> None:
+    import importlib
+    import sys
+
+    sys.modules.pop("app.main", None)
+    main_module = importlib.import_module("app.main")
+
+    with TestClient(main_module.app) as client:
+        response = client.post(
+            "/dream-memory/privacy/reject",
+            json={
+                "subject_type": "graph_edge",
+                "subject_id": "edge:1",
+                "source_fragments": [{"dream_id": "dream-1", "chunk_id": "chunk-1"}],
+            },
         )
 
     assert response.status_code == 401

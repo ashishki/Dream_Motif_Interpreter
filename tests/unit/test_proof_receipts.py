@@ -17,6 +17,7 @@ from app.services.proof_receipts import (
     build_hide_receipt,
     build_node_memory_receipt,
     build_privacy_export_receipt,
+    build_rejection_receipt,
 )
 
 
@@ -171,3 +172,22 @@ def test_hide_receipt_passes_when_privacy_controls_include_subject() -> None:
         "privacy_control",
         "graph_edge",
     }
+
+
+def test_rejection_receipt_links_rejected_subject_to_source_fragments() -> None:
+    controls = DreamGraphPrivacyControls().reject_ai_suggested_node(
+        GraphNode(id="motif-fish", node_type=GraphNodeType.MOTIF, label="fish"),
+        (SourceDreamFragmentRef(dream_id="dream-1", chunk_id="chunk-1"),),
+    )
+
+    receipt = build_rejection_receipt(
+        subject_id="motif-fish",
+        subject_type="graph_node",
+        privacy_controls=controls,
+        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+    )
+
+    assert receipt.type == "privacy_control_receipt"
+    assert receipt.action == "node_rejected"
+    assert receipt.verifier_status == "passed"
+    assert "dream_fragment:dream-1:chunk-1" in {ref.ref_id for ref in receipt.evidence_refs}

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, Mapping
 
 from app.models.dream_graph import (
@@ -106,7 +106,7 @@ def build_node_memory_receipt(
                 checksum_sha256=_hash_text(f"{node.node_type}:{node.label}:{node.hidden}"),
             ),
         ),
-        generated_at=generated_at or datetime.now(UTC),
+        generated_at=generated_at or datetime.now(timezone.utc),
         entropy_core_level="receipt_compatible",
     )
 
@@ -140,7 +140,7 @@ def build_edge_memory_receipt(
         subject_id=edge.id,
         verifier_status=verifier_status,
         evidence_refs=tuple(evidence_refs),
-        generated_at=generated_at or datetime.now(UTC),
+        generated_at=generated_at or datetime.now(timezone.utc),
         entropy_core_level="receipt_compatible",
     )
 
@@ -168,7 +168,7 @@ def build_privacy_export_receipt(
                 checksum_sha256=_hash_json(export_payload),
             ),
         ),
-        generated_at=generated_at or datetime.now(UTC),
+        generated_at=generated_at or datetime.now(timezone.utc),
         entropy_core_level="receipt_compatible",
     )
 
@@ -220,7 +220,7 @@ def build_deletion_receipt(
                 checksum_sha256=_hash_text(f"{subject_type}:{subject_id}"),
             ),
         ),
-        generated_at=generated_at or datetime.now(UTC),
+        generated_at=generated_at or datetime.now(timezone.utc),
         entropy_core_level="receipt_compatible",
     )
 
@@ -272,7 +272,7 @@ def build_hide_receipt(
                 checksum_sha256=_hash_text(f"{subject_type}:{subject_id}"),
             ),
         ),
-        generated_at=generated_at or datetime.now(UTC),
+        generated_at=generated_at or datetime.now(timezone.utc),
         entropy_core_level="receipt_compatible",
     )
 
@@ -338,7 +338,7 @@ def build_rejection_receipt(
         subject_id=subject_id,
         verifier_status=verifier_status,
         evidence_refs=tuple(evidence_refs),
-        generated_at=generated_at or datetime.now(UTC),
+        generated_at=generated_at or datetime.now(timezone.utc),
         entropy_core_level="receipt_compatible",
     )
 

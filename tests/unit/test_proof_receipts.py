@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from app.models.dream_graph import (
     GraphEdge,
@@ -27,7 +27,7 @@ def test_node_memory_receipt_records_graph_subject_and_checksum() -> None:
     receipt = build_node_memory_receipt(
         node=node,
         action="node_suggested",
-        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
     )
 
     assert receipt.type == "dream_memory_action_receipt"
@@ -54,7 +54,7 @@ def test_edge_memory_receipt_links_model_suggestion_to_dream_fragments() -> None
     receipt = build_edge_memory_receipt(
         edge=edge,
         action="edge_suggested",
-        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
     )
 
     assert receipt.verifier_status == "passed"
@@ -76,7 +76,7 @@ def test_edge_suggestion_without_source_fragment_needs_review() -> None:
     receipt = build_edge_memory_receipt(
         edge=edge,
         action="edge_suggested",
-        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
     )
 
     assert receipt.verifier_status == "needs_review"
@@ -102,11 +102,11 @@ def test_privacy_export_receipt_hashes_deterministic_export_payload() -> None:
 
     first_receipt = build_privacy_export_receipt(
         export_payload=export_payload,
-        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
     )
     second_receipt = build_privacy_export_receipt(
         export_payload=same_payload_different_key_order,
-        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
     )
 
     assert first_receipt.type == "privacy_export_receipt"
@@ -126,7 +126,7 @@ def test_deletion_receipt_passes_when_privacy_controls_include_subject() -> None
         subject_id="dream-1",
         subject_type="dream",
         privacy_controls=controls,
-        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
     )
 
     assert receipt.type == "deletion_receipt"
@@ -147,7 +147,7 @@ def test_deletion_receipt_needs_review_when_subject_is_not_deleted() -> None:
         subject_id="motif-fish",
         subject_type="graph_node",
         privacy_controls=controls,
-        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
     )
 
     assert receipt.action == "node_deleted"
@@ -161,7 +161,7 @@ def test_hide_receipt_passes_when_privacy_controls_include_subject() -> None:
         subject_id="edge-1",
         subject_type="graph_edge",
         privacy_controls=controls,
-        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
     )
 
     assert receipt.type == "privacy_control_receipt"
@@ -184,7 +184,7 @@ def test_rejection_receipt_links_rejected_subject_to_source_fragments() -> None:
         subject_id="motif-fish",
         subject_type="graph_node",
         privacy_controls=controls,
-        generated_at=datetime(2026, 5, 31, tzinfo=UTC),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
     )
 
     assert receipt.type == "privacy_control_receipt"

@@ -9,6 +9,7 @@ from telegram import ReactionTypeCustomEmoji, ReactionTypeEmoji, Update
 from telegram.ext import (
     Application,
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
     MessageReactionHandler,
@@ -22,6 +23,8 @@ from app.shared.config import Settings, get_settings
 from app.telegram.handlers import (
     chat_guard,
     dream_memory_map_command_handler,
+    FULL_DREAM_CALLBACK_PREFIX,
+    dream_full_text_callback_handler,
     error_handler,
     text_message_handler,
     voice_message_handler,
@@ -56,6 +59,12 @@ def build_application(
 
     application.add_handler(TypeHandler(Update, chat_guard), group=-1000)
     application.add_handler(CommandHandler("map", dream_memory_map_command_handler))
+    application.add_handler(
+        CallbackQueryHandler(
+            dream_full_text_callback_handler,
+            pattern=f"^{FULL_DREAM_CALLBACK_PREFIX}",
+        )
+    )
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
     application.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
     application.add_handler(

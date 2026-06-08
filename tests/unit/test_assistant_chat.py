@@ -595,10 +595,10 @@ def test_system_prompt_requires_search_answers_to_cite_evidence_text() -> None:
     )
 
 
-def test_system_prompt_routes_concrete_image_queries_to_augmented_search() -> None:
+def test_system_prompt_routes_concrete_image_queries_to_semantic_search() -> None:
     prompt_lower = SYSTEM_PROMPT.lower()
     assert "сон с рыбой" in prompt_lower
-    assert "augments semantic retrieval with exact text recall" in prompt_lower
+    assert "do not add search_dreams_exact" in prompt_lower
 
 
 def test_system_prompt_requires_full_text_pattern_analysis_without_options() -> None:
@@ -688,7 +688,7 @@ def test_build_tools_includes_search_dreams_by_title_schema() -> None:
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_search_dreams_labels_verified_strength() -> None:
+async def test_execute_tool_search_dreams_omits_strength_label() -> None:
     dream_id = uuid.uuid4()
     facade = AsyncMock(spec=AssistantFacade)
     facade.search_dreams.return_value = SearchResult(
@@ -708,7 +708,7 @@ async def test_execute_tool_search_dreams_labels_verified_strength() -> None:
     result = await tools_module.execute_tool("search_dreams", {"query": "церковь"}, facade)
 
     assert f"result_id: {dream_id}" in result
-    assert "strength: strong" in result
+    assert "strength:" not in result
     assert 'evidence_text: "Мне приснилась церковь на холме"' in result
     assert "Quote:" not in result
 
@@ -1142,24 +1142,12 @@ async def test_search_dreams_exact_routing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_dreams_augments_fish_image_query_with_exact_recall() -> None:
-    dream_id = uuid.uuid4()
+async def test_search_dreams_does_not_auto_call_exact_for_image_query() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     facade.search_dreams.return_value = SearchResult(
         items=[],
         insufficient_reason="No verified archive-backed matches found",
     )
-    facade.search_dreams_exact.return_value = [
-        SearchResultItem(
-            dream_id=dream_id,
-            date=date(2026, 4, 14),
-            title="Рыба в воде",
-            chunk_text="В этом сне была рыба в прозрачной воде.",
-            relevance_score=1.0,
-            matched_fragments=[],
-            quote="В этом сне была рыба в прозрачной воде",
-        )
-    ]
 
     result = await tools_module.execute_tool(
         "search_dreams",
@@ -1168,14 +1156,12 @@ async def test_search_dreams_augments_fish_image_query_with_exact_recall() -> No
     )
 
     facade.search_dreams.assert_awaited_once_with("сон с рыбой")
-    facade.search_dreams_exact.assert_awaited_once_with("рыба")
-    assert f"result_id: {dream_id}" in result
-    assert 'evidence_text: "В этом сне была рыба в прозрачной воде"' in result
-    assert "No more archive-backed matches found." not in result
+    facade.search_dreams_exact.assert_not_awaited()
+    assert result == "No more archive-backed matches found."
 
 
 @pytest.mark.asyncio
-async def test_search_dreams_dedupes_exact_and_semantic_image_results() -> None:
+async def test_search_dreams_returns_semantic_image_results_without_strength() -> None:
     dream_id = uuid.uuid4()
     facade = AsyncMock(spec=AssistantFacade)
     facade.search_dreams.return_value = SearchResult(
@@ -1191,17 +1177,6 @@ async def test_search_dreams_dedupes_exact_and_semantic_image_results() -> None:
             )
         ],
     )
-    facade.search_dreams_exact.return_value = [
-        SearchResultItem(
-            dream_id=dream_id,
-            date=date(2026, 4, 14),
-            title="Рыба в воде",
-            chunk_text="В этом сне была рыба в прозрачной воде.",
-            relevance_score=1.0,
-            matched_fragments=[],
-            quote="В этом сне была рыба в прозрачной воде",
-        )
-    ]
 
     result = await tools_module.execute_tool(
         "search_dreams",
@@ -1210,37 +1185,25 @@ async def test_search_dreams_dedupes_exact_and_semantic_image_results() -> None:
     )
 
     assert result.count(f"result_id: {dream_id}") == 1
-    assert "strength: strong" in result
-    assert "В этом сне была рыба в прозрачной воде" in result
+    assert "strength:" not in result
+    assert "вода стала темной" in result
+    facade.search_dreams_exact.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_search_dreams_returns_exact_image_result_when_semantic_search_fails() -> None:
-    dream_id = uuid.uuid4()
+async def test_search_dreams_propagates_semantic_failure_without_exact_fallback() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     facade.search_dreams.side_effect = RuntimeError("embedding down")
-    facade.search_dreams_exact.return_value = [
-        SearchResultItem(
-            dream_id=dream_id,
-            date=date(2026, 4, 14),
-            title="Рыба в воде",
-            chunk_text="В этом сне была рыба в прозрачной воде.",
-            relevance_score=1.0,
-            matched_fragments=[],
-            quote="В этом сне была рыба в прозрачной воде",
+
+    with pytest.raises(RuntimeError, match="embedding down"):
+        await tools_module.execute_tool(
+            "search_dreams",
+            {"query": "сон с рыбой"},
+            facade,
         )
-    ]
 
-    result = await tools_module.execute_tool(
-        "search_dreams",
-        {"query": "сон с рыбой"},
-        facade,
-    )
-
-    facade.search_dreams_exact.assert_awaited_once_with("рыба")
+    facade.search_dreams_exact.assert_not_awaited()
     facade.search_dreams.assert_awaited_once_with("сон с рыбой")
-    assert f"result_id: {dream_id}" in result
-    assert 'evidence_text: "В этом сне была рыба в прозрачной воде"' in result
 
 
 @pytest.mark.asyncio

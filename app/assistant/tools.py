@@ -5,10 +5,9 @@ import re
 import uuid
 from typing import Any
 
-from app.assistant.facade import AssistantFacade, SearchResultItem
+from app.assistant.facade import AssistantFacade
 from app.assistant.facade import _resolve_absolute_dream_date, _resolve_relative_dream_date
 from app.assistant.session import save_pending_interpretation_request
-from app.retrieval.query import extract_concrete_image_query
 from app.shared.config import extract_google_doc_id, get_doc_name
 
 _BASE_TOOLS: list[dict[str, Any]] = [
@@ -400,27 +399,7 @@ async def execute_tool(
         query = str(tool_input.get("query", "")).strip()
         if not query:
             return "No query provided."
-        exact_query = extract_concrete_image_query(query)
-        exact_items: list[SearchResultItem] = []
-        if exact_query is not None:
-            exact_items = await facade.search_dreams_exact(exact_query)
-        try:
-            result = await facade.search_dreams(query)
-        except Exception:
-            if not exact_items:
-                raise
-            items = _merge_search_result_items(exact_items)
-            lines = ["Search results:"]
-            for item in items[:5]:
-                lines.extend(_format_search_result_payload(item))
-            return "\n".join(lines)
-        if exact_items:
-            semantic_items = [] if result.insufficient_reason is not None else result.items
-            items = _merge_search_result_items([*exact_items, *semantic_items])
-            lines = ["Search results:"]
-            for item in items[:5]:
-                lines.extend(_format_search_result_payload(item))
-            return "\n".join(lines)
+        result = await facade.search_dreams(query)
         if result.insufficient_reason is not None:
             if "verified archive-backed matches" in result.insufficient_reason:
                 return "No more archive-backed matches found."
@@ -897,14 +876,6 @@ async def execute_tool(
     return f"Unknown tool: {tool_name}"
 
 
-def _search_strength_label(score: float) -> str:
-    if score >= 0.7:
-        return "strong"
-    if score >= 0.4:
-        return "moderate"
-    return "weak"
-
-
 def _bounded_int(value: Any, *, default: int, minimum: int, maximum: int) -> int:
     try:
         parsed = int(value)
@@ -1008,71 +979,13 @@ def _format_started_suffix(value: str | None) -> str:
 def _format_search_result_payload(item: Any) -> list[str]:
     date_label = item.date.isoformat() if item.date is not None else "unknown date"
     title_str = item.title if item.title else "без названия"
-    strength = _search_strength_label(item.relevance_score)
     evidence_text = _search_evidence_text(item)
     return [
         f"- result_id: {item.dream_id}",
         f"  date: {date_label}",
         f"  title: {title_str}",
-        f"  strength: {strength}",
         f'  evidence_text: "{evidence_text}"',
     ]
-
-
-def _merge_search_result_items(items: list[SearchResultItem]) -> list[SearchResultItem]:
-    grouped: dict[uuid.UUID, SearchResultItem] = {}
-    for item in items:
-        existing = grouped.get(item.dream_id)
-        if existing is None:
-            grouped[item.dream_id] = item
-            continue
-
-        relevance_score = max(existing.relevance_score, item.relevance_score)
-        chunk_text = _merge_evidence_texts(existing.chunk_text, item.chunk_text)
-        matched_fragments = _dedupe_search_fragments(
-            [*existing.matched_fragments, *item.matched_fragments]
-        )
-        grouped[item.dream_id] = SearchResultItem(
-            dream_id=existing.dream_id,
-            date=existing.date or item.date,
-            title=existing.title or item.title,
-            chunk_text=chunk_text,
-            relevance_score=relevance_score,
-            matched_fragments=matched_fragments,
-            quote=existing.quote or item.quote,
-        )
-
-    return sorted(grouped.values(), key=lambda item: item.relevance_score, reverse=True)
-
-
-def _merge_evidence_texts(existing: str, new: str) -> str:
-    if not new or new == existing:
-        return existing
-    parts = existing.split("\n---\n") if existing else []
-    if new not in parts:
-        parts.append(new)
-    return "\n---\n".join(parts)
-
-
-def _dedupe_search_fragments(fragments: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    deduped: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, int]] = set()
-    for fragment in fragments:
-        if not isinstance(fragment, dict):
-            continue
-        text_value = fragment.get("text")
-        match_type = fragment.get("match_type")
-        char_offset = fragment.get("char_offset")
-        if not isinstance(text_value, str) or not isinstance(match_type, str):
-            continue
-        if not isinstance(char_offset, int):
-            char_offset = 0
-        key = (text_value, match_type, char_offset)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append({"text": text_value, "match_type": match_type, "char_offset": char_offset})
-    return deduped
 
 
 def _format_title_search_result_payload(item: Any) -> list[str]:

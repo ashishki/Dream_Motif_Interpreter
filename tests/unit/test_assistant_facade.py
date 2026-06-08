@@ -723,6 +723,63 @@ async def test_create_dream_extracts_short_date_directive() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_dream_extracts_bare_leading_date_from_old_dream_text() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Старый мост")),
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 6, 8)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        result = await facade.create_dream(
+            "Запиши старый сон 05.06.25: Мне приснилось, что я возвращаюсь к старому мосту.",
+            chat_id=42,
+        )
+
+    added = session.add.call_args[0][0]
+    assert result.date == "2025-06-05"
+    assert added.date == date(2025, 6, 5)
+    assert added.raw_text == "Мне приснилось, что я возвращаюсь к старому мосту."
+
+
+@pytest.mark.asyncio
+async def test_create_dream_extracts_labeled_date_from_old_dream_text() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Старый мост")),
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 6, 8)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        result = await facade.create_dream(
+            "Запиши старый сон. Дата: 05.06.25. "
+            "Мне приснилось, что я возвращаюсь к старому мосту.",
+            chat_id=42,
+        )
+
+    added = session.add.call_args[0][0]
+    assert result.date == "2025-06-05"
+    assert added.date == date(2025, 6, 5)
+    assert added.raw_text == "Мне приснилось, что я возвращаюсь к старому мосту."
+
+
+@pytest.mark.asyncio
 async def test_create_dream_generated_title_ignores_record_command_words() -> None:
     session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
     analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())

@@ -21,6 +21,7 @@ from app.assistant.session import (
 from app.telegram.bot import handle_message_reaction
 from app.telegram.handlers import (
     FEEDBACK_PROMPT,
+    FULL_DREAM_CALLBACK_PREFIX,
     MINI_APP_OPEN_BUTTON,
     MINI_APP_OPEN_MESSAGE,
     MINI_APP_UNCONFIGURED_MESSAGE,
@@ -32,6 +33,7 @@ from app.telegram.handlers import (
     _format_create_dream_reply,
     _split_telegram_text,
     chat_guard,
+    dream_full_text_callback_handler,
     dream_memory_map_command_handler,
     text_message_handler,
 )
@@ -77,6 +79,36 @@ async def test_dream_memory_map_command_handles_missing_mini_app_url() -> None:
     await dream_memory_map_command_handler(update, context)
 
     message.reply_text.assert_awaited_once_with(MINI_APP_UNCONFIGURED_MESSAGE)
+
+
+@pytest.mark.asyncio
+async def test_dream_full_text_callback_sends_full_text() -> None:
+    dream_id = "11111111-1111-4111-8111-111111111111"
+    query_message = AsyncMock()
+    query_message.reply_text = AsyncMock()
+    query = AsyncMock()
+    query.data = f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}"
+    query.message = query_message
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_dream = AsyncMock(
+        return_value=SimpleNamespace(
+            date="2026-06-05",
+            title="Старый мост",
+            raw_text="Полный текст сна.",
+            notes=[],
+        )
+    )
+    context = _make_text_context(facade, 42)
+
+    await dream_full_text_callback_handler(update, context)
+
+    query.answer.assert_awaited_once()
+    facade.get_dream.assert_awaited_once()
+    query_message.reply_text.assert_awaited_once_with(
+        "2026-06-05, Старый мост\n\nПолный текст сна."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +178,49 @@ async def test_text_message_handler_routes_to_handle_chat() -> None:
         chat_id=42,
     )
     message.reply_text.assert_awaited_once_with("Here are your dreams.")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_adds_reply_context_to_chat_request() -> None:
+    update, message = _make_text_message_update("покажи полный текст", chat_id=42)
+    message.reply_to_message = SimpleNamespace(text="1. 05.06.26, Старый мост")
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(return_value=ChatResult("Уточните сон.", [])),
+    ) as mock_chat:
+        await text_message_handler(update, context)
+
+    sent_text = mock_chat.await_args.args[0]
+    assert "Контекст сообщения, на которое отвечает пользователь" in sent_text
+    assert "1. 05.06.26, Старый мост" in sent_text
+    assert "Новое сообщение пользователя:\nпокажи полный текст" in sent_text
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_adds_full_text_buttons_for_dream_mentions() -> None:
+    dream_id = "11111111-1111-4111-8111-111111111111"
+    update, message = _make_text_message_update("найди сон про мост", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(
+            return_value=ChatResult(
+                f"1. 05.06.26, Старый мост\nresult_id: {dream_id}",
+                ["search_dreams"],
+            )
+        ),
+    ):
+        await text_message_handler(update, context)
+
+    kwargs = message.reply_text.await_args.kwargs
+    button = kwargs["reply_markup"].inline_keyboard[0][0]
+    assert button.text == "Полный текст"
+    assert button.callback_data == f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}"
 
 
 def test_voice_processing_ack_is_russian() -> None:
@@ -363,6 +438,7 @@ async def test_text_message_handler_saves_short_natural_dream_without_confirmati
 
     mock_chat.assert_not_awaited()
     facade.create_dream.assert_awaited_once_with("сегодня мне приснилось рыба", chat_id=42)
+    context.bot.send_chat_action.assert_awaited()
     message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ")
     assert load_pending_dream_draft(42) is None
 

@@ -20,6 +20,7 @@ from app.assistant.facade import _prepare_dream_recording_input
 from app.assistant.session import (
     clear_pending_interpretation_request,
     clear_pending_dream_draft,
+    load_recent_dream_set,
     load_pending_interpretation_request,
     load_pending_dream_draft,
     pop_pending_interpretation_request,
@@ -42,6 +43,7 @@ FEEDBACK_ACK = "Thanks, noted."
 MINI_APP_OPEN_MESSAGE = "Dream Memory Map"
 MINI_APP_OPEN_BUTTON = "Открыть карту"
 MINI_APP_UNCONFIGURED_MESSAGE = "Dream Memory Map ещё не настроен."
+FULL_DREAM_CALLBACK_PREFIX = "dream_full:"
 VOICE_TRANSCRIPT_PROCESSING = (
     "Расшифровка голосового сообщения ещё выполняется. Повторите команду после завершения."
 )
@@ -58,7 +60,7 @@ _DIRECT_DREAM_RECORD_COMMAND_RE = re.compile(
     r"(?:(?:можешь|можно|давай|хочу|я\s+хочу)\s+)?"
     r"(?:"
     r"(?:запиши|сохрани|добавь|занеси|записать|сохранить|добавить|занести)"
-    r"(?:\s+(?:мой|этот|новый|следующий))?\s+сон\b"
+    r"(?:\s+(?:мой|этот|новый|старый|следующий|прошлый))?\s+сон\b"
     r"|"
     r"(?:запиши|сохрани|добавь|занеси|записать|сохранить|добавить|занести)"
     r"\s+в\s+архив\b"
@@ -72,9 +74,18 @@ _EMPTY_DREAM_TEXT_WORDS = {
     "записать",
     "пожалуйста",
     "сон",
+    "старый",
     "текст",
     "текстом",
 }
+_UUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+_DREAM_ID_FIELD_RE = re.compile(
+    r"(?m)(?:^\s*(?:dream_id|result_id):\s*|^Dream\s+)"
+    r"(?P<dream_id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b"
+)
 
 
 async def chat_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -106,6 +117,38 @@ async def dream_memory_map_command_handler(
             [[InlineKeyboardButton(MINI_APP_OPEN_BUTTON, web_app=WebAppInfo(url=mini_app_url))]]
         ),
     )
+
+
+async def dream_full_text_callback_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+    data = str(query.data or "")
+    if not data.startswith(FULL_DREAM_CALLBACK_PREFIX):
+        return
+
+    with contextlib.suppress(Exception):
+        await query.answer()
+
+    raw_id = data.removeprefix(FULL_DREAM_CALLBACK_PREFIX)
+    try:
+        dream_id = uuid.UUID(raw_id)
+    except ValueError:
+        if query.message is not None:
+            await query.message.reply_text("Не смог распознать, какой сон открыть.")
+        return
+
+    detail = await _get_facade(context).get_dream(dream_id)
+    if query.message is None:
+        return
+    if detail is None:
+        await query.message.reply_text("Не нашёл этот сон в архиве.")
+        return
+
+    await _reply_text(query.message, _format_dream_full_text_reply(detail))
 
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -225,7 +268,12 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         if not _has_direct_dream_text(stripped_text):
             await message.reply_text(MISSING_DREAM_TEXT_REPLY)
             return
-        created = await _get_facade(context).create_dream(stripped_text, chat_id=chat_id)
+        created = await _create_dream_with_typing(
+            context,
+            chat_id,
+            _get_facade(context),
+            stripped_text,
+        )
         clear_pending_dream_draft(chat_id)
         await message.reply_text(_format_create_dream_reply(created))
         return
@@ -234,10 +282,24 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
             bot_msg_ids.pop(chat_key, None)
-        created = await _get_facade(context).create_dream(stripped_text, chat_id=chat_id)
+        created = await _create_dream_with_typing(
+            context,
+            chat_id,
+            _get_facade(context),
+            stripped_text,
+        )
         clear_pending_dream_draft(chat_id)
         await message.reply_text(_format_create_dream_reply(created))
         return
+
+    reply_context_text = _reply_context_text(message)
+    if chat_id is not None and reply_context_text and _is_reply_full_text_request(stripped_text):
+        dream_ids = _extract_dream_ids_from_text(reply_context_text)
+        if dream_ids:
+            detail = await _get_facade(context).get_dream(dream_ids[0])
+            if detail is not None:
+                await _reply_text(message, _format_dream_full_text_reply(detail))
+                return
 
     if chat_key is not None:
         pending_feedback.pop(chat_key, None)
@@ -250,7 +312,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         typing_task = asyncio.create_task(_send_typing_action_loop(context, chat_id))
     try:
         result = await handle_chat_with_metadata(
-            message.text,
+            _message_text_with_reply_context(message, message.text),
             facade,
             session_factory=session_factory,
             chat_id=chat_id,
@@ -263,7 +325,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_text = _format_reply_text(result, feedback_enabled=feedback_enabled)
     if _claims_dream_saved_without_create_tool(stripped_text, result):
         reply_text = MISSING_DREAM_TEXT_REPLY
-    sent_message = await _reply_text(message, reply_text)
+    reply_markup = _full_text_reply_markup(reply_text, result, chat_id=chat_id)
+    sent_message = await _reply_text(message, reply_text, reply_markup=reply_markup)
 
     if chat_id is not None:
         _maybe_store_pending_dream(
@@ -509,10 +572,12 @@ def _format_reply_text(result: ChatResult, *, feedback_enabled: bool = False) ->
     return f"{result.text}\n\n{FEEDBACK_PROMPT}"
 
 
-async def _reply_text(message: Any, text: str) -> Any:
+async def _reply_text(message: Any, text: str, *, reply_markup: Any | None = None) -> Any:
     sent_message: Any = None
-    for chunk in _split_telegram_text(text):
-        sent_message = await message.reply_text(chunk)
+    chunks = _split_telegram_text(text)
+    for index, chunk in enumerate(chunks):
+        kwargs = {"reply_markup": reply_markup} if reply_markup is not None and index == 0 else {}
+        sent_message = await message.reply_text(chunk, **kwargs)
     return sent_message
 
 
@@ -695,6 +760,138 @@ def _is_pending_dream_confirmation_reply(text: str) -> bool:
             "занести в архив",
         )
     )
+
+
+async def _create_dream_with_typing(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    facade: AssistantFacade,
+    raw_text: str,
+) -> Any:
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    typing_task = asyncio.create_task(_send_typing_action_loop(context, chat_id))
+    try:
+        return await facade.create_dream(raw_text, chat_id=chat_id)
+    finally:
+        typing_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await typing_task
+
+
+def _reply_context_text(message: Any) -> str:
+    reply = getattr(message, "reply_to_message", None)
+    if reply is None:
+        return ""
+    value = getattr(reply, "text", None) or getattr(reply, "caption", None) or ""
+    return str(value).strip()
+
+
+def _message_text_with_reply_context(message: Any, message_text: str) -> str:
+    context_text = _reply_context_text(message)
+    if not context_text:
+        return message_text
+    context_text = context_text[-2500:]
+    return (
+        "Контекст сообщения, на которое отвечает пользователь:\n"
+        f"{context_text}\n\n"
+        "Новое сообщение пользователя:\n"
+        f"{message_text}"
+    )
+
+
+def _is_reply_full_text_request(text: str) -> bool:
+    lowered = text.casefold()
+    return any(
+        marker in lowered
+        for marker in (
+            "полный текст",
+            "весь текст",
+            "полностью",
+            "целиком",
+            "full text",
+            "complete text",
+        )
+    )
+
+
+def _extract_dream_ids_from_text(text: str) -> list[uuid.UUID]:
+    raw_ids = [match.group("dream_id") for match in _DREAM_ID_FIELD_RE.finditer(text)]
+    if not raw_ids:
+        raw_ids = _UUID_RE.findall(text)
+    result: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for raw_id in raw_ids:
+        try:
+            dream_id = uuid.UUID(raw_id)
+        except ValueError:
+            continue
+        if dream_id not in seen:
+            seen.add(dream_id)
+            result.append(dream_id)
+    return result
+
+
+def _full_text_reply_markup(
+    reply_text: str,
+    result: ChatResult,
+    *,
+    chat_id: int | None,
+) -> InlineKeyboardMarkup | None:
+    dream_ids = _extract_dream_ids_from_text(reply_text)
+    if not dream_ids and chat_id is not None and _should_offer_recent_full_text_buttons(result):
+        recent = load_recent_dream_set(chat_id)
+        if recent is not None:
+            dream_ids = _coerce_dream_ids(recent.dream_ids)
+    if not dream_ids:
+        return None
+
+    buttons = []
+    for index, dream_id in enumerate(dream_ids[:10], start=1):
+        label = "Полный текст" if len(dream_ids) == 1 else f"Текст {index}"
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    label,
+                    callback_data=f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(buttons)
+
+
+def _should_offer_recent_full_text_buttons(result: ChatResult) -> bool:
+    return bool(
+        set(result.tool_calls_made)
+        & {"search_dreams", "search_dreams_exact", "search_dreams_by_title", "list_recent_dreams"}
+    )
+
+
+def _coerce_dream_ids(raw_ids: list[str]) -> list[uuid.UUID]:
+    result: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for raw_id in raw_ids:
+        try:
+            dream_id = uuid.UUID(str(raw_id))
+        except ValueError:
+            continue
+        if dream_id not in seen:
+            seen.add(dream_id)
+            result.append(dream_id)
+    return result
+
+
+def _format_dream_full_text_reply(detail: Any) -> str:
+    date_value = str(getattr(detail, "date", "") or "").strip()
+    title = str(getattr(detail, "title", "") or "без названия").strip()
+    raw_text = str(getattr(detail, "raw_text", "") or "").rstrip()
+    notes = [str(note).strip() for note in getattr(detail, "notes", []) if str(note).strip()]
+
+    header_parts = [part for part in (date_value, title) if part and part != "unknown"]
+    parts = [", ".join(header_parts)] if header_parts else []
+    parts.append(raw_text or "В архиве у этого сна пустой текст.")
+    if notes:
+        parts.append("Заметки:\n" + "\n".join(notes))
+    return "\n\n".join(parts)
 
 
 def _is_direct_dream_record_command(text: str) -> bool:

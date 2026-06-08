@@ -342,12 +342,18 @@ def _remember_search_result_set(
     tool_input: Any,
     tool_result: str,
 ) -> None:
-    if chat_id is None or tool_name not in {"search_dreams", "search_dreams_exact"}:
+    if chat_id is None or tool_name not in {
+        "search_dreams",
+        "search_dreams_exact",
+        "search_dreams_by_title",
+        "list_recent_dreams",
+    }:
         return
 
     dream_ids = re.findall(
-        r"(?m)^\s*result_id:\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
-        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s*$",
+        r"(?m)(?:^\s*(?:result_id|dream_id):\s*|^Dream\s+)"
+        r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b",
         tool_result,
     )
     if not dream_ids:

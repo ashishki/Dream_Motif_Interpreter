@@ -9,7 +9,7 @@ from telegram import Chat, MessageReactionUpdated, ReactionTypeEmoji, Update
 from telegram.constants import ChatAction
 from telegram.ext import ApplicationHandlerStop
 
-from app.assistant.chat import ChatResult
+from app.assistant.chat import ChatResult, DreamReference
 from app.assistant.facade import AssistantFacade
 from app.assistant.session import (
     clear_pending_dream_draft,
@@ -222,6 +222,53 @@ async def test_text_message_handler_adds_full_text_buttons_for_dream_mentions() 
     button = kwargs["reply_markup"].inline_keyboard[0][0]
     assert button.text == "Полный текст"
     assert button.callback_data == f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}"
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_filters_full_text_buttons_to_visible_dreams() -> None:
+    visible_ids = [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+    ]
+    hidden_ids = [
+        "44444444-4444-4444-8444-444444444444",
+        "55555555-5555-4555-8555-555555555555",
+    ]
+    update, message = _make_text_message_update("найди сны про работу", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(
+            return_value=ChatResult(
+                "\n".join(
+                    [
+                        "1. 01.05.26, Офис: задачи распадаются.",
+                        "2. 02.05.26, Руководитель: проверка работы.",
+                        "3. 03.05.26, Документы: рабочие бумаги.",
+                    ]
+                ),
+                ["search_dreams"],
+                dream_ids=[*visible_ids, *hidden_ids],
+                dream_refs=[
+                    DreamReference(visible_ids[0], date="2026-05-01", title="Офис"),
+                    DreamReference(visible_ids[1], date="2026-05-02", title="Руководитель"),
+                    DreamReference(visible_ids[2], date="2026-05-03", title="Документы"),
+                    DreamReference(hidden_ids[0], date="2026-05-04", title="Лестница"),
+                    DreamReference(hidden_ids[1], date="2026-05-05", title="Поезд"),
+                ],
+            )
+        ),
+    ):
+        await text_message_handler(update, context)
+
+    keyboard = message.reply_text.await_args.kwargs["reply_markup"].inline_keyboard
+    buttons = [row[0] for row in keyboard]
+    assert [button.callback_data for button in buttons] == [
+        f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}" for dream_id in visible_ids
+    ]
 
 
 def test_voice_processing_ack_is_russian() -> None:

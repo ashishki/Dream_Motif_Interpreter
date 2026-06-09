@@ -198,6 +198,10 @@ async def test_handle_chat_metadata_returns_search_dream_ids_when_final_text_omi
     assert result.text == "1. 01.03.24, Flying dream: I was flying over a city."
     assert result.tool_calls_made == ["search_dreams"]
     assert result.dream_ids == [str(dream_id)]
+    assert len(result.dream_refs) == 1
+    assert result.dream_refs[0].dream_id == str(dream_id)
+    assert result.dream_refs[0].date == "2024-03-01"
+    assert result.dream_refs[0].title == "Flying dream"
 
 
 @pytest.mark.asyncio

@@ -62,10 +62,18 @@ _DREAM_SET_PATTERN_SYSTEM_PROMPT = (
 
 
 @dataclass(slots=True)
+class DreamReference:
+    dream_id: str
+    date: str = ""
+    title: str = ""
+
+
+@dataclass(slots=True)
 class ChatResult:
     text: str
     tool_calls_made: list[str]
     dream_ids: list[str] = field(default_factory=list)
+    dream_refs: list[DreamReference] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -73,6 +81,7 @@ class _DirectChatResult:
     text: str
     tool_calls_made: list[str]
     dream_ids: list[str] = field(default_factory=list)
+    dream_refs: list[DreamReference] = field(default_factory=list)
 
 
 async def handle_chat(
@@ -135,6 +144,7 @@ async def handle_chat_with_metadata(
             text=direct_result.text,
             tool_calls_made=direct_result.tool_calls_made,
             dream_ids=direct_result.dream_ids,
+            dream_refs=direct_result.dream_refs,
         )
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
@@ -175,6 +185,7 @@ async def handle_chat_with_metadata(
             text=pattern_result.text,
             tool_calls_made=pattern_result.tool_calls_made,
             dream_ids=pattern_result.dream_ids,
+            dream_refs=pattern_result.dream_refs,
         )
 
     feedback_rows: list[dict] = []
@@ -195,6 +206,7 @@ async def handle_chat_with_metadata(
     last_text = ""
     tool_calls_made: list[str] = []
     dream_ids_mentioned: list[str] = []
+    dream_refs_mentioned: list[DreamReference] = []
     _create_dream_called = False  # allow only one create_dream per user turn
 
     while True:
@@ -215,6 +227,7 @@ async def handle_chat_with_metadata(
                 text="Something went wrong while contacting the assistant. Please try again.",
                 tool_calls_made=tool_calls_made,
                 dream_ids=dream_ids_mentioned,
+                dream_refs=dream_refs_mentioned,
             )
 
         usage = response.usage
@@ -264,8 +277,10 @@ async def handle_chat_with_metadata(
                 request_text=message_text,
             )
             tool_pairs.append((block, result))
-            found_dream_ids = _remember_search_result_set(chat_id, block.name, block.input, result)
+            found_refs = _remember_search_result_set(chat_id, block.name, block.input, result)
+            found_dream_ids = [ref.dream_id for ref in found_refs]
             dream_ids_mentioned = _merge_dream_id_strings(dream_ids_mentioned, found_dream_ids)
+            dream_refs_mentioned = _merge_dream_references(dream_refs_mentioned, found_refs)
             direct_response = _direct_full_dream_text_response(
                 block.name,
                 result,
@@ -289,6 +304,7 @@ async def handle_chat_with_metadata(
                     text=direct_response,
                     tool_calls_made=tool_calls_made,
                     dream_ids=dream_ids_mentioned,
+                    dream_refs=dream_refs_mentioned,
                 )
 
         messages.append({"role": "assistant", "content": response.content})
@@ -316,6 +332,7 @@ async def handle_chat_with_metadata(
             text="No response from the assistant.",
             tool_calls_made=tool_calls_made,
             dream_ids=dream_ids_mentioned,
+            dream_refs=dream_refs_mentioned,
         )
 
     await _save_turn_history(session_factory, chat_id, history, message_text, last_text)
@@ -324,6 +341,7 @@ async def handle_chat_with_metadata(
         text=last_text,
         tool_calls_made=tool_calls_made,
         dream_ids=dream_ids_mentioned,
+        dream_refs=dream_refs_mentioned,
     )
 
 
@@ -360,7 +378,7 @@ def _remember_search_result_set(
     tool_name: str,
     tool_input: Any,
     tool_result: str,
-) -> list[str]:
+) -> list[DreamReference]:
     if chat_id is None or tool_name not in {
         "search_dreams",
         "search_dreams_exact",
@@ -369,20 +387,92 @@ def _remember_search_result_set(
     }:
         return []
 
-    dream_ids = re.findall(
-        r"(?m)(?:^\s*(?:[-*]\s*)?(?:result_id|dream_id):\s*|^Dream\s+)"
-        r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
-        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b",
-        tool_result,
-    )
-    if not dream_ids:
+    refs = _extract_dream_references(tool_result)
+    if not refs:
         return []
-    dream_ids = list(dict.fromkeys(dream_ids))
+    dream_ids = [ref.dream_id for ref in refs]
     query = ""
     if isinstance(tool_input, dict):
         query = str(tool_input.get("query", "")).strip()
     save_recent_dream_set(chat_id, query=query, dream_ids=dream_ids)
-    return dream_ids
+    return refs
+
+
+_DREAM_ID_LINE_RE = re.compile(
+    r"(?i)^\s*(?:[-*]\s*)?(?:result_id|dream_id):\s*"
+    r"(?P<dream_id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
+)
+_DREAM_DETAIL_ID_LINE_RE = re.compile(
+    r"(?i)^\s*Dream\s+"
+    r"(?P<dream_id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
+)
+_FIELD_LINE_RE = re.compile(r"(?i)^\s*(?P<key>date|title):\s*(?P<value>.+?)\s*$")
+_RECENT_DREAM_HEADING_RE = re.compile(r"^\s*[-*]\s*(?P<date>[^|]+?)\s+\|\s+(?P<title>.+?)\s*$")
+
+
+def _extract_dream_references(tool_result: str) -> list[DreamReference]:
+    refs: list[DreamReference] = []
+    current: DreamReference | None = None
+    pending_date = ""
+    pending_title = ""
+
+    def flush_current() -> None:
+        nonlocal current
+        if current is not None:
+            refs.append(current)
+            current = None
+
+    for raw_line in tool_result.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        recent_heading = _RECENT_DREAM_HEADING_RE.match(line)
+        if recent_heading is not None:
+            pending_date = recent_heading.group("date").strip()
+            pending_title = recent_heading.group("title").strip()
+            continue
+
+        id_match = _DREAM_ID_LINE_RE.match(line) or _DREAM_DETAIL_ID_LINE_RE.match(line)
+        if id_match is not None:
+            flush_current()
+            current = DreamReference(
+                dream_id=id_match.group("dream_id"),
+                date=pending_date,
+                title=pending_title,
+            )
+            pending_date = ""
+            pending_title = ""
+            continue
+
+        field_match = _FIELD_LINE_RE.match(line)
+        if field_match is None or current is None:
+            continue
+        key = field_match.group("key").casefold()
+        value = field_match.group("value").strip()
+        if key == "date":
+            current.date = value
+        elif key == "title":
+            current.title = value
+
+    flush_current()
+    return _dedupe_dream_references(refs)
+
+
+def _dedupe_dream_references(refs: list[DreamReference]) -> list[DreamReference]:
+    deduped: list[DreamReference] = []
+    by_id: dict[str, DreamReference] = {}
+    for ref in refs:
+        existing = by_id.get(ref.dream_id)
+        if existing is None:
+            by_id[ref.dream_id] = ref
+            deduped.append(ref)
+            continue
+        if not existing.date and ref.date:
+            existing.date = ref.date
+        if not existing.title and ref.title:
+            existing.title = ref.title
+    return deduped
 
 
 def _merge_dream_id_strings(existing: list[str], new: list[str]) -> list[str]:
@@ -396,6 +486,15 @@ def _merge_dream_id_strings(existing: list[str], new: list[str]) -> list[str]:
         seen.add(value)
         merged.append(value)
     return merged
+
+
+def _merge_dream_references(
+    existing: list[DreamReference],
+    new: list[DreamReference],
+) -> list[DreamReference]:
+    if not new:
+        return existing
+    return _dedupe_dream_references([*existing, *new])
 
 
 async def _try_direct_dream_set_pattern_analysis(

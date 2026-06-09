@@ -839,6 +839,8 @@ def _full_text_reply_markup(
 ) -> InlineKeyboardMarkup | None:
     dream_ids = _extract_dream_ids_from_text(reply_text)
     if not dream_ids:
+        dream_ids = _visible_dream_reference_ids(reply_text, getattr(result, "dream_refs", []))
+    if not dream_ids:
         dream_ids = _coerce_dream_ids(getattr(result, "dream_ids", []))
     if not dream_ids and chat_id is not None and _should_offer_recent_full_text_buttons(result):
         recent = load_recent_dream_set(chat_id)
@@ -859,6 +861,51 @@ def _full_text_reply_markup(
             ]
         )
     return InlineKeyboardMarkup(buttons)
+
+
+def _visible_dream_reference_ids(reply_text: str, refs: Any) -> list[uuid.UUID]:
+    if not isinstance(refs, list):
+        return []
+    visible_ids: list[str] = []
+    normalized_reply = _normalize_visible_match_text(reply_text)
+    for ref in refs:
+        dream_id = str(getattr(ref, "dream_id", "") or "").strip()
+        if not dream_id:
+            continue
+        title = str(getattr(ref, "title", "") or "").strip()
+        date_value = str(getattr(ref, "date", "") or "").strip()
+        if _dream_reference_visible(normalized_reply, title=title, date_value=date_value):
+            visible_ids.append(dream_id)
+    return _coerce_dream_ids(visible_ids)
+
+
+def _dream_reference_visible(normalized_reply: str, *, title: str, date_value: str) -> bool:
+    title_normalized = _normalize_visible_match_text(title)
+    if title_normalized and title_normalized != "без названия" and title_normalized in normalized_reply:
+        return True
+    return any(
+        _normalize_visible_match_text(variant) in normalized_reply
+        for variant in _date_display_variants(date_value)
+        if variant
+    )
+
+
+def _date_display_variants(value: str) -> list[str]:
+    stripped = value.strip()
+    if not stripped or stripped == "unknown":
+        return []
+    variants = [stripped]
+    match = re.match(r"^(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})$", stripped)
+    if match is not None:
+        day = match.group("day")
+        month = match.group("month")
+        year = match.group("year")
+        variants.extend([f"{day}.{month}.{year[-2:]}", f"{day}.{month}.{year}"])
+    return list(dict.fromkeys(variants))
+
+
+def _normalize_visible_match_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.casefold()).strip()
 
 
 def _should_offer_recent_full_text_buttons(result: ChatResult) -> bool:

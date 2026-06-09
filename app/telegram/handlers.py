@@ -82,7 +82,7 @@ _UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 _DREAM_ID_FIELD_RE = re.compile(
-    r"(?m)(?:^\s*(?:dream_id|result_id):\s*|^Dream\s+)"
+    r"(?m)(?:^\s*(?:[-*]\s*)?(?:dream_id|result_id):\s*|^Dream\s+)"
     r"(?P<dream_id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b"
 )
@@ -838,6 +838,8 @@ def _full_text_reply_markup(
     chat_id: int | None,
 ) -> InlineKeyboardMarkup | None:
     dream_ids = _extract_dream_ids_from_text(reply_text)
+    if not dream_ids:
+        dream_ids = _coerce_dream_ids(getattr(result, "dream_ids", []))
     if not dream_ids and chat_id is not None and _should_offer_recent_full_text_buttons(result):
         recent = load_recent_dream_set(chat_id)
         if recent is not None:

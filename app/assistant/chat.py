@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 import os
 import re
@@ -65,12 +65,14 @@ _DREAM_SET_PATTERN_SYSTEM_PROMPT = (
 class ChatResult:
     text: str
     tool_calls_made: list[str]
+    dream_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
 class _DirectChatResult:
     text: str
     tool_calls_made: list[str]
+    dream_ids: list[str] = field(default_factory=list)
 
 
 async def handle_chat(
@@ -132,6 +134,7 @@ async def handle_chat_with_metadata(
         return ChatResult(
             text=direct_result.text,
             tool_calls_made=direct_result.tool_calls_made,
+            dream_ids=direct_result.dream_ids,
         )
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
@@ -171,6 +174,7 @@ async def handle_chat_with_metadata(
         return ChatResult(
             text=pattern_result.text,
             tool_calls_made=pattern_result.tool_calls_made,
+            dream_ids=pattern_result.dream_ids,
         )
 
     feedback_rows: list[dict] = []
@@ -190,6 +194,7 @@ async def handle_chat_with_metadata(
     round_counter = 0
     last_text = ""
     tool_calls_made: list[str] = []
+    dream_ids_mentioned: list[str] = []
     _create_dream_called = False  # allow only one create_dream per user turn
 
     while True:
@@ -209,6 +214,7 @@ async def handle_chat_with_metadata(
             return ChatResult(
                 text="Something went wrong while contacting the assistant. Please try again.",
                 tool_calls_made=tool_calls_made,
+                dream_ids=dream_ids_mentioned,
             )
 
         usage = response.usage
@@ -258,7 +264,8 @@ async def handle_chat_with_metadata(
                 request_text=message_text,
             )
             tool_pairs.append((block, result))
-            _remember_search_result_set(chat_id, block.name, block.input, result)
+            found_dream_ids = _remember_search_result_set(chat_id, block.name, block.input, result)
+            dream_ids_mentioned = _merge_dream_id_strings(dream_ids_mentioned, found_dream_ids)
             direct_response = _direct_full_dream_text_response(
                 block.name,
                 result,
@@ -278,7 +285,11 @@ async def handle_chat_with_metadata(
                     message_text,
                     direct_response,
                 )
-                return ChatResult(text=direct_response, tool_calls_made=tool_calls_made)
+                return ChatResult(
+                    text=direct_response,
+                    tool_calls_made=tool_calls_made,
+                    dream_ids=dream_ids_mentioned,
+                )
 
         messages.append({"role": "assistant", "content": response.content})
         messages.append(
@@ -301,11 +312,19 @@ async def handle_chat_with_metadata(
             break
 
     if not last_text:
-        return ChatResult(text="No response from the assistant.", tool_calls_made=tool_calls_made)
+        return ChatResult(
+            text="No response from the assistant.",
+            tool_calls_made=tool_calls_made,
+            dream_ids=dream_ids_mentioned,
+        )
 
     await _save_turn_history(session_factory, chat_id, history, message_text, last_text)
 
-    return ChatResult(text=last_text, tool_calls_made=tool_calls_made)
+    return ChatResult(
+        text=last_text,
+        tool_calls_made=tool_calls_made,
+        dream_ids=dream_ids_mentioned,
+    )
 
 
 def _extract_text(response: Any) -> str:
@@ -341,27 +360,42 @@ def _remember_search_result_set(
     tool_name: str,
     tool_input: Any,
     tool_result: str,
-) -> None:
+) -> list[str]:
     if chat_id is None or tool_name not in {
         "search_dreams",
         "search_dreams_exact",
         "search_dreams_by_title",
         "list_recent_dreams",
     }:
-        return
+        return []
 
     dream_ids = re.findall(
-        r"(?m)(?:^\s*(?:result_id|dream_id):\s*|^Dream\s+)"
+        r"(?m)(?:^\s*(?:[-*]\s*)?(?:result_id|dream_id):\s*|^Dream\s+)"
         r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
         r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b",
         tool_result,
     )
     if not dream_ids:
-        return
+        return []
+    dream_ids = list(dict.fromkeys(dream_ids))
     query = ""
     if isinstance(tool_input, dict):
         query = str(tool_input.get("query", "")).strip()
     save_recent_dream_set(chat_id, query=query, dream_ids=dream_ids)
+    return dream_ids
+
+
+def _merge_dream_id_strings(existing: list[str], new: list[str]) -> list[str]:
+    if not new:
+        return existing
+    merged = list(existing)
+    seen = set(existing)
+    for value in new:
+        if value in seen:
+            continue
+        seen.add(value)
+        merged.append(value)
+    return merged
 
 
 async def _try_direct_dream_set_pattern_analysis(
@@ -397,6 +431,7 @@ async def _try_direct_dream_set_pattern_analysis(
                     "Напиши тему одним словом или повтори подборку, и я сразу разберу все найденные сны."
                 ),
                 tool_calls_made=tool_calls,
+                dream_ids=[],
             )
         search_result = await facade.search_dreams(query)
         tool_calls.append("search_dreams")
@@ -404,6 +439,7 @@ async def _try_direct_dream_set_pattern_analysis(
             return ChatResult(
                 text=f"По теме «{query}» не нашёл достаточно снов для анализа паттернов.",
                 tool_calls_made=tool_calls,
+                dream_ids=[],
             )
         dream_ids = []
         seen: set[uuid.UUID] = set()
@@ -430,6 +466,7 @@ async def _try_direct_dream_set_pattern_analysis(
         return ChatResult(
             text="Нашёл подборку, но не смог загрузить полные тексты этих снов.",
             tool_calls_made=tool_calls,
+            dream_ids=[str(dream_id) for dream_id in dream_ids],
         )
 
     response = await client.messages.create(
@@ -452,6 +489,7 @@ async def _try_direct_dream_set_pattern_analysis(
         return ChatResult(
             text="Не получилось сформировать анализ паттернов по этой подборке.",
             tool_calls_made=tool_calls,
+            dream_ids=[str(dream_id) for dream_id in dream_ids],
         )
     LOGGER.info(
         "direct_dream_set_pattern_analysis chat_id=%s query=%r dreams=%s chars=%s",
@@ -460,7 +498,11 @@ async def _try_direct_dream_set_pattern_analysis(
         len(details),
         len(text),
     )
-    return ChatResult(text=text, tool_calls_made=tool_calls)
+    return ChatResult(
+        text=text,
+        tool_calls_made=tool_calls,
+        dream_ids=[str(dream_id) for dream_id in dream_ids],
+    )
 
 
 def _is_dream_set_pattern_request(message_text: str) -> bool:
@@ -606,15 +648,18 @@ async def _try_direct_full_text_request(
                     "Попробуй уточнить дату или название."
                 ),
                 tool_calls_made=["search_dreams_by_title", "get_dream"],
+                dream_ids=[str(title_matches[0].dream_id)],
             )
         return _DirectChatResult(
             text=_format_full_dream_detail_reply(detail),
             tool_calls_made=["search_dreams_by_title", "get_dream"],
+            dream_ids=[str(title_matches[0].dream_id)],
         )
     if len(title_matches) > 1:
         return _DirectChatResult(
             text=_format_ambiguous_full_text_matches(query, title_matches),
             tool_calls_made=["search_dreams_by_title"],
+            dream_ids=[str(item.dream_id) for item in title_matches],
         )
 
     search_result = await facade.search_dreams(query)
@@ -644,15 +689,18 @@ async def _try_direct_full_text_request(
                     "Попробуй уточнить дату или название."
                 ),
                 tool_calls_made=["search_dreams_by_title", "search_dreams", "get_dream"],
+                dream_ids=[str(unique_ids[0])],
             )
         return _DirectChatResult(
             text=_format_full_dream_detail_reply(detail),
             tool_calls_made=["search_dreams_by_title", "search_dreams", "get_dream"],
+            dream_ids=[str(unique_ids[0])],
         )
 
     return _DirectChatResult(
         text=_format_ambiguous_full_text_search_results(query, search_result.items),
         tool_calls_made=["search_dreams_by_title", "search_dreams"],
+        dream_ids=[str(dream_id) for dream_id in unique_ids],
     )
 
 

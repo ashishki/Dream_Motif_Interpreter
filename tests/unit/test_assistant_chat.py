@@ -161,6 +161,46 @@ async def test_handle_chat_executes_search_tool_and_returns_final_text() -> None
 
 
 @pytest.mark.asyncio
+async def test_handle_chat_metadata_returns_search_dream_ids_when_final_text_omits_ids() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.search_dreams = AsyncMock(
+        return_value=SearchResult(
+            items=[
+                SearchResultItem(
+                    dream_id=dream_id,
+                    date=date(2024, 3, 1),
+                    title="Flying dream",
+                    chunk_text="I was flying over a city.",
+                    relevance_score=0.85,
+                    matched_fragments=[],
+                )
+            ]
+        )
+    )
+
+    tool_response = _make_response(
+        "tool_use",
+        [_tool_use_block("search_dreams", "t1", {"query": "flying"})],
+    )
+    final_response = _make_response(
+        "end_turn", [_text_block("1. 01.03.24, Flying dream: I was flying over a city.")]
+    )
+
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
+            client = AsyncMock()
+            client.messages.create = AsyncMock(side_effect=[tool_response, final_response])
+            mock_client_cls.return_value = client
+
+            result = await handle_chat_with_metadata("find flying dreams", facade, chat_id=42)
+
+    assert result.text == "1. 01.03.24, Flying dream: I was flying over a city."
+    assert result.tool_calls_made == ["search_dreams"]
+    assert result.dream_ids == [str(dream_id)]
+
+
+@pytest.mark.asyncio
 async def test_handle_chat_returns_full_dream_text_directly_without_final_llm() -> None:
     dream_id = uuid.uuid4()
     long_text = "Начало сна.\n" + ("длинный фрагмент " * 220) + "\nФинальная строка сна."

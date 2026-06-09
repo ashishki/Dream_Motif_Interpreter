@@ -210,8 +210,9 @@ async def test_text_message_handler_adds_full_text_buttons_for_dream_mentions() 
         "app.telegram.handlers.handle_chat_with_metadata",
         new=AsyncMock(
             return_value=ChatResult(
-                f"1. 05.06.26, Старый мост\nresult_id: {dream_id}",
+                "1. 05.06.26, Старый мост: я возвращаюсь к старому мосту.",
                 ["search_dreams"],
+                dream_ids=[dream_id],
             )
         ),
     ):

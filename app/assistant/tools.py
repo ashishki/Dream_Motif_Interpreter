@@ -5,7 +5,7 @@ import re
 import uuid
 from typing import Any
 
-from app.assistant.facade import AssistantFacade
+from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.facade import _resolve_absolute_dream_date, _resolve_relative_dream_date
 from app.assistant.session import save_pending_interpretation_request
 from app.shared.config import extract_google_doc_id, get_doc_name
@@ -502,12 +502,15 @@ async def execute_tool(
                     "Expected YYYY-MM-DD, DD.MM, DD.MM.YY, DD.MM.YYYY, or Russian relative date."
                 )
 
-        created = await facade.create_dream(
-            raw_text,
-            title=title,
-            dream_date=dream_date,
-            chat_id=chat_id,
-        )
+        try:
+            created = await facade.create_dream(
+                raw_text,
+                title=title,
+                dream_date=dream_date,
+                chat_id=chat_id,
+            )
+        except DreamRecordingUnavailable as exc:
+            return str(exc)
         if not created.created:
             if created.written_to_google_doc:
                 return "Запись добавлена в Google Doc."

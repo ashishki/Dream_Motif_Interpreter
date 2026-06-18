@@ -12,6 +12,7 @@ from app.assistant.facade import (
     AssistantFacade,
     CreatedDreamItem,
     DreamDetail,
+    DreamRecordingUnavailable,
     DreamSummary,
     DreamTitleSearchResult,
     MotifInductionItem,
@@ -607,6 +608,37 @@ async def test_create_dream_persists_entry_and_runs_pipeline() -> None:
         facade._session_factory,
     )
     index_dream_callable.assert_awaited_once_with(result.id)
+
+
+@pytest.mark.asyncio
+async def test_create_dream_rejects_recording_when_indexing_fails() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None), _FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(side_effect=RuntimeError("OpenAI 429"))
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Мост у моря")),
+    )
+
+    with patch.object(
+        facade,
+        "write_dream_to_google_doc",
+        AsyncMock(return_value=(True, "Сны")),
+    ) as mock_write:
+        with pytest.raises(DreamRecordingUnavailable, match="embeddings"):
+            await facade.create_dream(
+                "Мне приснилось, что я перехожу мост через море.",
+                chat_id=42,
+            )
+
+    mock_write.assert_not_awaited()
+    analysis_service.analyse_dream_with_session_factory.assert_not_awaited()
+    index_dream_callable.assert_awaited_once()
+    assert len(session.executed_statements) == 2
+    assert session.commit.await_count == 2
 
 
 @pytest.mark.asyncio

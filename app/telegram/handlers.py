@@ -15,7 +15,7 @@ from telegram.error import TelegramError
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
 from app.assistant.chat import ChatResult, handle_chat_with_metadata
-from app.assistant.facade import AssistantFacade
+from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.facade import _prepare_dream_recording_input
 from app.assistant.session import (
     clear_pending_interpretation_request,
@@ -268,12 +268,16 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         if not _has_direct_dream_text(stripped_text):
             await message.reply_text(MISSING_DREAM_TEXT_REPLY)
             return
-        created = await _create_dream_with_typing(
-            context,
-            chat_id,
-            _get_facade(context),
-            stripped_text,
-        )
+        try:
+            created = await _create_dream_with_typing(
+                context,
+                chat_id,
+                _get_facade(context),
+                stripped_text,
+            )
+        except DreamRecordingUnavailable as exc:
+            await message.reply_text(str(exc))
+            return
         clear_pending_dream_draft(chat_id)
         await message.reply_text(_format_create_dream_reply(created))
         return
@@ -282,12 +286,16 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
             bot_msg_ids.pop(chat_key, None)
-        created = await _create_dream_with_typing(
-            context,
-            chat_id,
-            _get_facade(context),
-            stripped_text,
-        )
+        try:
+            created = await _create_dream_with_typing(
+                context,
+                chat_id,
+                _get_facade(context),
+                stripped_text,
+            )
+        except DreamRecordingUnavailable as exc:
+            await message.reply_text(str(exc))
+            return
         clear_pending_dream_draft(chat_id)
         await message.reply_text(_format_create_dream_reply(created))
         return
@@ -636,12 +644,16 @@ async def _handle_pending_dream_confirmation(
         return False
 
     dream_date = date.fromisoformat(draft.dream_date) if draft.dream_date else None
-    created = await facade.create_dream(
-        draft.raw_text,
-        title=draft.title,
-        dream_date=dream_date,
-        chat_id=chat_id,
-    )
+    try:
+        created = await facade.create_dream(
+            draft.raw_text,
+            title=draft.title,
+            dream_date=dream_date,
+            chat_id=chat_id,
+        )
+    except DreamRecordingUnavailable as exc:
+        await message.reply_text(str(exc))
+        return True
     await message.reply_text(_format_create_dream_reply(created))
     return True
 
@@ -717,7 +729,11 @@ async def _handle_reply_to_voice_save(
         await message.reply_text(VOICE_TRANSCRIPT_UNAVAILABLE)
         return True
 
-    created = await facade.create_dream(transcript, chat_id=chat_id)
+    try:
+        created = await facade.create_dream(transcript, chat_id=chat_id)
+    except DreamRecordingUnavailable as exc:
+        await message.reply_text(str(exc))
+        return True
     await message.reply_text(_format_create_dream_reply(created))
     clear_pending_dream_draft(chat_id)
     return True

@@ -10,7 +10,7 @@ from telegram.constants import ChatAction
 from telegram.ext import ApplicationHandlerStop
 
 from app.assistant.chat import ChatResult, DreamReference
-from app.assistant.facade import AssistantFacade
+from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.session import (
     clear_pending_dream_draft,
     clear_pending_interpretation_request,
@@ -519,6 +519,27 @@ async def test_text_message_handler_saves_explicit_dream_command_without_chat_lo
 
 
 @pytest.mark.asyncio
+async def test_text_message_handler_reports_embedding_limit_for_direct_dream_save() -> None:
+    update, message = _make_text_message_update(
+        "Запиши сон: мне приснилось море и мост.",
+        chat_id=42,
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream = AsyncMock(side_effect=DreamRecordingUnavailable("embeddings недоступны"))
+    context = _make_text_context(facade, 42)
+
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(update, context)
+
+    mock_chat.assert_not_awaited()
+    facade.create_dream.assert_awaited_once_with(
+        "Запиши сон: мне приснилось море и мост.",
+        chat_id=42,
+    )
+    message.reply_text.assert_awaited_once_with("embeddings недоступны")
+
+
+@pytest.mark.asyncio
 async def test_text_message_handler_asks_for_text_on_empty_explicit_dream_command() -> None:
     update, message = _make_text_message_update("Запиши сон текстом", chat_id=42)
     facade = AsyncMock(spec=AssistantFacade)
@@ -636,6 +657,27 @@ async def test_text_message_handler_yes_saves_pending_dream() -> None:
         chat_id=42,
     )
     confirm_message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ")
+    assert load_pending_dream_draft(42) is None
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_yes_reports_embedding_limit_for_pending_dream() -> None:
+    confirm_update, confirm_message = _make_text_message_update("да", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream = AsyncMock(side_effect=DreamRecordingUnavailable("embeddings недоступны"))
+    context = _make_text_context(facade, 42)
+    save_pending_dream_draft(
+        42,
+        raw_text="сегодня мне приснилось, что я иду по мосту над морем",
+        title=None,
+        dream_date=None,
+        source_message_id=123,
+        source_kind="text",
+    )
+
+    await text_message_handler(confirm_update, context)
+
+    confirm_message.reply_text.assert_awaited_once_with("embeddings недоступны")
     assert load_pending_dream_draft(42) is None
 
 

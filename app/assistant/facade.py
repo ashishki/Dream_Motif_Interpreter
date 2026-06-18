@@ -9,7 +9,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.llm.client import AnthropicLLMClient, LLMClientError
@@ -30,6 +30,15 @@ from app.shared.tracing import get_logger, get_tracer
 
 logger = get_logger(__name__)
 WEAK_SEARCH_RELEVANCE_THRESHOLD = 0.4
+SEMANTIC_INDEX_UNAVAILABLE_MESSAGE = (
+    "Сейчас не могу записать сон: недоступны embeddings для семантического поиска "
+    "(похоже, закончились кредиты API). Запись не добавлена. "
+    "Попробуйте ещё раз после пополнения API."
+)
+
+
+class DreamRecordingUnavailable(RuntimeError):
+    """Raised when a dream cannot enter the working archive."""
 
 
 @dataclass(frozen=True)
@@ -475,18 +484,33 @@ class AssistantFacade:
             with tracer.start_as_current_span("assistant.create_dream.commit"):
                 await session.commit()
 
-        await self._analysis_service.analyse_dream_with_session_factory(
-            dream.id,
-            self._session_factory,
-        )
-        await self._index_dream_callable(dream.id)
+        try:
+            await self._index_dream_callable(dream.id)
+        except Exception as exc:
+            await self._discard_unindexed_dream(dream.id)
+            raise DreamRecordingUnavailable(SEMANTIC_INDEX_UNAVAILABLE_MESSAGE) from exc
+
+        try:
+            await self._analysis_service.analyse_dream_with_session_factory(
+                dream.id,
+                self._session_factory,
+            )
+        except Exception:
+            logger.warning("Dream analysis failed after indexing", dream_id=str(dream.id), exc_info=True)
 
         if get_settings().MOTIF_INDUCTION_ENABLED:
-            async with self._session_factory() as session:
-                dream_entry = await session.get(DreamEntry, dream.id)
-                if dream_entry is not None:
-                    await self._motif_service.run(dream_entry, session)
-                    await session.commit()
+            try:
+                async with self._session_factory() as session:
+                    dream_entry = await session.get(DreamEntry, dream.id)
+                    if dream_entry is not None:
+                        await self._motif_service.run(dream_entry, session)
+                        await session.commit()
+            except Exception:
+                logger.warning(
+                    "Dream motif induction failed after indexing",
+                    dream_id=str(dream.id),
+                    exc_info=True,
+                )
 
         written, written_doc_name = await self.write_dream_to_google_doc(dream_id=dream.id)
 
@@ -501,6 +525,14 @@ class AssistantFacade:
             written_to_google_doc=written,
             written_to_doc_name=written_doc_name,
         )
+
+    async def _discard_unindexed_dream(self, dream_id: uuid.UUID) -> None:
+        try:
+            async with self._session_factory() as session:
+                await session.execute(delete(DreamEntry).where(DreamEntry.id == dream_id))
+                await session.commit()
+        except Exception:
+            logger.warning("Failed to discard unindexed dream", dream_id=str(dream_id), exc_info=True)
 
     async def write_dream_to_google_doc(
         self,

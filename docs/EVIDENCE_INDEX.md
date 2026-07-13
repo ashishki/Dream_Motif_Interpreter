@@ -1,7 +1,7 @@
 # Evidence Index — Dream Motif Interpreter
 
-Version: 1.5
-Last updated: 2026-05-29
+Version: 1.6
+Last updated: 2026-07-13
 Status: append-only
 
 ---
@@ -36,6 +36,7 @@ Lookup table for proof artifacts across review cycles, retrieval evaluations, an
 | EV-018 | test-coverage | Phase 24 implementation | 2026-05-20 | `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_assistant_session.py`, full `tests/unit` | Missing-title dream saves use LLM title generation, model-supplied implicit titles are ignored, and dream-set pattern analysis loads full texts automatically | Active |
 | EV-019 | test-coverage | Phase 25 implementation | 2026-05-20 | `tests/unit/test_gdocs_client.py`, `tests/unit/test_assistant_facade.py`, `tests/unit/test_assistant_chat.py`, `tests/unit/test_telegram_bot.py`, full `tests/unit` | Short numeric save dates parse, backdated Google Doc entries are inserted before later dated headings/paragraphs, duplicate archive dreams can be written to Google Doc again with success framing, `повтори` can repeat the latest chat dream without a failed status, and the full unit suite passes | Active |
 | EV-020 | review | Phase 26 implementation | 2026-05-29 | `docs/archive/PHASE26_REVIEW.md`, `docs/DREAM_MEMORY_MAP.md`, `app/models/dream_graph.py`, `app/models/dream_graph_privacy.py`, `docs/mockups/dream_memory_map_prototype.html` | Dream Memory Map product direction, graph schema, UX prototype, and privacy/export controls are complete; broad suite passes with local Postgres/Redis test infrastructure | Active |
+| EV-021 | public-eval | Portfolio audit P1 | 2026-07-13 | `evals/privacy_safe_retrieval_v1/DATA_CARD.md`, `reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json`, `reports/evidence/portfolio-audit-2026-07-13/VERIFICATION.md`, `tests/unit/test_public_fixture_eval.py` | Six handcrafted synthetic documents and eight deterministic cases exercise ranking, abstention, source attribution, and exact-slice citations without private corpus access; the report explicitly excludes live/provider, clinical, external-use, and production claims | Active |
 
 ---
 

@@ -143,6 +143,11 @@ jobs:
           MAX_INDEX_AGE_HOURS: "24"
         run: pytest -q --tb=short tests/
 
+      - name: Verify public privacy-safe retrieval and citation evidence
+        run: >-
+          python scripts/eval_public_fixture.py
+          --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json
+
       - name: Run retrieval eval
         env:
           DATABASE_URL: postgresql+asyncpg://dmi_test:dmi_test@localhost:5432/dmi_test

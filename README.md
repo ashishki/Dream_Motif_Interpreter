@@ -1,17 +1,37 @@
 # Dream Motif Interpreter
 
-Приватная система анализа сновидений для одного пользователя.
+Локальный single-operator прототип для работы с приватным архивом записей.
 
 Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом и обратной связью.
 
-**Статус: active creative experiment · Phases 1–26 complete · Dream Memory Map ready for durable UI planning**
+**Статус: case-study prototype, не product release.** Репозиторий содержит реализованные
+компоненты и детерминированный synthetic eval, но не доказывает hosted/production operation,
+внешних пользователей, longitudinal value или качество на произвольных документах.
 
-Следующий продуктовый фокус: Dream Memory Map — Telegram mini app with an
-Obsidian-like motif graph for reflective journaling and pattern memory, not
-psychological diagnosis. Spec: `docs/DREAM_MEMORY_MAP.md`. Roadmap:
-`docs/PROJECT_PLAN.md`.
+Приватный корпус, Telegram-сообщения, credentials и live outputs не входят в публичный
+репозиторий. Исторические документы с пометками «Тест» описывают только private operator
+review и не являются external validation. Boundary: reflective journaling, not psychological
+diagnosis; система не предназначена для психологической или клинической диагностики.
 
-Optional verification reference: `docs/entropy_core_reference.md`.
+Dream Memory Map остаётся design/prototype direction, а не заявленной готовой
+пользовательской поверхностью: `docs/DREAM_MEMORY_MAP.md`.
+
+## Public reviewer path
+
+Privacy-safe evidence можно воспроизвести без private data, PostgreSQL, provider keys или
+сетевых вызовов:
+
+```bash
+python3 scripts/eval_public_fixture.py \
+  --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json
+python3 -m pytest tests/unit/test_public_fixture_eval.py -q
+```
+
+Набор содержит 6 handcrafted-synthetic документов и 8 retrieval cases. Tracked report
+проверяет ranking/abstention, expected-source recall, точность source attribution и дословные
+character-offset citations. Все gates этого ограниченного replay проходят; это не результат
+live hybrid retrieval и не оценка интерпретаций. См. [data card](evals/privacy_safe_retrieval_v1/DATA_CARD.md)
+и [content-addressed report](reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json).
 
 ---
 
@@ -65,9 +85,9 @@ Optional verification reference: `docs/entropy_core_reference.md`.
 - `GET /feedback` — просмотр рейтингов с пагинацией
 - Хранится в `assistant_feedback`, изолировано от RAG-пайплайна
 
-### UX-исправления по итогам первого теста (Phase 12)
+### UX-исправления по итогам первого private operator review (Phase 12)
 
-Закрыт бэклог из первой реальной пользовательской сессии (Тест 1, 22.04.26):
+Исторический backlog из первого private operator review (Тест 1, 22.04.26):
 
 - `get_dream_motifs` теперь возвращает UUID мотива — поиск параллелей разблокирован
 - Запрет markdown в ответах: никаких `**`, даты в формате `дд.мм.гг`, списки нумерованные
@@ -82,7 +102,7 @@ Optional verification reference: `docs/entropy_core_reference.md`.
 Подробнее: [docs/PHASE12_RELEASE_NOTES.md](docs/PHASE12_RELEASE_NOTES.md)
 ### Мультисурс, точный поиск, группировка фрагментов (Phase 13)
 
-Закрыт бэклог из второй реальной пользовательской сессии (Тест 2, 23.04.26):
+Исторический backlog из второго private operator review (Тест 2, 23.04.26):
 
 - Поддержка нескольких Google Docs: `GOOGLE_DOC_IDS` (список через запятую); `trigger_sync` синхронизирует все
 - `manage_archive_source`: добавлены действия `list`, `add`, `remove` — управление источниками из чата
@@ -128,9 +148,11 @@ app/
   telegram/      bot runtime, handlers, voice download
   workers/       background jobs (ingest, indexing, transcription, cleanup)
 
-alembic/         schema migrations (001–012)
+alembic/         schema migrations
 docs/            architecture, planning, runbooks, ADRs, user guide
-tests/           unit + integration (300 unit passed)
+evals/           public synthetic fixtures and data cards
+reports/         tracked bounded evidence artifacts
+tests/           unit + integration checks
 ```
 
 ---
@@ -184,26 +206,12 @@ python3 -m app.auto_sync
 docker compose up
 ```
 
-## Local Checkpoint
+## Verification boundary
 
-По состоянию на 2026-04-20/21 локальная установка доведена до рабочего чекпоинта:
-
-- `.venv` создан, зависимости установлены
-- PostgreSQL доступен на `127.0.0.1:5433`, Redis на `127.0.0.1:6379`
-- БД `dream_motif` создана, `alembic upgrade head` проходит
-- `GET /health` возвращал `{"status":"ok","index_last_updated":null}`
-- Google Docs auth в коде поддерживает и OAuth env flow, и service-account file через `GOOGLE_SERVICE_ACCOUNT_FILE`
-
-Локальный тестовый чекпоинт:
-
-- подтвержденно проходят `tests/unit/test_config.py` (`8 passed`) и `tests/unit/test_gdocs_client.py` (`7 passed`)
-- `.venv/bin/pytest --collect-only -q` теперь успешно собирает `295` тестов
-
-Следующий практический шаг:
-
-- задать реальный `GOOGLE_DOC_ID`
-- проверить живой `GDocsClient.fetch_document()`
-- после живой проверки Google Docs перейти к полному `pytest` прогону внутри `.venv`
+CI выполняет Ruff, полный pytest suite с disposable PostgreSQL/pgvector, существующий seeded
+database retrieval eval и отдельный privacy-safe public replay. Placeholder credentials в CI не
+дают доступ к Google Docs, Telegram или model providers. Поэтому зелёный CI подтверждает
+детерминированные code/eval contracts, но не live integrations или operator outcomes.
 
 ---
 
@@ -213,6 +221,8 @@ docker compose up
 |---|---|
 | [**Гайд пользователя (RU)**](docs/USER_GUIDE_RU.md) | Что умеет бот и как им пользоваться |
 | [**Phase 12 Release Notes**](docs/PHASE12_RELEASE_NOTES.md) | UX-исправления по итогам первого теста |
+| [Public fixture data card](evals/privacy_safe_retrieval_v1/DATA_CARD.md) | Privacy и scope публичного retrieval/citation replay |
+| [Retrieval Evaluation](docs/retrieval_eval.md) | Исторические и публичные retrieval-eval boundaries |
 | [Architecture](docs/ARCHITECTURE.md) | Форма системы, границы выполнения |
 | [Feature Spec](docs/spec.md) | Scope backend и интерфейса |
 | [Dream Memory Map](docs/DREAM_MEMORY_MAP.md) | Phase 26 Telegram mini app / motif graph product spec |

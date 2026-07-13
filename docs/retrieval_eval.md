@@ -41,9 +41,9 @@ A passing answer-quality check with declining retrieval metrics is a warning sig
 
 ---
 
-Version: 2
-Last updated: 2026-05-09
-Changed by: WS-22.3 — Test 8 fish/manual Google Doc sync regression
+Version: 3
+Last updated: 2026-07-13
+Changed by: Portfolio audit — public privacy-safe retrieval/citation replay
 
 ---
 
@@ -59,6 +59,27 @@ Changed by: WS-22.3 — Test 8 fish/manual Google Doc sync regression
 - Estimated corpus size: 20–200 entries
 - Ownership model: single-user archive
 - Index readiness: 20 seeded dream entries indexed for the synthetic baseline
+
+---
+
+## Public privacy-safe retrieval/citation replay
+
+Eval Source: `python3 scripts/eval_public_fixture.py --check
+reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json`, verified
+2026-07-13.
+
+The public replay is separate from the private single-operator archive and from the historical
+database-backed baseline below. It uses six handcrafted synthetic documents and eight cases.
+Every citation must reference a retrieved synthetic source and match an exact character slice.
+Input SHA-256 addresses, per-case traces, thresholds, metrics, and gates are stored in the
+[tracked report](../reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json);
+construction and privacy limits are in the
+[data card](../evals/privacy_safe_retrieval_v1/DATA_CARD.md).
+
+All gates pass on this bounded fixture: hit@1, hit@3, MRR, expected-source recall,
+citation-source precision, citation exactness, citation query support, and no-answer accuracy are
+1.0. These are fixture results, not claims about live hybrid embeddings, the private corpus,
+generated interpretations, clinical validity, external use, or production operation.
 
 ---
 

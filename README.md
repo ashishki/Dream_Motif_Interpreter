@@ -33,6 +33,15 @@ character-offset citations. Все gates этого ограниченного r
 live hybrid retrieval и не оценка интерпретаций. См. [data card](evals/privacy_safe_retrieval_v1/DATA_CARD.md)
 и [content-addressed report](reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json).
 
+## Public contribution boundary
+
+The public maintainer surface accepts only bounded adapter/test defects or
+proposals that can be reproduced with authored-synthetic fixtures. Read the
+[public-fixture privacy policy](docs/PUBLIC_FIXTURE_PRIVACY.md), then use the
+[bounded adapter/test form](https://github.com/ashishki/Dream_Motif_Interpreter/issues/new?template=bounded-adapter-test.yml).
+It is not a request for private archives, Telegram exports, credentials, live
+provider output, psychological interpretation, or a general product roadmap.
+
 ---
 
 ## Возможности
@@ -222,6 +231,7 @@ database retrieval eval и отдельный privacy-safe public replay. Placeh
 | [**Гайд пользователя (RU)**](docs/USER_GUIDE_RU.md) | Что умеет бот и как им пользоваться |
 | [**Phase 12 Release Notes**](docs/PHASE12_RELEASE_NOTES.md) | UX-исправления по итогам первого теста |
 | [Public fixture data card](evals/privacy_safe_retrieval_v1/DATA_CARD.md) | Privacy и scope публичного retrieval/citation replay |
+| [Public fixture privacy policy](docs/PUBLIC_FIXTURE_PRIVACY.md) | Что допустимо в публичных fixtures/issues и как воспроизводить bounded contribution |
 | [Retrieval Evaluation](docs/retrieval_eval.md) | Исторические и публичные retrieval-eval boundaries |
 | [Architecture](docs/ARCHITECTURE.md) | Форма системы, границы выполнения |
 | [Feature Spec](docs/spec.md) | Scope backend и интерфейса |

@@ -1,0 +1,87 @@
+name: Bounded adapter or test proposal
+description: Report or propose one reproducible adapter/test boundary using authored-synthetic fixtures.
+title: "[adapter-test] "
+labels: ["tests"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read `docs/PUBLIC_FIXTURE_PRIVACY.md` first. Do not paste private dreams, Telegram/Google exports, provider prompts or outputs, credentials, voice files, database content, local paths, or lightly redacted source material. This form is not a general feature roadmap.
+  - type: input
+    id: revision
+    attributes:
+      label: Exact repository revision
+      description: Full 40-character commit SHA, or annotated tag plus its peeled commit.
+    validations:
+      required: true
+  - type: dropdown
+    id: contribution_type
+    attributes:
+      label: Bounded contribution type
+      options:
+        - Adapter-contract defect with fake transport
+        - Bounded adapter proposal with fake transport
+        - Retrieval or citation regression
+        - Parser or ingestion regression
+        - Privacy or evidence-verifier regression
+        - Synthetic fixture/data-card correction
+        - Documentation correction
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Smallest contract and observed defect
+      description: State inputs, outputs, configured destination, side effects, expected behavior, and observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Credential-free reproduction
+      description: Use authored-synthetic fixtures and fake transport. Include the exit code.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: fixture_provenance
+    attributes:
+      label: Fixture provenance and privacy review
+      description: Explain how the fixture was written from scratch, which marker/manual checks ran, and why it cannot map to private source material.
+    validations:
+      required: true
+  - type: dropdown
+    id: execution_boundary
+    attributes:
+      label: Furthest boundary actually exercised
+      options:
+        - Static contract or documentation only
+        - Unit test with authored-synthetic fixture
+        - In-memory public retrieval replay
+        - Local disposable database integration
+        - Fake/sandbox provider transport
+        - Live provider/private archive (do not attach data; normally out of public scope)
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Proposed failing-then-passing verification
+      description: Name the test, expected failure before the change, expected pass after it, and any content hashes.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Privacy, safety, and claim checks
+      options:
+        - label: The fixture was authored from scratch and is not a redaction, paraphrase, or transformation of private source material.
+          required: true
+        - label: The report contains no private dream/journal text, Telegram/Google data, prompt/provider output, voice file, credential, database content, precise identifier, or local path.
+          required: true
+        - label: Any adapter destination and side effects are explicit, bounded, disabled by default, and replaced by fake transport in CI.
+          required: true
+        - label: I am not interpreting a synthetic fixture or local test as private-corpus quality, psychological/clinical validity, longitudinal value, external use, or production operation.
+          required: true
+        - label: I understand this surface does not accept generic feature, diagnosis/therapy, private-corpus, Telegram, or hosted-product roadmap requests.
+          required: true

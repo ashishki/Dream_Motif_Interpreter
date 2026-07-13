@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security or privacy report
+    url: https://github.com/ashishki/Dream_Motif_Interpreter/security/advisories/new
+    about: Report an unpatched vulnerability or private-data exposure without posting the sensitive material publicly.

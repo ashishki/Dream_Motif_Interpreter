@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   # ── Install ──────────────────────────────────────────────────────────────
-  # Install all production and dev dependencies from pinned requirement files.
+  # Install all declared production and dev dependencies.
   install:
     name: Install dependencies
     runs-on: ubuntu-latest

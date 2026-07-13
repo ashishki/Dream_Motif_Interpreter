@@ -14,6 +14,10 @@ Base commit: `a3580217a33411a18acf1443287edf64151bcbd2`
 - The repair applies Ruff's formatter and keeps the code behavior unchanged. The workflow also
   uses read-only permissions, non-persisted checkout credentials, current action runtimes,
   concurrency cancellation, and bounded timeouts.
+- The first PR run then exposed two tests coupled to FastAPI's pre-0.139 internal route layout.
+  FastAPI 0.139 represents included routers lazily, so `app.routes` contains wrapper objects while
+  the public OpenAPI paths remain registered. The checks now assert the public OpenAPI contract
+  instead of a framework-private representation.
 
 ## Local verification
 
@@ -24,12 +28,13 @@ private Google Docs, Telegram messages, provider calls, or operator database wer
 |---|---|
 | `ruff check app/ scripts/ tests/` | pass |
 | `ruff format --check app/ scripts/ tests/` | pass; 159 files formatted |
-| `pytest -q --tb=short tests/` | 627 passed, 6 skipped, 1 warning |
+| `pytest -q --tb=short tests/` | 627 passed, 6 skipped, 2 warnings on the latest dependency set |
 | `python scripts/eval.py --task-id CI --no-write-markdown` | pass against disposable PostgreSQL/pgvector |
 | `python scripts/eval_public_fixture.py --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json` | pass; 8 cases |
 
-The single warning is SQLAlchemy schema reflection not recognizing the pgvector `vector` type in
-`tests/integration/test_migrations.py`; it does not fail the migration assertion.
+The warnings are Starlette's transition notice for its legacy `httpx` TestClient compatibility
+layer and SQLAlchemy schema reflection not recognizing the pgvector `vector` type in
+`tests/integration/test_migrations.py`; neither fails a contract assertion.
 
 ## Public evidence boundary
 

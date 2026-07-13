@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security or privacy reporting instructions
+    url: https://github.com/ashishki/Dream_Motif_Interpreter/security/policy
+    about: Use the policy's private email path; do not disclose vulnerabilities or private material publicly.

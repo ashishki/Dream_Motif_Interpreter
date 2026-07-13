@@ -41,6 +41,9 @@ proposals that can be reproduced with authored-synthetic fixtures. Read the
 [bounded adapter/test form](https://github.com/ashishki/Dream_Motif_Interpreter/issues/new?template=bounded-adapter-test.yml).
 It is not a request for private archives, Telegram exports, credentials, live
 provider output, psychological interpretation, or a general product roadmap.
+Suspected vulnerabilities or private-data exposure follow
+[SECURITY.md](SECURITY.md), not the public form.
+
 
 ---
 

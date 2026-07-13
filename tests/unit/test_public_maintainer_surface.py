@@ -12,6 +12,7 @@ def test_public_fixture_and_contribution_boundary_is_explicit() -> None:
         encoding="utf-8"
     )
     config = (ROOT / ".github" / "ISSUE_TEMPLATE" / "config.yml").read_text(encoding="utf-8")
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
 
     assert "template=bounded-adapter-test.yml" in readme
     assert "authored-synthetic fixtures" in readme
@@ -36,3 +37,7 @@ def test_public_fixture_and_contribution_boundary_is_explicit() -> None:
         assert f"id: {field_id}" in form
     assert "not a redaction, paraphrase, or transformation" in form
     assert "blank_issues_enabled: false" in config
+    assert "security/policy" in config
+    assert "security/advisories/new" not in config
+    assert "GitHub private vulnerability reporting is not assumed" in security
+    assert "cannot promise a response or remediation deadline" in " ".join(security.split())

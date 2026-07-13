@@ -1,0 +1,222 @@
+{
+  "configuration": {
+    "min_query_coverage": 0.75,
+    "min_token_overlap": 2,
+    "result_limit": 3,
+    "tie_breaker": "source_id ascending"
+  },
+  "counts": {
+    "answerable_cases": 6,
+    "citations": 7,
+    "no_answer_cases": 2
+  },
+  "evaluator_version": "public-retrieval-citation-v1",
+  "gates": {
+    "citation_exactness": true,
+    "citation_query_support": true,
+    "citation_source_precision": true,
+    "expected_source_recall": true,
+    "hit_at_1": true,
+    "hit_at_3": true,
+    "mrr": true,
+    "no_answer_accuracy": true
+  },
+  "inputs": {
+    "cases": {
+      "path": "evals/privacy_safe_retrieval_v1/cases.jsonl",
+      "records": 8,
+      "sha256": "sha256:b506eb5756c4b525c8a1c2c93fdef209b75a05b6646807f551b18523d69aa928"
+    },
+    "corpus": {
+      "path": "evals/privacy_safe_retrieval_v1/corpus.jsonl",
+      "records": 6,
+      "sha256": "sha256:e92f2925dbe1fa1af305cd1fea328575665b2f93711cab2a0863d168693dd841"
+    },
+    "evaluator": {
+      "path": "scripts/eval_public_fixture.py",
+      "sha256": "sha256:1a787587621801a8a021d4fcc7b79777d31b70c12d80a587ffe6c7ab2c388295"
+    }
+  },
+  "metrics": {
+    "citation_exactness": 1.0,
+    "citation_query_support": 1.0,
+    "citation_source_precision": 1.0,
+    "expected_source_recall": 1.0,
+    "hit_at_1": 1.0,
+    "hit_at_3": 1.0,
+    "mrr": 1.0,
+    "no_answer_accuracy": 1.0
+  },
+  "passed": true,
+  "run_date": "2026-07-13",
+  "schema_version": 1,
+  "scope": "Deterministic lexical replay on public handcrafted synthetic data; does not validate live hybrid embeddings, private-corpus behavior, model output, clinical validity, external use, or production operation.",
+  "traces": [
+    {
+      "case_id": "R01",
+      "citations": [
+        {
+          "end_char": 78,
+          "quote": "A paper moth circles the lantern.",
+          "source_id": "synthetic-001",
+          "start_char": 45
+        }
+      ],
+      "expected_source_ids": [
+        "synthetic-001"
+      ],
+      "kind": "answerable",
+      "query": "cobalt lantern paper moth",
+      "retrieved": [
+        {
+          "query_coverage": 1.0,
+          "score": 4,
+          "source_id": "synthetic-001"
+        }
+      ]
+    },
+    {
+      "case_id": "R02",
+      "citations": [
+        {
+          "end_char": 42,
+          "quote": "A glass footbridge crosses a silver canal.",
+          "source_id": "synthetic-002",
+          "start_char": 0
+        }
+      ],
+      "expected_source_ids": [
+        "synthetic-002"
+      ],
+      "kind": "answerable",
+      "query": "glass footbridge copper keys",
+      "retrieved": [
+        {
+          "query_coverage": 1.0,
+          "score": 4,
+          "source_id": "synthetic-002"
+        }
+      ]
+    },
+    {
+      "case_id": "R03",
+      "citations": [
+        {
+          "end_char": 46,
+          "quote": "A red thread passes through a stone labyrinth.",
+          "source_id": "synthetic-003",
+          "start_char": 0
+        }
+      ],
+      "expected_source_ids": [
+        "synthetic-003"
+      ],
+      "kind": "answerable",
+      "query": "red thread stone labyrinth white compass",
+      "retrieved": [
+        {
+          "query_coverage": 1.0,
+          "score": 6,
+          "source_id": "synthetic-003"
+        }
+      ]
+    },
+    {
+      "case_id": "R04",
+      "citations": [
+        {
+          "end_char": 58,
+          "quote": "A cedar boat carries a blue bell across a quiet reservoir.",
+          "source_id": "synthetic-004",
+          "start_char": 0
+        }
+      ],
+      "expected_source_ids": [
+        "synthetic-004"
+      ],
+      "kind": "answerable",
+      "query": "cedar boat blue bell reservoir",
+      "retrieved": [
+        {
+          "query_coverage": 1.0,
+          "score": 5,
+          "source_id": "synthetic-004"
+        }
+      ]
+    },
+    {
+      "case_id": "R05",
+      "citations": [
+        {
+          "end_char": 62,
+          "quote": "A paper moth rests on a copper key inside an empty greenhouse.",
+          "source_id": "synthetic-005",
+          "start_char": 0
+        }
+      ],
+      "expected_source_ids": [
+        "synthetic-005"
+      ],
+      "kind": "answerable",
+      "query": "paper moth copper key greenhouse",
+      "retrieved": [
+        {
+          "query_coverage": 1.0,
+          "score": 5,
+          "source_id": "synthetic-005"
+        }
+      ]
+    },
+    {
+      "case_id": "R06",
+      "citations": [
+        {
+          "end_char": 78,
+          "quote": "A paper moth circles the lantern.",
+          "source_id": "synthetic-001",
+          "start_char": 45
+        },
+        {
+          "end_char": 62,
+          "quote": "A paper moth rests on a copper key inside an empty greenhouse.",
+          "source_id": "synthetic-005",
+          "start_char": 0
+        }
+      ],
+      "expected_source_ids": [
+        "synthetic-001",
+        "synthetic-005"
+      ],
+      "kind": "answerable",
+      "query": "paper moth",
+      "retrieved": [
+        {
+          "query_coverage": 1.0,
+          "score": 2,
+          "source_id": "synthetic-001"
+        },
+        {
+          "query_coverage": 1.0,
+          "score": 2,
+          "source_id": "synthetic-005"
+        }
+      ]
+    },
+    {
+      "case_id": "N01",
+      "citations": [],
+      "expected_source_ids": [],
+      "kind": "no-answer",
+      "query": "quantum reactor calibration",
+      "retrieved": []
+    },
+    {
+      "case_id": "N02",
+      "citations": [],
+      "expected_source_ids": [],
+      "kind": "no-answer",
+      "query": "clinical diagnosis protocol",
+      "retrieved": []
+    }
+  ]
+}

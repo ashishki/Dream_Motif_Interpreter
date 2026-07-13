@@ -1,0 +1,8 @@
+{"case_id":"R01","expected_source_ids":["synthetic-001"],"kind":"answerable","query":"cobalt lantern paper moth"}
+{"case_id":"R02","expected_source_ids":["synthetic-002"],"kind":"answerable","query":"glass footbridge copper keys"}
+{"case_id":"R03","expected_source_ids":["synthetic-003"],"kind":"answerable","query":"red thread stone labyrinth white compass"}
+{"case_id":"R04","expected_source_ids":["synthetic-004"],"kind":"answerable","query":"cedar boat blue bell reservoir"}
+{"case_id":"R05","expected_source_ids":["synthetic-005"],"kind":"answerable","query":"paper moth copper key greenhouse"}
+{"case_id":"R06","expected_source_ids":["synthetic-001","synthetic-005"],"kind":"answerable","query":"paper moth"}
+{"case_id":"N01","expected_source_ids":[],"kind":"no-answer","query":"quantum reactor calibration"}
+{"case_id":"N02","expected_source_ids":[],"kind":"no-answer","query":"clinical diagnosis protocol"}

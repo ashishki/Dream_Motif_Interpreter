@@ -482,9 +482,7 @@ def test_motifs_router_registered_in_app() -> None:
     main_module = importlib.import_module("app.main")
     app = main_module.app
 
-    motif_paths = [
-        route.path for route in app.routes if hasattr(route, "path") and "motifs" in route.path
-    ]
+    motif_paths = [path for path in app.openapi()["paths"] if "motifs" in path]
     assert len(motif_paths) >= 3, (
         f"Expected at least 3 motif routes registered, found: {motif_paths}"
     )

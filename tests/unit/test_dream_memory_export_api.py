@@ -366,7 +366,7 @@ def test_dream_memory_export_router_registered_in_app() -> None:
     main_module = importlib.import_module("app.main")
     app = main_module.app
 
-    paths = [route.path for route in app.routes if hasattr(route, "path")]
+    paths = set(app.openapi()["paths"])
     assert "/dream-memory/mini-app" in paths
     assert "/dream-memory/state" in paths
     assert "/dream-memory/export" in paths

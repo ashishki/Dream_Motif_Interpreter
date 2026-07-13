@@ -897,7 +897,11 @@ def _visible_dream_reference_ids(reply_text: str, refs: Any) -> list[uuid.UUID]:
 
 def _dream_reference_visible(normalized_reply: str, *, title: str, date_value: str) -> bool:
     title_normalized = _normalize_visible_match_text(title)
-    if title_normalized and title_normalized != "без названия" and title_normalized in normalized_reply:
+    if (
+        title_normalized
+        and title_normalized != "без названия"
+        and title_normalized in normalized_reply
+    ):
         return True
     return any(
         _normalize_visible_match_text(variant) in normalized_reply

@@ -36,6 +36,9 @@ def test_public_fixture_and_contribution_boundary_is_explicit() -> None:
     ):
         assert f"id: {field_id}" in form
     assert "not a redaction, paraphrase, or transformation" in form
+    assert "Live provider/private archive" not in form
+    assert "email-first private route" in policy
+    assert "GitHub private vulnerability reporting is not assumed" in policy
     assert "blank_issues_enabled: false" in config
     assert "security/policy" in config
     assert "security/advisories/new" not in config

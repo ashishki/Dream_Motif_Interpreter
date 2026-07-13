@@ -60,7 +60,6 @@ body:
         - In-memory public retrieval replay
         - Local disposable database integration
         - Fake/sandbox provider transport
-        - Live provider/private archive (do not attach data; normally out of public scope)
     validations:
       required: true
   - type: textarea

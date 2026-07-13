@@ -29,8 +29,11 @@ a public evidence pack:
 
 If private material or a credential is exposed, stop publication. Remove it
 from the proposed change, rotate or revoke the credential through its provider,
-and use the private security-advisory path. A later deletion from Git does not
-revoke a credential or erase copies already fetched.
+and follow the email-first private route in [SECURITY.md](../SECURITY.md).
+GitHub private vulnerability reporting is not assumed to be enabled; use an
+advisory only when the repository Security page visibly offers that option. A
+later deletion from Git does not revoke a credential or erase copies already
+fetched.
 
 ## Allowed public contribution shapes
 

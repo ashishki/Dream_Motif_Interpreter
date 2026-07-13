@@ -496,7 +496,9 @@ class AssistantFacade:
                 self._session_factory,
             )
         except Exception:
-            logger.warning("Dream analysis failed after indexing", dream_id=str(dream.id), exc_info=True)
+            logger.warning(
+                "Dream analysis failed after indexing", dream_id=str(dream.id), exc_info=True
+            )
 
         if get_settings().MOTIF_INDUCTION_ENABLED:
             try:
@@ -532,7 +534,9 @@ class AssistantFacade:
                 await session.execute(delete(DreamEntry).where(DreamEntry.id == dream_id))
                 await session.commit()
         except Exception:
-            logger.warning("Failed to discard unindexed dream", dream_id=str(dream_id), exc_info=True)
+            logger.warning(
+                "Failed to discard unindexed dream", dream_id=str(dream_id), exc_info=True
+            )
 
     async def write_dream_to_google_doc(
         self,

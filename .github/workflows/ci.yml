@@ -10,17 +10,27 @@ on:
   pull_request:
     branches: ["**"]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ── Install ──────────────────────────────────────────────────────────────
   # Install all production and dev dependencies from pinned requirement files.
   install:
     name: Install dependencies
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -33,12 +43,15 @@ jobs:
   ruff-check:
     name: Ruff lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: install
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -47,19 +60,22 @@ jobs:
         run: pip install -r requirements-dev.txt -e .
 
       - name: Run ruff check
-        run: ruff check app/ tests/
+        run: ruff check app/ scripts/ tests/
 
   # ── Ruff format ───────────────────────────────────────────────────────────
   # Format check only — does not auto-format. Developers run `ruff format` locally.
   ruff-format:
     name: Ruff format check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: install
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -68,13 +84,14 @@ jobs:
         run: pip install -r requirements-dev.txt -e .
 
       - name: Run ruff format check
-        run: ruff format --check app/ tests/
+        run: ruff format --check app/ scripts/ tests/
 
   # ── Pytest ────────────────────────────────────────────────────────────────
   # Runs unit and integration tests. Integration tests require PostgreSQL with pgvector.
   pytest:
     name: Pytest
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [ruff-check, ruff-format]
 
     services:
@@ -93,10 +110,12 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip

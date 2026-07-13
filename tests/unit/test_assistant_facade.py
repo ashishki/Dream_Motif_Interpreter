@@ -800,8 +800,7 @@ async def test_create_dream_extracts_labeled_date_from_old_dream_text() -> None:
         patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
     ):
         result = await facade.create_dream(
-            "Запиши старый сон. Дата: 05.06.25. "
-            "Мне приснилось, что я возвращаюсь к старому мосту.",
+            "Запиши старый сон. Дата: 05.06.25. Мне приснилось, что я возвращаюсь к старому мосту.",
             chat_id=42,
         )
 

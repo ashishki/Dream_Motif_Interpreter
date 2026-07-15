@@ -25,6 +25,7 @@ from app.assistant.facade import (
     _resolve_relative_dream_date,
     _resolve_dream_title,
 )
+from app.assistant.session import save_recent_dream_set
 from app.services.gdocs_client import GDocsWriteError
 from app.models.write_status import DreamWriteStatus
 from app.retrieval.query import EvidenceBlock, FragmentMatch, InsufficientEvidence
@@ -811,6 +812,61 @@ async def test_create_dream_extracts_labeled_date_from_old_dream_text() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_dream_removes_technical_relative_date_phrase_from_text() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="Мост")),
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 7, 12)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        result = await facade.create_dream(
+            "Запиши сон: он мне приснился вчера. Я шел по мосту над морем.",
+            chat_id=42,
+        )
+
+    added = session.add.call_args[0][0]
+    assert result.date == "2026-07-11"
+    assert added.raw_text == "Я шел по мосту над морем."
+
+
+@pytest.mark.asyncio
+async def test_create_dream_extracts_title_after_name_it_command_and_removes_command() -> None:
+    session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
+    analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
+    index_dream_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        analysis_service=analysis_service,
+        index_dream_callable=index_dream_callable,
+        title_llm_client=SimpleNamespace(complete=AsyncMock(return_value="ignored")),
+    )
+
+    with (
+        patch("app.assistant.facade._application_today", return_value=date(2026, 7, 12)),
+        patch.object(facade, "write_dream_to_google_doc", AsyncMock(return_value=(True, "Сны"))),
+    ):
+        result = await facade.create_dream(
+            "Запиши сон: назови его Рыба в воде, мне приснилось прозрачное озеро.",
+            chat_id=42,
+        )
+
+    added = session.add.call_args[0][0]
+    assert result.title == "Рыба в воде"
+    assert added.title == "Рыба в воде"
+    assert added.raw_text == "мне приснилось прозрачное озеро."
+
+
+@pytest.mark.asyncio
 async def test_create_dream_generated_title_ignores_record_command_words() -> None:
     session = _FakeSession(execute_results=[_FakeResult(scalar=None)])
     analysis_service = SimpleNamespace(analyse_dream_with_session_factory=AsyncMock())
@@ -975,6 +1031,35 @@ async def test_add_dream_note_without_id_targets_latest_archive_dream() -> None:
     note = session.add.call_args[0][0]
     assert note.dream_id == dream.id
     index_note_callable.assert_awaited_once_with(note.id)
+
+
+@pytest.mark.asyncio
+async def test_add_dream_note_without_id_targets_single_recent_search_result() -> None:
+    chat_id = 909001
+    dream = SimpleNamespace(
+        id=uuid4(),
+        source_doc_id="doc-123",
+        date=date(2026, 5, 3),
+        title="Specific dream",
+        created_at=datetime(2026, 5, 4, tzinfo=timezone.utc),
+    )
+    save_recent_dream_set(chat_id, query="specific", dream_ids=[str(dream.id)])
+    session = _FakeSession(get_result=dream)
+    index_note_callable = AsyncMock(return_value=1)
+    facade = AssistantFacade(
+        session_factory=_FakeSessionFactory(session),
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        index_note_callable=index_note_callable,
+    )
+
+    with patch("app.assistant.facade.GDocsClient") as mock_client_cls:
+        mock_client_cls.return_value.insert_text_under_heading = MagicMock(return_value=True)
+        success, _message = await facade.add_dream_note("важная заметка", chat_id=chat_id)
+
+    assert success is True
+    note = session.add.call_args[0][0]
+    assert note.dream_id == dream.id
+    assert session.executed_statements == []
 
 
 @pytest.mark.asyncio

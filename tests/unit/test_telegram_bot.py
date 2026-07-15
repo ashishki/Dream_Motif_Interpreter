@@ -271,6 +271,43 @@ async def test_text_message_handler_filters_full_text_buttons_to_visible_dreams(
     ]
 
 
+@pytest.mark.asyncio
+async def test_text_message_handler_limits_full_text_buttons_to_numbered_visible_count() -> None:
+    dream_ids = [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+        "44444444-4444-4444-8444-444444444444",
+        "55555555-5555-4555-8555-555555555555",
+    ]
+    update, message = _make_text_message_update("найди конкретный сон", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(
+            return_value=ChatResult(
+                "1. Нашёл один подходящий сон: описание без точного заголовка.",
+                ["search_dreams"],
+                dream_ids=dream_ids,
+                dream_refs=[
+                    DreamReference(dream_ids[0], date="2026-05-01", title="Офис"),
+                    DreamReference(dream_ids[1], date="2026-05-02", title="Руководитель"),
+                    DreamReference(dream_ids[2], date="2026-05-03", title="Документы"),
+                    DreamReference(dream_ids[3], date="2026-05-04", title="Лестница"),
+                    DreamReference(dream_ids[4], date="2026-05-05", title="Поезд"),
+                ],
+            )
+        ),
+    ):
+        await text_message_handler(update, context)
+
+    keyboard = message.reply_text.await_args.kwargs["reply_markup"].inline_keyboard
+    assert len(keyboard) == 1
+    assert keyboard[0][0].callback_data == f"{FULL_DREAM_CALLBACK_PREFIX}{dream_ids[0]}"
+
+
 def test_voice_processing_ack_is_russian() -> None:
     assert VOICE_PROCESSING_ACK == "Обрабатываю голосовое сообщение..."
 

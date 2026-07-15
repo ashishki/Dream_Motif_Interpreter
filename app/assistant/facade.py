@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import re
 import uuid
@@ -12,6 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.assistant.session import load_recent_dream_set
 from app.llm.client import AnthropicLLMClient, LLMClientError
 from app.models.dream import DreamEntry
 from app.models.motif import MotifInduction
@@ -731,12 +733,18 @@ class AssistantFacade:
             return False, "Текст заметки пуст."
 
         tracer = get_tracer(__name__)
+        target_dream_id = dream_id
+        if target_dream_id is None and chat_id is not None:
+            recent = load_recent_dream_set(chat_id)
+            if recent is not None and len(recent.dream_ids) == 1:
+                with contextlib.suppress(ValueError):
+                    target_dream_id = uuid.UUID(recent.dream_ids[0])
 
         async with self._session_factory() as session:
             with tracer.start_as_current_span("assistant.add_dream_note.resolve_dream"):
                 dream = await self._resolve_note_target_dream(
                     session,
-                    dream_id=dream_id,
+                    dream_id=target_dream_id,
                     chat_id=chat_id,
                 )
             if dream is None:
@@ -1201,13 +1209,28 @@ _DATE_PREFIX_RE = re.compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")
 _WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
 _INLINE_TITLE_PATTERNS = (
     re.compile(
-        r"(?is)(?:^|[\n\r.!?]\s*)(?:название|title)\s*[:\-–—]\s*"
+        r"(?is)(?:^|[\n\r.!?:;–—-]\s*)(?:название|title)\s*[:\-–—]\s*"
         r"[\"«“]?(?P<title>[^.\n\r!?\"»”]+)[\"»”]?[.!?]?\s*"
     ),
     re.compile(
-        r"(?is)(?:^|[\n\r.!?]\s*)(?:назови\s+(?:его|сон)|с\s+названием)\s+"
-        r"[\"«“]?(?P<title>[^.\n\r!?\"»”]+)[\"»”]?[.!?]?\s*"
+        r"(?is)(?:^|[\n\r.!?:;–—-]\s*)(?:назови\s+(?:его|сон)|с\s+названием)\s+"
+        r"[\"«“]?(?P<title>.+?)[\"»”]?"
+        r"(?=(?:[.!?\n\r]|,\s*(?:мне|я|во\s+сне|потом|там)\b|"
+        r"\s+(?:мне\s+приснил|мне\s+снил|во\s+сне|я\s+)|$))"
+        r"[\s,.;:!?–—-]*"
     ),
+)
+_TECHNICAL_RELATIVE_DATE_RE = re.compile(
+    r"(?is)(?:^|[\n\r.!?]\s*)"
+    r"(?:"
+    r"(?:он|она|оно|они|сон)\s+мне\s+"
+    r"(?:приснил(?:ся|ась|ось|ись)|снил(?:ся|ась|ось|ись))"
+    r"|"
+    r"(?:он|она|оно|они|сон)\s+"
+    r"(?:приснил(?:ся|ась|ось|ись)|снил(?:ся|ась|ось|ись))"
+    r")\s+"
+    r"(?P<marker>сегодня|вчера|позавчера)"
+    r"[\s:;,.!?–—-]*"
 )
 _DREAM_RECORD_COMMAND_PREFIX_RE = re.compile(
     r"(?is)^\s*(?:пожалуйста[,\s]+)?"
@@ -1399,7 +1422,9 @@ def _prepare_dream_recording_input(
         break
 
     normalized_text = _DREAM_RECORD_COMMAND_PREFIX_RE.sub("", normalized_text, count=1)
-    dream_date_hint = _resolve_leading_date_directive(normalized_text)
+    dream_date_hint = _resolve_technical_relative_date_directive(normalized_text)
+    normalized_text = _TECHNICAL_RELATIVE_DATE_RE.sub(" ", normalized_text)
+    dream_date_hint = dream_date_hint or _resolve_leading_date_directive(normalized_text)
     normalized_text = _LEADING_DATE_DIRECTIVE_RE.sub("", normalized_text, count=1)
     normalized_text = _normalize_recording_text(normalized_text)
     prepared_title = extracted_title or (title.strip() if title and title.strip() else None)
@@ -1415,6 +1440,13 @@ def _resolve_leading_date_directive(value: str) -> date | None:
     if match is None:
         return None
     return _resolve_absolute_dream_date(match.group("date"))
+
+
+def _resolve_technical_relative_date_directive(value: str) -> date | None:
+    match = _TECHNICAL_RELATIVE_DATE_RE.search(value)
+    if match is None:
+        return None
+    return _resolve_relative_dream_date(match.group("marker"))
 
 
 def _clean_inline_title(value: str) -> str | None:

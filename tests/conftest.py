@@ -56,6 +56,15 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _clear_ephemeral_assistant_state() -> None:
+    from app.assistant import session as session_module
+
+    session_module._recent_dream_sets.clear()
+    yield
+    session_module._recent_dream_sets.clear()
+
+
 # ── DB engine fixture for integration tests ─────────────────────────────────
 
 

@@ -855,8 +855,18 @@ def _full_text_reply_markup(
 ) -> InlineKeyboardMarkup | None:
     dream_ids = _extract_dream_ids_from_text(reply_text)
     if not dream_ids:
-        dream_ids = _visible_dream_reference_ids(reply_text, getattr(result, "dream_refs", []))
-    if not dream_ids:
+        refs = getattr(result, "dream_refs", [])
+        dream_ids = _visible_dream_reference_ids(reply_text, refs)
+        if not dream_ids and refs:
+            dream_ids = _coerce_dream_ids(
+                [
+                    str(getattr(ref, "dream_id", "") or "")
+                    for ref in refs[: _visible_numbered_result_count(reply_text)]
+                ]
+            )
+        if not dream_ids and refs:
+            return None
+    if not dream_ids and not getattr(result, "dream_refs", []):
         dream_ids = _coerce_dream_ids(getattr(result, "dream_ids", []))
     if not dream_ids and chat_id is not None and _should_offer_recent_full_text_buttons(result):
         recent = load_recent_dream_set(chat_id)
@@ -893,6 +903,10 @@ def _visible_dream_reference_ids(reply_text: str, refs: Any) -> list[uuid.UUID]:
         if _dream_reference_visible(normalized_reply, title=title, date_value=date_value):
             visible_ids.append(dream_id)
     return _coerce_dream_ids(visible_ids)
+
+
+def _visible_numbered_result_count(reply_text: str) -> int:
+    return len(re.findall(r"(?m)^\s*\d+[\.)]\s+\S", reply_text))
 
 
 def _dream_reference_visible(normalized_reply: str, *, title: str, date_value: str) -> bool:

@@ -14,7 +14,7 @@ from app.api.dreams import SyncJobState, get_and_delete_sync_notify, write_sync_
 from app.models.dream import DreamChunk, DreamEntry
 from app.models.note import DreamNote
 from app.models.theme import DreamTheme
-from app.retrieval.ingestion import fetch_source_documents, process_source_document
+from app.retrieval.ingestion import ValidatedDreamEntry, fetch_source_documents, process_source_document
 from app.retrieval.types import FetchedSourceDocument, SourceConnector
 from app.services.analysis import AnalysisService
 from app.services.gdocs_client import GDocsAuthError, GDocsClient
@@ -300,13 +300,24 @@ async def _store_entries(
 
     async with session_factory() as session:
         for entry in pipeline.validated_entries:
-            dream_id = await _load_existing_dream_id(
+            existing_dream = await _load_existing_dream(
                 session=session,
                 source_doc_id=fetched_document.external_id,
                 content_hash=entry.content_hash,
+                allow_cross_document_lookup=True,
             )
-            if dream_id is not None:
-                dream_ids.append(dream_id)
+            if existing_dream is not None:
+                _apply_google_doc_metadata(existing_dream, entry)
+                dream_ids.append(existing_dream.id)
+                for note_text in entry.notes:
+                    note_id = await _upsert_dream_note(
+                        session=session,
+                        dream_id=existing_dream.id,
+                        note_text=note_text,
+                        source="google_doc",
+                    )
+                    if note_id is not None:
+                        note_ids.append(note_id)
                 continue
 
             statement = (
@@ -330,12 +341,15 @@ async def _store_entries(
             dream_id = result.scalar_one_or_none()
             inserted = dream_id is not None
             if dream_id is None:
-                dream_id = await _load_existing_dream_id(
+                existing_dream = await _load_existing_dream(
                     session=session,
                     source_doc_id=fetched_document.external_id,
                     content_hash=entry.content_hash,
                     allow_cross_document_lookup=True,
                 )
+                if existing_dream is not None:
+                    _apply_google_doc_metadata(existing_dream, entry)
+                    dream_id = existing_dream.id
             if dream_id is None:
                 raise ValueError("Stored dream entry could not be resolved after upsert")
 
@@ -358,31 +372,41 @@ async def _store_entries(
     return StoredDreamEntries(new_entries=inserted_rows, dream_ids=dream_ids, note_ids=note_ids)
 
 
-async def _load_existing_dream_id(
+async def _load_existing_dream(
     *,
     session: AsyncSession,
     source_doc_id: str,
     content_hash: str,
     allow_cross_document_lookup: bool = False,
-) -> uuid.UUID | None:
+) -> DreamEntry | None:
     tracer = get_tracer(__name__)
 
-    with tracer.start_as_current_span("db.query.worker_ingest.load_existing_dream_id") as span:
+    with tracer.start_as_current_span("db.query.worker_ingest.load_existing_dream") as span:
         span.set_attribute("source_doc_id", source_doc_id)
-        existing_dream_id = await session.scalar(
-            select(DreamEntry.id).where(
+        existing_dream = await session.scalar(
+            select(DreamEntry).where(
                 DreamEntry.source_doc_id == source_doc_id,
                 DreamEntry.content_hash == content_hash,
             )
         )
 
-    if existing_dream_id is not None or not allow_cross_document_lookup:
-        return existing_dream_id
+    if existing_dream is not None or not allow_cross_document_lookup:
+        return existing_dream
 
-    with tracer.start_as_current_span("db.query.worker_ingest.load_existing_dream_id_by_hash"):
+    with tracer.start_as_current_span("db.query.worker_ingest.load_existing_dream_by_hash"):
         return await session.scalar(
-            select(DreamEntry.id).where(DreamEntry.content_hash == content_hash)
+            select(DreamEntry).where(DreamEntry.content_hash == content_hash)
         )
+
+
+def _apply_google_doc_metadata(dream: DreamEntry, entry: ValidatedDreamEntry) -> None:
+    """Use Google Doc metadata as the latest heading/date for already-known text."""
+    dream.source_doc_id = entry.source_doc_id
+    dream.date = entry.date
+    dream.title = entry.title
+    dream.segmentation_confidence = entry.segmentation_confidence
+    dream.parser_profile = entry.applied_profile
+    dream.parse_warnings = list(entry.parse_warnings)
 
 
 async def _upsert_dream_note(
@@ -403,7 +427,7 @@ async def _upsert_dream_note(
         )
     )
     if existing_id is not None:
-        return existing_id
+        return None
 
     note = DreamNote(
         id=uuid.uuid4(),

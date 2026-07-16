@@ -89,6 +89,7 @@ Suspected vulnerabilities or private-data exposure follow
 - Parser profiles: `default`, `dated_entries`, `heading_based` с авто-определением и явным override
 - Канонический staged pipeline: source connector → normalized document → parser profile → dream entry candidates → validated dream entries → embeddings/indexing
 - Идемпотентность по `external_id + content_hash`; embedding не запускается для не прошедших валидацию документов
+- Ручные правки заголовка/даты в Google Docs обновляют существующую запись по `content_hash`, без дублей
 - Operator controls: явное назначение профиля на источник/клиента через env config; low-confidence warnings; folder intake
 
 ### Цикл обратной связи (Phase 11)

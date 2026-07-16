@@ -213,11 +213,16 @@ assistant tool routing.
 5. Confirm with `да` or the `Да, добавить` button. Verify one note is added to each selected
    dream and the bot reports success or partial Google Doc insertion honestly.
 6. Repeat with `Добавь заметку ко всем найденным: ...`; verify all displayed dreams are selected.
+7. Record a dream through Telegram voice or text, then manually rename its heading in Google Doc
+   without changing the body text.
+8. Run or wait for sync. Verify the existing archive row is updated with the new Google Doc title
+   and date, no duplicate row is created, and `search_dreams_by_title` can find the new title.
+9. Add a note to that dream and verify Google Doc insertion targets the renamed heading.
 
 Automated regression slice:
 
 ```bash
-.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_assistant_session.py -q
+.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_assistant_session.py tests/integration/test_ingestion_pipeline.py -q
 ```
 
 ## 10. Common Failure Modes

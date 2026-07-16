@@ -159,6 +159,13 @@ not ask the user for UUIDs and must not claim success before the facade returns 
 If all notes are stored in the archive but Google Doc insertion is partial, the bot must say that
 plainly and identify that the remaining issue is the document heading match.
 
+### Manual Google Doc title edits
+
+When Google Doc sync sees a dream body whose `content_hash` already exists, it must not create a
+duplicate row. Instead, it updates mutable document metadata on the existing dream: source document
+ID, date, title, parser profile, and parse warnings. This lets a user rename headings manually in
+Google Docs and have later title search and note insertion use the renamed heading after sync.
+
 Preconditions before enabling the still-deferred curation tools above:
 1. Design a two-phase confirmation UX (intent → explicit confirmation message → execute).
 2. Ensure all mutation calls produce an `AnnotationVersion` audit record.

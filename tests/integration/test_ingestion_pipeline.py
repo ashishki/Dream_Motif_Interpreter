@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import uuid
 from pathlib import Path
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
+from app.assistant.facade import AssistantFacade
 from app.models.dream import DreamChunk, DreamEntry
 from app.models.note import DreamNote
 from app.retrieval.ingestion import DreamEntryValidationError
@@ -287,6 +289,64 @@ async def test_reingest_is_idempotent_under_normalized_pipeline(
     assert second_new_entries == 0
     assert entry_count == 1
     assert chunk_count == 1
+
+
+@pytest.mark.asyncio
+async def test_reingest_updates_existing_telegram_dream_title_from_google_doc(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    raw_text = "I walked through a hallway with red doors."
+    content_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+    async with migrated_session_factory() as session:
+        session.add(
+            DreamEntry(
+                id=uuid.uuid4(),
+                source_doc_id="telegram:42",
+                date=None,
+                title="Old voice title",
+                raw_text=raw_text,
+                word_count=len(raw_text.split()),
+                content_hash=content_hash,
+                segmentation_confidence="high",
+                parser_profile="telegram",
+                parse_warnings=[],
+            )
+        )
+        await session.commit()
+
+    worker_ctx = _worker_ctx(
+        migrated_session_factory,
+        paragraphs=[
+            "2026-05-01 - New Google Doc title",
+            raw_text,
+        ],
+    )
+
+    new_entries = await ingest_document(
+        worker_ctx,
+        job_id=uuid.uuid4(),
+        doc_id="doc-title-update",
+    )
+
+    facade = AssistantFacade(
+        session_factory=migrated_session_factory,
+        rag_query_service=RagQueryService(session_factory=migrated_session_factory),
+    )
+    title_matches = await facade.search_dreams_by_title("New Google Doc title")
+
+    async with migrated_session_factory() as session:
+        entry_count = await session.scalar(select(func.count()).select_from(DreamEntry))
+        stored_entry = await session.scalar(
+            select(DreamEntry).where(DreamEntry.content_hash == content_hash)
+        )
+
+    assert stored_entry is not None
+    assert new_entries == 0
+    assert entry_count == 1
+    assert stored_entry.source_doc_id == "doc-title-update"
+    assert stored_entry.date.isoformat() == "2026-05-01"
+    assert stored_entry.title == "New Google Doc title"
+    assert [match.dream_id for match in title_matches] == [stored_entry.id]
 
 
 @pytest.mark.asyncio

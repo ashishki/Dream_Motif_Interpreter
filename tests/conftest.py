@@ -61,8 +61,12 @@ def _clear_ephemeral_assistant_state() -> None:
     from app.assistant import session as session_module
 
     session_module._recent_dream_sets.clear()
+    session_module._displayed_dream_sets.clear()
+    session_module._pending_batch_dream_notes.clear()
     yield
     session_module._recent_dream_sets.clear()
+    session_module._displayed_dream_sets.clear()
+    session_module._pending_batch_dream_notes.clear()
 
 
 # ── DB engine fixture for integration tests ─────────────────────────────────

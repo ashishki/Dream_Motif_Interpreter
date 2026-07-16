@@ -18,13 +18,20 @@ from app.assistant.chat import ChatResult, handle_chat_with_metadata
 from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.facade import _prepare_dream_recording_input
 from app.assistant.session import (
+    DisplayedDreamRef,
+    clear_pending_batch_dream_note,
     clear_pending_interpretation_request,
     clear_pending_dream_draft,
+    load_displayed_dream_set,
     load_recent_dream_set,
+    load_pending_batch_dream_note,
     load_pending_interpretation_request,
     load_pending_dream_draft,
+    pop_pending_batch_dream_note,
     pop_pending_interpretation_request,
     pop_pending_dream_draft,
+    save_displayed_dream_set,
+    save_pending_batch_dream_note,
     save_pending_dream_draft,
 )
 from app.assistant.tools import _has_natural_dream_opening, _is_explicit_create_request
@@ -44,6 +51,7 @@ MINI_APP_OPEN_MESSAGE = "Dream Memory Map"
 MINI_APP_OPEN_BUTTON = "Открыть карту"
 MINI_APP_UNCONFIGURED_MESSAGE = "Dream Memory Map ещё не настроен."
 FULL_DREAM_CALLBACK_PREFIX = "dream_full:"
+BATCH_NOTE_CALLBACK_PREFIX = "batch_note:"
 VOICE_TRANSCRIPT_PROCESSING = (
     "Расшифровка голосового сообщения ещё выполняется. Повторите команду после завершения."
 )
@@ -86,6 +94,25 @@ _DREAM_ID_FIELD_RE = re.compile(
     r"(?P<dream_id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b"
 )
+_BATCH_NOTE_INTENT_RE = re.compile(
+    r"(?is)\b(?:добавь|добавить|оставь|оставить|запиши|записать|сохрани|сохранить)\b"
+    r".{0,80}\b(?:заметк|комментар)"
+)
+_NUMBER_RANGE_RE = re.compile(r"\b(?P<start>\d{1,2})\s*[-–—]\s*(?P<end>\d{1,2})\b")
+_NUMBER_RE = re.compile(r"\b\d{1,2}\b")
+_QUOTED_TEXT_RE = re.compile(r"[\"«“](?P<text>.+?)[\"»”]")
+_ORDINAL_INDEXES = {
+    "перв": 1,
+    "втор": 2,
+    "трет": 3,
+    "четверт": 4,
+    "пят": 5,
+    "шест": 6,
+    "седьм": 7,
+    "восьм": 8,
+    "девят": 9,
+    "десят": 10,
+}
 
 
 async def chat_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -149,6 +176,38 @@ async def dream_full_text_callback_handler(
         return
 
     await _reply_text(query.message, _format_dream_full_text_reply(detail))
+
+
+async def batch_note_callback_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+    data = str(query.data or "")
+    if not data.startswith(BATCH_NOTE_CALLBACK_PREFIX):
+        return
+
+    with contextlib.suppress(Exception):
+        await query.answer()
+
+    message = query.message
+    chat = update.effective_chat
+    if message is None or chat is None:
+        return
+
+    action = data.removeprefix(BATCH_NOTE_CALLBACK_PREFIX)
+    if action == "cancel":
+        clear_pending_batch_dream_note(chat.id)
+        await message.reply_text("Хорошо, не добавляю заметку.")
+        return
+    if action != "confirm":
+        await message.reply_text("Не смог распознать действие с заметкой.")
+        return
+
+    reply = await _apply_pending_batch_note(chat.id, _get_facade(context))
+    await message.reply_text(reply)
 
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -249,6 +308,27 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             bot_msg_ids.pop(chat_key, None)
         return
 
+    if chat_id is not None and await _handle_pending_batch_note_confirmation(
+        message,
+        stripped_text,
+        chat_id=chat_id,
+        facade=_get_facade(context),
+    ):
+        if chat_key is not None:
+            pending_feedback.pop(chat_key, None)
+            bot_msg_ids.pop(chat_key, None)
+        return
+
+    if chat_id is not None and await _try_start_batch_note_confirmation(
+        message,
+        stripped_text,
+        chat_id=chat_id,
+    ):
+        if chat_key is not None:
+            pending_feedback.pop(chat_key, None)
+            bot_msg_ids.pop(chat_key, None)
+        return
+
     direct_note_text = _extract_direct_note_text(stripped_text)
     if chat_id is not None and direct_note_text is not None:
         if chat_key is not None:
@@ -335,6 +415,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_text = MISSING_DREAM_TEXT_REPLY
     reply_markup = _full_text_reply_markup(reply_text, result, chat_id=chat_id)
     sent_message = await _reply_text(message, reply_text, reply_markup=reply_markup)
+    if chat_id is not None:
+        _remember_displayed_dreams(chat_id, reply_text, result)
 
     if chat_id is not None:
         _maybe_store_pending_dream(
@@ -700,6 +782,225 @@ async def _handle_pending_interpretation_confirmation(
     return True
 
 
+async def _handle_pending_batch_note_confirmation(
+    message: Any,
+    text: str,
+    *,
+    chat_id: int,
+    facade: AssistantFacade,
+) -> bool:
+    normalized = _normalize_confirmation_text(text)
+    if not normalized:
+        return False
+
+    if _is_negative_confirmation(normalized):
+        if load_pending_batch_dream_note(chat_id) is None:
+            return False
+        clear_pending_batch_dream_note(chat_id)
+        await message.reply_text("Хорошо, не добавляю заметку.")
+        return True
+
+    if not _is_positive_confirmation(normalized):
+        return False
+
+    if load_pending_batch_dream_note(chat_id) is None:
+        return False
+
+    await message.reply_text(await _apply_pending_batch_note(chat_id, facade))
+    return True
+
+
+async def _try_start_batch_note_confirmation(
+    message: Any,
+    text: str,
+    *,
+    chat_id: int,
+) -> bool:
+    pending = _parse_batch_note_request(text, chat_id=chat_id)
+    if pending is None:
+        return False
+
+    save_pending_batch_dream_note(
+        chat_id,
+        note_text=pending["note_text"],
+        refs=pending["refs"],
+    )
+    await message.reply_text(
+        _format_batch_note_confirmation(
+            note_text=pending["note_text"],
+            refs=pending["refs"],
+        ),
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Да, добавить",
+                        callback_data=f"{BATCH_NOTE_CALLBACK_PREFIX}confirm",
+                    ),
+                    InlineKeyboardButton(
+                        "Отмена",
+                        callback_data=f"{BATCH_NOTE_CALLBACK_PREFIX}cancel",
+                    ),
+                ]
+            ]
+        ),
+    )
+    return True
+
+
+async def _apply_pending_batch_note(chat_id: int, facade: AssistantFacade) -> str:
+    pending = pop_pending_batch_dream_note(chat_id)
+    if pending is None:
+        return "Не вижу ожидающей заметки. Повтори, пожалуйста, к каким снам её добавить."
+
+    fully_added = 0
+    archive_only = 0
+    failed_refs: list[DisplayedDreamRef] = []
+    for ref in pending.refs:
+        try:
+            success, message = await facade.add_dream_note(
+                pending.note_text,
+                dream_id=uuid.UUID(ref.dream_id),
+                chat_id=chat_id,
+            )
+        except ValueError:
+            success = False
+            message = "Некорректный идентификатор сна."
+
+        if not success:
+            failed_refs.append(ref)
+        elif message == "Заметка добавлена под нужным сном.":
+            fully_added += 1
+        else:
+            archive_only += 1
+
+    total = len(pending.refs)
+    if fully_added == total:
+        return f"Готово. Добавил заметку к {total} {_dream_count_word(total)}."
+
+    if fully_added + archive_only == total:
+        return (
+            f"В архив добавил заметку к {total} {_dream_count_word(total)}. "
+            f"В Google Doc полностью добавилось к {fully_added} из {total}; "
+            "для остальных не нашёл актуальный заголовок в документе."
+        )
+
+    added = fully_added + archive_only
+    failed_lines = "\n".join(_format_displayed_ref(ref) for ref in failed_refs)
+    if added:
+        return (
+            f"Добавил заметку к {added} из {total} {_dream_count_word(total)}. "
+            "Не получилось добавить к этим снам:\n"
+            f"{failed_lines}"
+        )
+    return "Не получилось добавить заметку к выбранным снам."
+
+
+def _parse_batch_note_request(text: str, *, chat_id: int) -> dict[str, Any] | None:
+    displayed = load_displayed_dream_set(chat_id)
+    if displayed is None or not displayed.refs:
+        return None
+    if _BATCH_NOTE_INTENT_RE.search(text) is None:
+        return None
+
+    note_text = _extract_batch_note_text(text)
+    if note_text is None:
+        return None
+
+    selected_refs = _select_displayed_refs_for_batch_note(text, displayed.refs)
+    if not selected_refs:
+        return None
+
+    return {"note_text": note_text, "refs": selected_refs}
+
+
+def _extract_batch_note_text(text: str) -> str | None:
+    quoted = [match.group("text").strip() for match in _QUOTED_TEXT_RE.finditer(text)]
+    if quoted:
+        return quoted[-1] or None
+    if ":" not in text:
+        return None
+    note_text = text.rsplit(":", 1)[1].strip(" \t\r\n\"'«»“”")
+    return note_text or None
+
+
+def _select_displayed_refs_for_batch_note(
+    text: str,
+    refs: list[DisplayedDreamRef],
+) -> list[DisplayedDreamRef]:
+    lowered = text.casefold()
+    if any(marker in lowered for marker in ("ко всем", "к всем", "всем найден", "к этим снам")):
+        return list(refs)
+
+    target_text = text.split(":", 1)[0]
+    indexes = _extract_referenced_indexes(target_text)
+    if not indexes:
+        return []
+
+    refs_by_index = {ref.index: ref for ref in refs}
+    return [refs_by_index[index] for index in indexes if index in refs_by_index]
+
+
+def _extract_referenced_indexes(text: str) -> list[int]:
+    indexes: list[int] = []
+    seen: set[int] = set()
+
+    def add_index(value: int) -> None:
+        if value <= 0 or value in seen:
+            return
+        seen.add(value)
+        indexes.append(value)
+
+    for match in _NUMBER_RANGE_RE.finditer(text):
+        start = int(match.group("start"))
+        end = int(match.group("end"))
+        if start <= end:
+            values = range(start, end + 1)
+        else:
+            values = range(start, end - 1, -1)
+        for value in values:
+            add_index(value)
+
+    without_ranges = _NUMBER_RANGE_RE.sub(" ", text)
+    for match in _NUMBER_RE.finditer(without_ranges):
+        add_index(int(match.group(0)))
+
+    lowered = without_ranges.casefold()
+    for stem, index in _ORDINAL_INDEXES.items():
+        if stem in lowered:
+            add_index(index)
+
+    return indexes
+
+
+def _format_batch_note_confirmation(
+    *,
+    note_text: str,
+    refs: list[DisplayedDreamRef],
+) -> str:
+    lines = [
+        f"Я понял так: добавить заметку «{note_text}» к {len(refs)} {_dream_count_word(len(refs))} из последней подборки:",
+        *(_format_displayed_ref(ref) for ref in refs),
+        "",
+        "Добавляю?",
+    ]
+    return "\n".join(lines)
+
+
+def _format_displayed_ref(ref: DisplayedDreamRef) -> str:
+    date_part = f"{ref.date}, " if ref.date else ""
+    title = ref.title or "без названия"
+    return f"{ref.index}. {date_part}«{title}»"
+
+
+def _dream_count_word(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "сну"
+    if count % 10 in {2, 3, 4} and count % 100 not in {12, 13, 14}:
+        return "снам"
+    return "снам"
+
+
 async def _handle_reply_to_voice_save(
     message: Any,
     text: str,
@@ -890,9 +1191,32 @@ def _full_text_reply_markup(
 
 
 def _visible_dream_reference_ids(reply_text: str, refs: Any) -> list[uuid.UUID]:
+    return _coerce_dream_ids([ref.dream_id for ref in _visible_dream_references(reply_text, refs)])
+
+
+def _remember_displayed_dreams(chat_id: int, reply_text: str, result: ChatResult) -> None:
+    refs = _visible_dream_references(reply_text, getattr(result, "dream_refs", []))
+    if not refs:
+        return
+
+    save_displayed_dream_set(
+        chat_id,
+        refs=[
+            DisplayedDreamRef(
+                index=index,
+                dream_id=ref.dream_id,
+                date=ref.date,
+                title=ref.title,
+            )
+            for index, ref in enumerate(refs, start=1)
+        ],
+    )
+
+
+def _visible_dream_references(reply_text: str, refs: Any) -> list[Any]:
     if not isinstance(refs, list):
         return []
-    visible_ids: list[str] = []
+    visible_refs: list[Any] = []
     normalized_reply = _normalize_visible_match_text(reply_text)
     for ref in refs:
         dream_id = str(getattr(ref, "dream_id", "") or "").strip()
@@ -901,8 +1225,14 @@ def _visible_dream_reference_ids(reply_text: str, refs: Any) -> list[uuid.UUID]:
         title = str(getattr(ref, "title", "") or "").strip()
         date_value = str(getattr(ref, "date", "") or "").strip()
         if _dream_reference_visible(normalized_reply, title=title, date_value=date_value):
-            visible_ids.append(dream_id)
-    return _coerce_dream_ids(visible_ids)
+            visible_refs.append(ref)
+
+    if not visible_refs and refs:
+        visible_count = _visible_numbered_result_count(reply_text)
+        if visible_count:
+            visible_refs = list(refs[:visible_count])
+
+    return visible_refs
 
 
 def _visible_numbered_result_count(reply_text: str) -> int:

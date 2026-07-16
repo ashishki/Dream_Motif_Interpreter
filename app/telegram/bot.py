@@ -21,6 +21,8 @@ from app.assistant.facade import AssistantFacade
 from app.models.reaction import MessageReaction
 from app.shared.config import Settings, get_settings
 from app.telegram.handlers import (
+    BATCH_NOTE_CALLBACK_PREFIX,
+    batch_note_callback_handler,
     chat_guard,
     dream_memory_map_command_handler,
     FULL_DREAM_CALLBACK_PREFIX,
@@ -63,6 +65,12 @@ def build_application(
         CallbackQueryHandler(
             dream_full_text_callback_handler,
             pattern=f"^{FULL_DREAM_CALLBACK_PREFIX}",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            batch_note_callback_handler,
+            pattern=f"^{BATCH_NOTE_CALLBACK_PREFIX}",
         )
     )
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))

@@ -55,9 +55,32 @@ class RecentDreamSet:
     created_at: datetime
 
 
+@dataclass(slots=True)
+class DisplayedDreamRef:
+    index: int
+    dream_id: str
+    date: str
+    title: str
+
+
+@dataclass(slots=True)
+class DisplayedDreamSet:
+    refs: list[DisplayedDreamRef]
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class PendingBatchDreamNote:
+    note_text: str
+    refs: list[DisplayedDreamRef]
+    created_at: datetime
+
+
 _pending_dream_drafts: dict[int, PendingDreamDraft] = {}
 _pending_interpretation_requests: dict[int, PendingInterpretationRequest] = {}
 _recent_dream_sets: dict[int, RecentDreamSet] = {}
+_displayed_dream_sets: dict[int, DisplayedDreamSet] = {}
+_pending_batch_dream_notes: dict[int, PendingBatchDreamNote] = {}
 
 
 async def load_history(
@@ -211,6 +234,68 @@ def load_recent_dream_set(chat_id: int) -> RecentDreamSet | None:
     return _recent_dream_sets.get(chat_id)
 
 
+def save_displayed_dream_set(
+    chat_id: int,
+    *,
+    refs: list[DisplayedDreamRef],
+) -> DisplayedDreamSet:
+    """Store the dream list exactly as it was shown to the user."""
+    _evict_expired_displayed_dream_sets()
+    displayed = DisplayedDreamSet(
+        refs=list(refs),
+        created_at=datetime.now(tz=timezone.utc),
+    )
+    _displayed_dream_sets[chat_id] = displayed
+    _evict_excess_displayed_dream_sets()
+    return displayed
+
+
+def load_displayed_dream_set(chat_id: int) -> DisplayedDreamSet | None:
+    """Return the last displayed dream list for chat_id, if still fresh."""
+    _evict_expired_displayed_dream_sets()
+    return _displayed_dream_sets.get(chat_id)
+
+
+def clear_displayed_dream_set(chat_id: int) -> None:
+    """Remove the last displayed dream list for chat_id."""
+    _displayed_dream_sets.pop(chat_id, None)
+
+
+def save_pending_batch_dream_note(
+    chat_id: int,
+    *,
+    note_text: str,
+    refs: list[DisplayedDreamRef],
+) -> PendingBatchDreamNote:
+    """Store a pending multi-dream note until the user confirms it."""
+    _evict_expired_pending_batch_dream_notes()
+    pending = PendingBatchDreamNote(
+        note_text=note_text.strip(),
+        refs=list(refs),
+        created_at=datetime.now(tz=timezone.utc),
+    )
+    _pending_batch_dream_notes[chat_id] = pending
+    _evict_excess_pending_batch_dream_notes()
+    return pending
+
+
+def load_pending_batch_dream_note(chat_id: int) -> PendingBatchDreamNote | None:
+    """Return the pending multi-dream note for chat_id, if still fresh."""
+    _evict_expired_pending_batch_dream_notes()
+    return _pending_batch_dream_notes.get(chat_id)
+
+
+def pop_pending_batch_dream_note(chat_id: int) -> PendingBatchDreamNote | None:
+    """Return and remove the pending multi-dream note for chat_id."""
+    _evict_expired_pending_batch_dream_notes()
+    return _pending_batch_dream_notes.pop(chat_id, None)
+
+
+def clear_pending_batch_dream_note(chat_id: int) -> None:
+    """Remove any pending multi-dream note for chat_id."""
+    _pending_batch_dream_notes.pop(chat_id, None)
+
+
 def _evict_expired_pending_dream_drafts(*, now: datetime | None = None) -> None:
     current = now or datetime.now(tz=timezone.utc)
     ttl = timedelta(minutes=PENDING_DREAM_TTL_MINUTES)
@@ -247,6 +332,30 @@ def _evict_expired_recent_dream_sets(*, now: datetime | None = None) -> None:
         _recent_dream_sets.pop(chat_id, None)
 
 
+def _evict_expired_displayed_dream_sets(*, now: datetime | None = None) -> None:
+    current = now or datetime.now(tz=timezone.utc)
+    ttl = timedelta(minutes=RECENT_DREAM_SET_TTL_MINUTES)
+    expired_chat_ids = [
+        chat_id
+        for chat_id, displayed in _displayed_dream_sets.items()
+        if current - displayed.created_at > ttl
+    ]
+    for chat_id in expired_chat_ids:
+        _displayed_dream_sets.pop(chat_id, None)
+
+
+def _evict_expired_pending_batch_dream_notes(*, now: datetime | None = None) -> None:
+    current = now or datetime.now(tz=timezone.utc)
+    ttl = timedelta(minutes=PENDING_INTERPRETATION_TTL_MINUTES)
+    expired_chat_ids = [
+        chat_id
+        for chat_id, pending in _pending_batch_dream_notes.items()
+        if current - pending.created_at > ttl
+    ]
+    for chat_id in expired_chat_ids:
+        _pending_batch_dream_notes.pop(chat_id, None)
+
+
 def _evict_excess_pending_dream_drafts() -> None:
     excess = len(_pending_dream_drafts) - MAX_PENDING_DREAM_DRAFTS
     if excess <= 0:
@@ -281,3 +390,27 @@ def _evict_excess_recent_dream_sets() -> None:
     )[:excess]
     for chat_id in oldest_chat_ids:
         _recent_dream_sets.pop(chat_id, None)
+
+
+def _evict_excess_displayed_dream_sets() -> None:
+    excess = len(_displayed_dream_sets) - MAX_RECENT_DREAM_SETS
+    if excess <= 0:
+        return
+    oldest_chat_ids = sorted(
+        _displayed_dream_sets,
+        key=lambda chat_id: _displayed_dream_sets[chat_id].created_at,
+    )[:excess]
+    for chat_id in oldest_chat_ids:
+        _displayed_dream_sets.pop(chat_id, None)
+
+
+def _evict_excess_pending_batch_dream_notes() -> None:
+    excess = len(_pending_batch_dream_notes) - MAX_PENDING_INTERPRETATION_REQUESTS
+    if excess <= 0:
+        return
+    oldest_chat_ids = sorted(
+        _pending_batch_dream_notes,
+        key=lambda chat_id: _pending_batch_dream_notes[chat_id].created_at,
+    )[:excess]
+    for chat_id in oldest_chat_ids:
+        _pending_batch_dream_notes.pop(chat_id, None)

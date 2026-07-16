@@ -1,6 +1,6 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-05-20 (backdated Google Doc writes and duplicate rewrites)
+Last updated: 2026-07-16 (contextual batch notes from displayed dream lists)
 
 ## 1. Purpose
 
@@ -197,7 +197,30 @@ Automated Phase 22 regression slice:
 .venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_rag_ingestion.py tests/unit/test_segmentation.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short
 ```
 
-## 9. Common Failure Modes
+## 9. Test 14 Contextual Batch Notes Checklist
+
+Run this after deployments that touch Telegram context, note writing, search result buttons, or
+assistant tool routing.
+
+1. Ask for a numbered dream selection, for example:
+   `Найди сны, где проявляются негативные эмоции по отношению к матери`.
+2. Verify the bot returns a numbered list and the number of `Полный текст` buttons matches the
+   number of displayed dreams.
+3. Send a natural follow-up:
+   `Добавь одинаковую заметку к снам 2, 3 и 4: проявление негативных эмоций по отношению к матери`.
+4. Verify the bot does not ask for UUIDs or exact titles. It should show a preview with the note
+   text and the selected dreams by the same numbers, dates, and titles.
+5. Confirm with `да` or the `Да, добавить` button. Verify one note is added to each selected
+   dream and the bot reports success or partial Google Doc insertion honestly.
+6. Repeat with `Добавь заметку ко всем найденным: ...`; verify all displayed dreams are selected.
+
+Automated regression slice:
+
+```bash
+.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_assistant_session.py -q
+```
+
+## 10. Common Failure Modes
 
 ### Bot starts but receives nothing
 

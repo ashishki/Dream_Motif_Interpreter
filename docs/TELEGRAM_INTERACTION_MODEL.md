@@ -123,32 +123,50 @@ If a request cannot be fulfilled:
 - prefer grounded partial help over fabricated confidence
 - preserve the same `insufficient_evidence` philosophy used in the backend
 
-## 11. Chat-Driven Curation — Deferred (P8-T02 Decision)
+## 11. Chat-Driven Archive Mutations
 
-**Decision (2026-04-15):** chat-driven archive mutations are deferred beyond Phase 8.
+Telegram supports a small, bounded set of archive mutations through the internal facade:
 
-Telegram is currently **read-oriented**. The active tool catalog contains only:
-- `search_dreams`, `get_dream`, `list_recent_dreams`, `get_patterns`, `get_theme_history` — read-only
-- `trigger_sync` — write (re-import), not curation
+- `create_dream` — save a new dream
+- `add_dream_note` — add a note to one dream
+- contextual multi-dream note confirmation — add the same note to selected dreams from the last displayed list
+- `trigger_sync` — re-import/sync Google Docs
 
-The following tools remain deferred and are not implemented:
+The following curation tools remain deferred and are not implemented:
 - `confirm_theme`
 - `reject_theme`
 - `rollback_theme`
 - `approve_category`
 
-Rationale for continued deferral:
-- the text assistant is stable (Phase 6–7 complete) ✓
-- an explicit, auditable confirmation UX is NOT yet designed ✗
-- failure modes for conversational mutations are NOT yet documented ✗
+### Multi-dream note confirmation
 
-Preconditions before enabling any curation tool:
+When the bot presents a numbered dream list, Telegram stores the displayed order, dates, titles,
+and dream IDs as short-lived operational state. If the user later writes naturally, for example
+`добавь одинаковую заметку к снам 2, 3 и 4: ...` or `добавь заметку ко всем найденным: ...`,
+the handler resolves the numbers against that displayed list before the LLM loop.
+
+Before mutating the archive, the bot must show a preview:
+
+- note text
+- selected dreams by the same user-facing numbers
+- date and title for each selected dream
+- confirmation question `Добавляю?`
+
+The note is written only after a positive confirmation (`да`) or the inline button
+`Да, добавить`. Negative confirmation (`нет`) or `Отмена` clears the pending action. The bot must
+not ask the user for UUIDs and must not claim success before the facade returns success.
+
+If all notes are stored in the archive but Google Doc insertion is partial, the bot must say that
+plainly and identify that the remaining issue is the document heading match.
+
+Preconditions before enabling the still-deferred curation tools above:
 1. Design a two-phase confirmation UX (intent → explicit confirmation message → execute).
 2. Ensure all mutation calls produce an `AnnotationVersion` audit record.
 3. Define rollback UX for cases where the user issues an erroneous confirm.
 4. Document the failure modes (partial failure, concurrent mutations, sync conflicts).
 
-Until all four preconditions are met, chat-driven mutation tools must not be added to the TOOLS catalog or AssistantFacade.
+Until all four preconditions are met, theme/category curation tools must not be added to the
+TOOLS catalog or AssistantFacade.
 
 Implementation sequencing for this surface is tracked in:
 
@@ -251,11 +269,13 @@ These rules apply to all assistant responses in Telegram. They override any defa
 ### Search results format
 
 ```
-1. дд.мм.гг, без названия: описание (сильная связь)
-2. дд.мм.гг, Название: описание (умеренная связь)
+1. дд.мм.гг, без названия: доказательный фрагмент
+2. дд.мм.гг, Название: доказательный фрагмент
 ```
 
-Connection strength verbal labels: ≥0.7 — сильная, 0.4–0.69 — умеренная, <0.4 — слабая.
+Search answers should not expose internal relevance scores or "connection strength" labels. If the
+user asks for exact word matches specifically, use the exact-search path; otherwise prefer semantic
+search and cite archive-backed fragments.
 
 ### Dream title format (when saving)
 

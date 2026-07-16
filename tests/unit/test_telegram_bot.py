@@ -12,8 +12,11 @@ from telegram.ext import ApplicationHandlerStop
 from app.assistant.chat import ChatResult, DreamReference
 from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.session import (
+    clear_displayed_dream_set,
+    clear_pending_batch_dream_note,
     clear_pending_dream_draft,
     clear_pending_interpretation_request,
+    load_pending_batch_dream_note,
     load_pending_dream_draft,
     save_pending_interpretation_request,
     save_pending_dream_draft,
@@ -144,6 +147,8 @@ def _clear_pending_drafts() -> None:
     clear_pending_dream_draft(55)
     clear_pending_dream_draft(77)
     clear_pending_dream_draft(100)
+    clear_displayed_dream_set(42)
+    clear_pending_batch_dream_note(42)
     clear_pending_interpretation_request(42)
     clear_pending_interpretation_request(55)
     clear_pending_interpretation_request(77)
@@ -153,6 +158,8 @@ def _clear_pending_drafts() -> None:
     clear_pending_dream_draft(55)
     clear_pending_dream_draft(77)
     clear_pending_dream_draft(100)
+    clear_displayed_dream_set(42)
+    clear_pending_batch_dream_note(42)
     clear_pending_interpretation_request(42)
     clear_pending_interpretation_request(55)
     clear_pending_interpretation_request(77)
@@ -306,6 +313,123 @@ async def test_text_message_handler_limits_full_text_buttons_to_numbered_visible
     keyboard = message.reply_text.await_args.kwargs["reply_markup"].inline_keyboard
     assert len(keyboard) == 1
     assert keyboard[0][0].callback_data == f"{FULL_DREAM_CALLBACK_PREFIX}{dream_ids[0]}"
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_confirms_batch_note_for_numbered_search_results() -> None:
+    dream_ids = [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+        "44444444-4444-4444-8444-444444444444",
+    ]
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    context = _make_text_context(facade, 42)
+
+    search_update, search_message = _make_text_message_update(
+        "Найди сны про эмоции к матери",
+        chat_id=42,
+    )
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(
+            return_value=ChatResult(
+                "\n".join(
+                    [
+                        "1. 16.07.26, Граница между эмоцией и ответственностью",
+                        "2. 16.02.23, Задний двор",
+                        "3. 14.06.26, Спор с мамой и непримиримость",
+                        "4. 06.05.26, о себя даче моему",
+                    ]
+                ),
+                ["search_dreams"],
+                dream_ids=dream_ids,
+                dream_refs=[
+                    DreamReference(dream_ids[0], date="2026-07-16", title="Граница"),
+                    DreamReference(dream_ids[1], date="2023-02-16", title="Задний двор"),
+                    DreamReference(
+                        dream_ids[2],
+                        date="2026-06-14",
+                        title="Спор с мамой и непримиримость",
+                    ),
+                    DreamReference(dream_ids[3], date="2026-05-06", title="о себя даче моему"),
+                ],
+            )
+        ),
+    ):
+        await text_message_handler(search_update, context)
+
+    search_message.reply_text.assert_awaited_once()
+
+    note_update, note_message = _make_text_message_update(
+        'Добавь одинаковую заметку к снам 2,3 и 4: "проявление негативных эмоций по отношению к матери"',
+        chat_id=42,
+    )
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(note_update, context)
+
+    mock_chat.assert_not_awaited()
+    pending = load_pending_batch_dream_note(42)
+    assert pending is not None
+    assert [ref.index for ref in pending.refs] == [2, 3, 4]
+    preview = note_message.reply_text.await_args.args[0]
+    assert "Я понял так" in preview
+    assert "2. 2023-02-16, «Задний двор»" in preview
+    assert "Добавляю?" in preview
+    reply_markup = note_message.reply_text.await_args.kwargs["reply_markup"]
+    assert reply_markup.inline_keyboard[0][0].text == "Да, добавить"
+
+    confirm_update, confirm_message = _make_text_message_update("да", chat_id=42)
+    await text_message_handler(confirm_update, context)
+
+    assert facade.add_dream_note.await_count == 3
+    assert [
+        str(call.kwargs["dream_id"]) for call in facade.add_dream_note.await_args_list
+    ] == dream_ids[1:]
+    assert {
+        call.args[0] for call in facade.add_dream_note.await_args_list
+    } == {"проявление негативных эмоций по отношению к матери"}
+    confirm_message.reply_text.assert_awaited_once_with("Готово. Добавил заметку к 3 снам.")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_confirms_batch_note_for_all_displayed_results() -> None:
+    dream_ids = [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+    ]
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    context = _make_text_context(facade, 42)
+
+    search_update, _search_message = _make_text_message_update("Найди сны про воду", chat_id=42)
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(
+            return_value=ChatResult(
+                "1. 01.05.26, Озеро\n2. 02.05.26, Река",
+                ["search_dreams"],
+                dream_ids=dream_ids,
+                dream_refs=[
+                    DreamReference(dream_ids[0], date="2026-05-01", title="Озеро"),
+                    DreamReference(dream_ids[1], date="2026-05-02", title="Река"),
+                ],
+            )
+        ),
+    ):
+        await text_message_handler(search_update, context)
+
+    note_update, note_message = _make_text_message_update(
+        "Добавь заметку ко всем найденным: повторяющийся водный мотив",
+        chat_id=42,
+    )
+    await text_message_handler(note_update, context)
+
+    pending = load_pending_batch_dream_note(42)
+    assert pending is not None
+    assert [ref.index for ref in pending.refs] == [1, 2]
+    assert "к 2 снам" in note_message.reply_text.await_args.args[0]
 
 
 def test_voice_processing_ack_is_russian() -> None:

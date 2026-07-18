@@ -13,7 +13,9 @@ async def test_health_returns_503_when_storage_is_unavailable(
     async def _raise_storage_error() -> None:
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr(health_module, "_fetch_index_last_updated", _raise_storage_error)
+    monkeypatch.setattr(
+        health_module, "_fetch_index_last_updated", _raise_storage_error
+    )
     response = Response()
 
     payload = await health_module.health(response)

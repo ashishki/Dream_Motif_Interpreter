@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 
-MINI_APP_HTML = Path(__file__).resolve().parents[2] / "app" / "static" / "dream_memory_map.html"
+MINI_APP_HTML = (
+    Path(__file__).resolve().parents[2] / "app" / "static" / "dream_memory_map.html"
+)
 
 
 def test_graph_privacy_action_does_not_claim_to_delete_archive_data() -> None:

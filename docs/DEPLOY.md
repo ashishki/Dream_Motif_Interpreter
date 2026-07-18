@@ -1,136 +1,204 @@
 # Deployment Guide
 
-Last updated: 2026-04-21
+Last updated: 2026-07-18
 
-## 1. Deployment Philosophy
+## 1. Deployment boundary
 
-Dream Motif Interpreter remains a private, single-user deployment.
-The recommended topology for Phase 6+ is multi-process but still operationally small.
+Dream Motif Interpreter is a private, single-operator deployment. It is not a public multi-user service and does not provide a security or availability SLA.
 
-Recommended canonical deployment documentation:
+The product-managed PostgreSQL archive is the source of truth for the private beta. Google Docs is an optional import/mirror adapter. A Google or provider failure may degrade sync, search, transcription, or interpretation, but must not delete a committed dream.
 
-- Compose-first
-- systemd optional for operators who prefer VPS-native service management
+See [ADR-011](adr/ADR-011-private-beta-source-of-truth.md).
 
-## 2. Current Backend Topology
-
-Current backend services:
-
-- API process
-- worker process (arq)
-- PostgreSQL (pgvector)
-- Redis
-
-`docker-compose.yml` in the repository root defines `postgres` and `redis` infrastructure services.
-
-## 3. Phase 6 Telegram-Enabled Topology
-
-Phase 6 service set:
+## 2. Canonical topology
 
 ```text
-postgres       — primary persistent store (dreams, themes, bot sessions)
-redis          — ephemeral job-state, arq worker coordination
-api            — FastAPI HTTP layer (python3 -m uvicorn app.main:app)
-telegram-bot   — long-polling Telegram bot (python3 -m app.telegram)
-auto-sync      — lightweight Google Docs metadata polling + conditional sync (python3 -m app.auto_sync)
+postgres       — durable dreams, notes, themes, chunks, sessions and controls
+redis          — ephemeral locks, job state and notifications
+migrate        — one-shot Alembic upgrade before application processes
+api            — FastAPI and protected Mini App data routes
+telegram-bot   — long-polling private bot
+auto-sync      — optional Google metadata polling and conditional ingestion (`google` profile)
 ```
 
-Today the minimal always-on runtime is:
+The Compose file also creates:
 
-- Postgres
-- Redis
-- API
-- Telegram bot
-- auto-sync
+- `postgres_data` — durable database volume;
+- `runtime_config` — temporary shared source configuration used by the current file-backed Google source settings;
+- `voice_media` — temporary voice files that survive a bot process restart long enough for cleanup.
 
-Pre-start prerequisite: run `alembic upgrade head` to apply migrations including `007_add_bot_sessions`.
+`runtime_config` is a transition mechanism, not the target source model. Source ownership must move to PostgreSQL before multi-user work.
 
-Optional future services:
+## 3. Prerequisites
+
+- Docker Engine with Compose v2;
+- a private HTTPS host for Telegram Mini App usage;
+- a Telegram bot token and allowed private chat ID;
+- PostgreSQL/Redis ports available if exposed locally;
+- provider credentials for features that are enabled;
+- Google credentials only when Google Docs import/mirror is used.
+
+## 4. Environment
+
+Create a local environment file:
+
+```bash
+cp .env.example .env
+```
+
+Replace all placeholder values. Never commit `.env`, provider keys, Telegram tokens, Google tokens, private document IDs, real dream text, or exported archive content.
+
+The current Settings model still requires `GOOGLE_DOC_ID`. Use a non-secret placeholder only when Google is intentionally disconnected; capture remains managed by PostgreSQL, while Google operations will report partial failure.
+
+## 5. Start
+
+Base managed-archive runtime, without background Google polling:
+
+```bash
+docker compose config
+docker compose build
+docker compose up -d
+```
+
+Compose runs the `migrate` job before API and bot.
+
+When Google credentials and a real document source are configured, enable the optional profile:
+
+```bash
+docker compose --profile google config
+docker compose --profile google up -d
+```
+
+The profile forces `AUTO_SYNC_ENABLED=true` only for the `auto-sync` service. Leaving the profile disabled avoids a restart loop and misleading sync errors for users who have not connected Google.
+
+Inspect status:
+
+```bash
+docker compose ps
+docker compose logs --tail=100 api telegram-bot
+```
+
+With the Google profile:
+
+```bash
+docker compose --profile google logs --tail=100 auto-sync
+```
+
+Health:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Expected behavior:
+
+- HTTP 200 when storage is reachable and the index is not stale;
+- HTTP 503 when storage is unavailable or the index is older than `MAX_INDEX_AGE_HOURS`;
+- an empty but reachable archive may return HTTP 200 with `index_last_updated=null`.
+
+## 6. Mini App
+
+The HTML shell is served at:
 
 ```text
-media-cleanup
+/dream-memory/mini-app
 ```
 
-## 4. Recommended Initial Telegram Deployment Mode
+The shell contains no dream data and is intentionally public. All state/export/privacy routes remain protected by either:
 
-Start with polling.
+- `X-API-Key`, or
+- validated Telegram WebApp `initData` sent as `X-Telegram-Init-Data`.
 
-Why:
+`TELEGRAM_MINI_APP_URL` must point to the HTTPS URL exposed to Telegram. The current graph shell is a prototype and is not the full archive/coding private-beta UI.
 
-- simplest private deployment path
-- no public webhook endpoint required
-- easier debugging during Phase 6
+## 7. Google Docs
 
-Webhook can be reconsidered later if operations require it.
+Current implementation supports:
 
-## 5. Voice Deployment Notes
+- OAuth refresh credentials or service-account credentials;
+- reading configured Docs;
+- metadata polling;
+- importing recognized entries and notes;
+- targeted writes and retry status.
 
-Phase 7 adds:
+Current limitations:
 
-- temporary voice-media directory
-- transcription jobs
-- cleanup schedule
+- manual/env source configuration is still required;
+- metadata polling is not the final Drive change-feed contract;
+- external body edits and deletion do not have complete reconciliation semantics;
+- full symmetric bidirectional sync must not be claimed.
 
-Deployment must define:
+The target onboarding is OAuth consent plus Google Picker, followed by durable Drive change tokens, optional watch notifications and polling fallback.
 
-- writable media path
-- retention period
-- cleanup mechanism
-- transcription provider credentials or binaries
+## 8. Data protection
 
-## 6. Google Docs Credential Deployment Note
+Minimum private-beta posture:
 
-Current code expects env-driven OAuth-style credentials.
-If implementation later adopts service-account JSON, deployment instructions must add:
+1. Restrict the host and database network to the operator.
+2. Terminate HTTPS at a maintained reverse proxy.
+3. Store `.env` outside source control with least-readable permissions.
+4. Back up `postgres_data` using encrypted storage.
+5. Test restore into an isolated environment.
+6. Rotate provider and Telegram credentials after any suspected exposure.
+7. Do not send real dream text to external research tools.
+8. Keep raw voice media short-lived and verify cleanup.
+9. Treat Google document names/IDs and Telegram identifiers as private metadata.
 
-- secure placement of the JSON file
-- file path mounting
-- permission hardening
-- rotation/update procedure
+## 9. Backup and restore
 
-Until then, keep current docs explicit: service-account JSON may exist operationally, but it is not yet the documented runtime contract.
+A private beta is not ready until both backup and restore are rehearsed.
 
-## 7. Minimum Production Checklist
+Example logical backup:
 
-- Postgres reachable
-- Redis reachable
-- API starts cleanly
-- bot starts and rejects unauthorized chats
-- auto-sync loop starts cleanly
-- Google Docs credentials are valid
-- tracing/logging configured
-- media directory exists if voice is enabled
-- cleanup policy is enabled if voice is enabled
-
-## 8. Local Background Run
-
-For a small private deployment, it is acceptable to run the app as a few background processes:
-
-```text
-postgres
-redis
-api
-telegram-bot
-auto-sync
+```bash
+docker compose exec -T postgres \
+  pg_dump -U "${POSTGRES_USER:-postgres}" "${POSTGRES_DB:-dream_motif}" \
+  > private-backup.sql
 ```
 
-Recommended local start order:
+Store the result encrypted and outside the repository.
 
-1. infrastructure (`docker compose up -d postgres redis`)
-2. migrations (`alembic upgrade head`)
-3. API (`python3 -m app.main`)
-4. Telegram bot (`python3 -m app.telegram`)
-5. auto-sync (`python3 -m app.auto_sync`)
+Restore must be tested in a disposable database before relying on it for recovery. Do not overwrite the live archive as a test.
 
-For persistent boot-time startup, prefer `systemd` units instead of manual background processes.
-See [SYSTEMD_SETUP.md](SYSTEMD_SETUP.md).
+## 10. Update and rollback
 
-## 9. Operational Documentation
+Before update:
 
-Before production rollout of Phase 6+:
+1. create an encrypted database backup;
+2. record the deployed commit SHA;
+3. inspect migration upgrade and downgrade behavior;
+4. run CI-equivalent checks;
+5. deploy to a private staging copy when a migration or sync change is involved.
 
-- [RUNBOOK_TELEGRAM_BOT.md](RUNBOOK_TELEGRAM_BOT.md)
-- [RUNBOOK_VOICE_PIPELINE.md](RUNBOOK_VOICE_PIPELINE.md)
-- [AUTH_SECURITY.md](AUTH_SECURITY.md)
-- [ENVIRONMENT.md](ENVIRONMENT.md)
-- [tasks_phase6.md](tasks_phase6.md)
+Update the base runtime:
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+Update with Google polling enabled:
+
+```bash
+docker compose --profile google build
+docker compose --profile google up -d
+```
+
+Rollback application code by redeploying the previous commit/image. Roll back a database migration only when its downgrade is explicitly tested and no newer data would be lost. Otherwise restore from backup into a separate instance and reconcile.
+
+## 11. Operational checks
+
+- API health is not falsely green when PostgreSQL is unavailable.
+- Telegram rejects unauthorized chats.
+- capture succeeds when embeddings or Google are unavailable.
+- failed Google writes are visible as partial failure and retryable.
+- when enabled, auto-sync state exposes failed/stale/running/synced distinctly.
+- source settings are consistent across API, bot and auto-sync.
+- no raw dream text, title, note, prompt, token, local media path or private document ID appears in normal logs.
+- the current graph-only delete action is not presented as full archive deletion.
+
+## 12. Known private-beta blockers
+
+The runtime is still single-user. Before admitting a second user, implement workspace ownership and isolation across every table, query, vector, source, job, credential and audit event.
+
+The current Mini App is graph-first and does not yet provide the archive/detail/code/sync user journeys required by the private-beta gate. Track the rollout in [the private-beta audit](reviews/PRIVATE_BETA_AUDIT_2026-07-18.md).

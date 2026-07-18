@@ -10,8 +10,11 @@ Run with:
 
 from __future__ import annotations
 
+from functools import partial
+
 from app.assistant.facade import AssistantFacade
 from app.retrieval.query import RagQueryService
+from app.services.capture_index import index_capture_best_effort
 from app.shared.config import get_settings
 from app.shared.database import get_session_factory
 from app.telegram.bot import main
@@ -41,5 +44,13 @@ if __name__ == "__main__":
         session_factory=session_factory,
         rag_query_service=RagQueryService(session_factory=session_factory),
         sync_job_enqueuer=sync_enqueuer,
+        index_dream_callable=partial(
+            index_capture_best_effort,
+            session_factory=session_factory,
+        ),
     )
-    main(facade, session_factory=session_factory, voice_media_dir=settings.VOICE_MEDIA_DIR)
+    main(
+        facade,
+        session_factory=session_factory,
+        voice_media_dir=settings.VOICE_MEDIA_DIR,
+    )

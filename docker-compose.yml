@@ -1,14 +1,28 @@
+x-app-base: &app-base
+  build: .
+  image: dream-motif-interpreter:local
+  env_file:
+    - .env
+  environment: &app-environment
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-dream_motif}
+    REDIS_URL: redis://redis:6379/0
+  restart: unless-stopped
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: dream_motif
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-dream_motif}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d dream_motif"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-dream_motif}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,17 +39,66 @@ services:
       timeout: 5s
       retries: 5
 
-  telegram-bot:
-    build: .
-    command: python3 -m app.telegram
-    env_file:
-      - .env
+  migrate:
+    <<: *app-base
+    command: alembic upgrade head
+    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
+
+  api:
+    <<: *app-base
+    command: python3 -m app.main
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
-    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - runtime_config:/app/runtime
+
+  telegram-bot:
+    <<: *app-base
+    command: python3 -m app.telegram
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    volumes:
+      - runtime_config:/app/runtime
+      - voice_media:/tmp/dream_voice
+
+  auto-sync:
+    <<: *app-base
+    profiles: ["google"]
+    command: python3 -m app.auto_sync
+    environment:
+      <<: *app-environment
+      AUTO_SYNC_ENABLED: "true"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    volumes:
+      - runtime_config:/app/runtime
 
 volumes:
   postgres_data:
+  runtime_config:
+  voice_media:

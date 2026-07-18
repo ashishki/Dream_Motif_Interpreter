@@ -11,16 +11,15 @@ logger = get_logger(__name__)
 
 
 async def index_capture_best_effort(
+    dream_id: uuid.UUID,
     *,
     session_factory: async_sessionmaker[AsyncSession],
-    dream_id: uuid.UUID,
 ) -> int:
     """Index a captured dream without turning an embedding outage into data loss.
 
-    The current AssistantFacade removes a newly committed dream when its injected
-    indexing callable raises. Capture runtimes therefore use this boundary: a
-    temporary semantic-index failure returns zero indexed chunks, keeps the dream,
-    and lets the existing sync/reindex pipeline repair searchability later.
+    AssistantFacade calls its injected indexer with the dream ID as a positional
+    argument. Capture runtimes bind only the session factory and keep that call
+    contract while converting a temporary provider failure into deferred indexing.
     """
     try:
         return await index_dream(

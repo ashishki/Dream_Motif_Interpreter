@@ -49,4 +49,8 @@ if __name__ == "__main__":
             session_factory=session_factory,
         ),
     )
-    main(facade, session_factory=session_factory, voice_media_dir=settings.VOICE_MEDIA_DIR)
+    main(
+        facade,
+        session_factory=session_factory,
+        voice_media_dir=settings.VOICE_MEDIA_DIR,
+    )

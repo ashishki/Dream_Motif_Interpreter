@@ -10,7 +10,7 @@ from app.services.capture_index import index_capture_best_effort
 
 
 @pytest.mark.asyncio
-async def test_capture_index_returns_zero_instead_of_propagating_provider_outage() -> None:
+async def test_capture_index_defers_provider_outage() -> None:
     dream_id = uuid4()
     session_factory = object()
     facade_index_callable = partial(

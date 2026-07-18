@@ -12,6 +12,8 @@ RUN addgroup --system app && adduser --system --ingroup app app
 COPY . .
 RUN python -m pip install --upgrade pip \
     && python -m pip install . \
+    && mkdir -p /app/runtime \
+    && ln -s /app/runtime/runtime_extra_docs.json /app/runtime_extra_docs.json \
     && chown -R app:app /app
 
 USER app

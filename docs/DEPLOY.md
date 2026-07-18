@@ -18,8 +18,7 @@ redis          — ephemeral locks, job state and notifications
 migrate        — one-shot Alembic upgrade before application processes
 api            — FastAPI and protected Mini App data routes
 telegram-bot   — long-polling private bot
-
-auto-sync      — Google Drive metadata polling and conditional ingestion
+auto-sync      — optional Google metadata polling and conditional ingestion (`google` profile)
 ```
 
 The Compose file also creates:
@@ -53,19 +52,36 @@ The current Settings model still requires `GOOGLE_DOC_ID`. Use a non-secret plac
 
 ## 5. Start
 
+Base managed-archive runtime, without background Google polling:
+
 ```bash
 docker compose config
 docker compose build
 docker compose up -d
 ```
 
-Compose runs the `migrate` job before API, bot and auto-sync.
+Compose runs the `migrate` job before API and bot.
+
+When Google credentials and a real document source are configured, enable the optional profile:
+
+```bash
+docker compose --profile google config
+docker compose --profile google up -d
+```
+
+The profile forces `AUTO_SYNC_ENABLED=true` only for the `auto-sync` service. Leaving the profile disabled avoids a restart loop and misleading sync errors for users who have not connected Google.
 
 Inspect status:
 
 ```bash
 docker compose ps
-docker compose logs --tail=100 api telegram-bot auto-sync
+docker compose logs --tail=100 api telegram-bot
+```
+
+With the Google profile:
+
+```bash
+docker compose --profile google logs --tail=100 auto-sync
 ```
 
 Health:
@@ -154,11 +170,18 @@ Before update:
 4. run CI-equivalent checks;
 5. deploy to a private staging copy when a migration or sync change is involved.
 
-Update:
+Update the base runtime:
 
 ```bash
 docker compose build
 docker compose up -d
+```
+
+Update with Google polling enabled:
+
+```bash
+docker compose --profile google build
+docker compose --profile google up -d
 ```
 
 Rollback application code by redeploying the previous commit/image. Roll back a database migration only when its downgrade is explicitly tested and no newer data would be lost. Otherwise restore from backup into a separate instance and reconcile.
@@ -169,7 +192,7 @@ Rollback application code by redeploying the previous commit/image. Roll back a 
 - Telegram rejects unauthorized chats.
 - capture succeeds when embeddings or Google are unavailable.
 - failed Google writes are visible as partial failure and retryable.
-- auto-sync state exposes failed/stale/running/synced distinctly.
+- when enabled, auto-sync state exposes failed/stale/running/synced distinctly.
 - source settings are consistent across API, bot and auto-sync.
 - no raw dream text, title, note, prompt, token, local media path or private document ID appears in normal logs.
 - the current graph-only delete action is not presented as full archive deletion.

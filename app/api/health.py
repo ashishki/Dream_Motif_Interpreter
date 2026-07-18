@@ -24,7 +24,13 @@ class HealthResponse(BaseModel):
 async def health(response: Response) -> HealthResponse:
     # Public endpoint by design: GET /health is intentionally unauthenticated per
     # IMPLEMENTATION_CONTRACT OBS-3.
-    index_last_updated = await _fetch_index_last_updated()
+    try:
+        index_last_updated = await _fetch_index_last_updated()
+    except Exception:
+        logger.warning("health.storage_unavailable", exc_info=True)
+        response.status_code = 503
+        return HealthResponse(status="degraded", index_last_updated=None)
+
     if index_last_updated is None:
         return HealthResponse(status="ok", index_last_updated=None)
 
@@ -53,10 +59,6 @@ async def _fetch_index_last_updated() -> datetime | None:
         """
     )
 
-    try:
-        async with _get_engine().connect() as connection:
-            with tracer.start_as_current_span("db.query.health.fetch_index_last_updated"):
-                return await connection.scalar(statement)
-    except Exception:
-        logger.warning("health.fetch_index_last_updated failed", exc_info=True)
-        return None
+    async with _get_engine().connect() as connection:
+        with tracer.start_as_current_span("db.query.health.fetch_index_last_updated"):
+            return await connection.scalar(statement)

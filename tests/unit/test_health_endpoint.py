@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fastapi import Response
 import pytest
+from fastapi import Response
 
 import app.api.health as health_module
 
@@ -10,7 +10,7 @@ import app.api.health as health_module
 async def test_health_returns_503_when_storage_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _raise_storage_error():
+    async def _raise_storage_error() -> None:
         raise RuntimeError("database unavailable")
 
     monkeypatch.setattr(health_module, "_fetch_index_last_updated", _raise_storage_error)
@@ -27,7 +27,7 @@ async def test_health_returns_503_when_storage_is_unavailable(
 async def test_health_allows_an_empty_but_available_index(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _empty_index():
+    async def _empty_index() -> None:
         return None
 
     monkeypatch.setattr(health_module, "_fetch_index_last_updated", _empty_index)

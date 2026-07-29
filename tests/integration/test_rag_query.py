@@ -272,7 +272,7 @@ async def test_hybrid_search_returns_keyword_only_match(
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is required")
 @pytest.mark.asyncio
-async def test_health_degrades_on_stale_index(
+async def test_health_stays_ok_when_complete_index_is_old(
     migrated_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async with migrated_session_factory() as session:
@@ -348,7 +348,34 @@ async def test_health_degrades_on_stale_index(
     ) as client:
         response = await client.get("/health")
 
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["index_last_updated"] == stale_timestamp.isoformat()
+    assert payload["unindexed_dreams"] == 0
+    assert payload["unindexed_notes"] == 0
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is required")
+@pytest.mark.asyncio
+async def test_health_degrades_when_dream_is_missing_index_chunks(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await _create_dream(
+        migrated_session_factory,
+        title="Unindexed health dream",
+        raw_text="A dream that has not reached the semantic index yet.",
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=_reload_app()),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/health")
+
     assert response.status_code == 503
     payload = response.json()
     assert payload["status"] == "degraded"
-    assert payload["index_last_updated"] == stale_timestamp.isoformat()
+    assert payload["index_last_updated"] is None
+    assert payload["unindexed_dreams"] == 1
+    assert payload["unindexed_notes"] == 0

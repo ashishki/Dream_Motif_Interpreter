@@ -73,7 +73,7 @@ _This is a single-tenant system. This section does not apply._
 
 **OBS-2 — Metrics.** For each external call type, emit a success/error counter and a latency histogram. For RAG paths: `insufficient_evidence` rate as a labeled counter; `retrieval_ms` and `generation_ms` as separate spans. Violation for missing RAG metrics: P2.
 
-**OBS-3 — Health endpoint.** `GET /health` returns `{"status": "ok", "index_last_updated": "<ISO8601>"}` (HTTP 200) when healthy, HTTP 503 when the index is stale beyond `MAX_INDEX_AGE_HOURS`. This endpoint must not log PII, must not count toward rate limits, and must not require authentication. Violation: P1.
+**OBS-3 — Health endpoint.** `GET /health` returns `{"status": "ok", "index_last_updated": "<ISO8601>", "unindexed_dreams": 0, "unindexed_notes": 0}` (HTTP 200) when all stored dreams and notes are represented in `dream_chunks`. It returns HTTP 503 only when unreadable index state or a real indexing backlog is detected. Old-but-complete archives are healthy. This endpoint must not log PII, must not count toward rate limits, and must not require authentication. Violation: P1.
 
 ---
 
@@ -167,11 +167,12 @@ _Applies because `docs/ARCHITECTURE.md` declares RAG Status = ON._
 - Changing any schema parameter requires an ADR. After the ADR is filed, the full corpus must be re-indexed before the new schema goes to production.
 - A partial index (some chunks using old schema, some using new) is forbidden.
 
-### Max Index Age
+### Index Backlog
 
-- The maximum allowed age for indexed documents is 24 hours.
-- The health endpoint must expose `index_last_updated`. A stale index beyond 24h produces HTTP 503.
-- Violation: P2 (escalates to P1 if index age exceeds 48 hours).
+- The health endpoint must expose `index_last_updated`, `unindexed_dreams`, and `unindexed_notes`.
+- A dream entry without at least one `dream_text` chunk or a dream note without its `note` chunk produces HTTP 503.
+- A complete index is healthy even when the latest indexed content is older than 24 hours.
+- Violation: P2 (escalates to P1 if backlog persists beyond one auto-sync cycle).
 
 ### Retrieval-Generation Separation
 

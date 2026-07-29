@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.api.health import IndexHealthSnapshot
+
 
 def _reload_app():
     sys.modules.pop("app.main", None)
@@ -45,10 +47,14 @@ async def test_log_fields_present_and_no_pii(
 ) -> None:
     fresh_timestamp = datetime.now(timezone.utc) - timedelta(hours=1)
 
-    async def _fake_fetch() -> datetime:
-        return fresh_timestamp
+    async def _fake_fetch() -> IndexHealthSnapshot:
+        return IndexHealthSnapshot(
+            index_last_updated=fresh_timestamp,
+            unindexed_dreams=0,
+            unindexed_notes=0,
+        )
 
-    monkeypatch.setattr("app.api.health._fetch_index_last_updated", _fake_fetch)
+    monkeypatch.setattr("app.api.health._fetch_index_health_snapshot", _fake_fetch)
 
     async with AsyncClient(
         transport=ASGITransport(app=_reload_app()),

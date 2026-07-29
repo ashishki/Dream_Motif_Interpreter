@@ -587,8 +587,8 @@ Acceptance-Criteria:
     description: "The query pipeline code (`app/retrieval/query.py`) imports no symbols from `app/retrieval/ingestion.py`. Verified by tests/unit/test_rag_query.py::test_query_does_not_import_ingestion_module."
     test: "tests/unit/test_rag_query.py::test_query_does_not_import_ingestion_module"
   - id: AC-5
-    description: "`GET /health` response includes `index_last_updated` ISO8601 timestamp and returns HTTP 503 if the index age exceeds `MAX_INDEX_AGE_HOURS`. Verified by tests/integration/test_rag_query.py::test_health_degrades_on_stale_index."
-    test: "tests/integration/test_rag_query.py::test_health_degrades_on_stale_index"
+    description: "`GET /health` response includes `index_last_updated`, `unindexed_dreams`, and `unindexed_notes`; old-but-complete indexes stay healthy, while missing dream chunks produce HTTP 503. Verified by tests/integration/test_rag_query.py::test_health_stays_ok_when_complete_index_is_old and tests/integration/test_rag_query.py::test_health_degrades_when_dream_is_missing_index_chunks."
+    test: "tests/integration/test_rag_query.py::test_health_stays_ok_when_complete_index_is_old"
 
 Files:
   - app/retrieval/query.py
@@ -602,7 +602,7 @@ Context-Refs:
 Notes: |
   RRF fusion formula: score = 1/(k + rank_cosine) + 1/(k + rank_fts), k=60 by default.
   `InsufficientEvidence` is a dataclass (not an exception) so callers handle it without try/except.
-  The health endpoint update (stale index → 503) is in `app/api/health.py`.
+  The health endpoint update (index backlog → 503) is in `app/api/health.py`.
 
 ---
 
@@ -763,11 +763,11 @@ Objective: |
 
 Acceptance-Criteria:
   - id: AC-1
-    description: "`GET /health` returns `{\"status\": \"ok\", \"index_last_updated\": \"<ISO8601>\"}` (HTTP 200) when the index was updated within `MAX_INDEX_AGE_HOURS`. Verified by tests/integration/test_health.py::test_health_returns_ok_with_fresh_index."
+    description: "`GET /health` returns `{\"status\": \"ok\", \"index_last_updated\": \"<ISO8601>\", \"unindexed_dreams\": 0, \"unindexed_notes\": 0}` (HTTP 200) when no indexing backlog exists. Verified by tests/integration/test_health.py::test_health_returns_ok_with_fresh_index."
     test: "tests/integration/test_health.py::test_health_returns_ok_with_fresh_index"
   - id: AC-2
-    description: "`GET /health` returns HTTP 503 when `index_last_updated` is older than `MAX_INDEX_AGE_HOURS`. Verified by tests/integration/test_health.py::test_health_returns_503_on_stale_index."
-    test: "tests/integration/test_health.py::test_health_returns_503_on_stale_index"
+    description: "`GET /health` returns HTTP 503 when index state is unavailable or unindexed dreams/notes are detected; old-but-complete indexes remain healthy. Verified by tests/integration/test_health.py::test_health_returns_503_on_index_backlog."
+    test: "tests/integration/test_health.py::test_health_returns_503_on_index_backlog"
   - id: AC-3
     description: "Every SQLAlchemy DB query is executed within an OpenTelemetry span created via `app/shared/tracing.py::get_tracer()`. No inline noop span implementations exist in service or model files. Verified by tests/unit/test_tracing.py::test_no_inline_tracer_instances."
     test: "tests/unit/test_tracing.py::test_no_inline_tracer_instances"

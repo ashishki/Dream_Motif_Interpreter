@@ -74,7 +74,6 @@ class Settings(BaseSettings):
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     RETRIEVAL_THRESHOLD: float = 0.20
-    MAX_INDEX_AGE_HOURS: int = 24
     BULK_CONFIRM_TOKEN_TTL_SECONDS: int = 600
 
     # Feature flags are evaluated once per process because get_settings() is lru-cached.

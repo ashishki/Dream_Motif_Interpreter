@@ -22,6 +22,7 @@ from app.assistant.session import (
     clear_pending_batch_dream_note,
     clear_pending_interpretation_request,
     clear_pending_dream_draft,
+    load_displayed_dream_message,
     load_displayed_dream_set,
     load_recent_dream_set,
     load_pending_batch_dream_note,
@@ -30,6 +31,7 @@ from app.assistant.session import (
     pop_pending_batch_dream_note,
     pop_pending_interpretation_request,
     pop_pending_dream_draft,
+    save_displayed_dream_message,
     save_displayed_dream_set,
     save_pending_batch_dream_note,
     save_pending_dream_draft,
@@ -175,7 +177,23 @@ async def dream_full_text_callback_handler(
         await query.message.reply_text("Не нашёл этот сон в архиве.")
         return
 
-    await _reply_text(query.message, _format_dream_full_text_reply(detail))
+    sent_message = await _reply_text(query.message, _format_dream_full_text_reply(detail))
+    chat = getattr(query.message, "chat", None)
+    chat_id = getattr(chat, "id", None)
+    message_id = getattr(sent_message, "message_id", None)
+    if chat_id is not None and message_id is not None:
+        save_displayed_dream_message(
+            int(chat_id),
+            message_id=int(message_id),
+            refs=[
+                DisplayedDreamRef(
+                    index=1,
+                    dream_id=str(dream_id),
+                    date=str(getattr(detail, "date", "") or ""),
+                    title=str(getattr(detail, "title", "") or ""),
+                )
+            ],
+        )
 
 
 async def batch_note_callback_handler(
@@ -334,8 +352,16 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
             bot_msg_ids.pop(chat_key, None)
+        target_dream_id = _resolve_direct_note_target_dream_id(message, chat_id)
+        if target_dream_id is None and _direct_note_requires_context(stripped_text):
+            await message.reply_text(
+                "Не понял, к какому сну добавить заметку. "
+                "Ответьте на сообщение с одним конкретным сном или укажите номер сна из списка."
+            )
+            return
         _success, reply = await _get_facade(context).add_dream_note(
             direct_note_text,
+            dream_id=target_dream_id,
             chat_id=chat_id,
         )
         await message.reply_text(reply)
@@ -416,7 +442,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = _full_text_reply_markup(reply_text, result, chat_id=chat_id)
     sent_message = await _reply_text(message, reply_text, reply_markup=reply_markup)
     if chat_id is not None:
-        _remember_displayed_dreams(chat_id, reply_text, result)
+        _remember_displayed_dreams(chat_id, reply_text, result, sent_message=sent_message)
 
     if chat_id is not None:
         _maybe_store_pending_dream(
@@ -1194,23 +1220,30 @@ def _visible_dream_reference_ids(reply_text: str, refs: Any) -> list[uuid.UUID]:
     return _coerce_dream_ids([ref.dream_id for ref in _visible_dream_references(reply_text, refs)])
 
 
-def _remember_displayed_dreams(chat_id: int, reply_text: str, result: ChatResult) -> None:
+def _remember_displayed_dreams(
+    chat_id: int,
+    reply_text: str,
+    result: ChatResult,
+    *,
+    sent_message: Any | None = None,
+) -> None:
     refs = _visible_dream_references(reply_text, getattr(result, "dream_refs", []))
     if not refs:
         return
+    displayed_refs = [
+        DisplayedDreamRef(
+            index=index,
+            dream_id=ref.dream_id,
+            date=ref.date,
+            title=ref.title,
+        )
+        for index, ref in enumerate(refs, start=1)
+    ]
 
-    save_displayed_dream_set(
-        chat_id,
-        refs=[
-            DisplayedDreamRef(
-                index=index,
-                dream_id=ref.dream_id,
-                date=ref.date,
-                title=ref.title,
-            )
-            for index, ref in enumerate(refs, start=1)
-        ],
-    )
+    save_displayed_dream_set(chat_id, refs=displayed_refs)
+    message_id = getattr(sent_message, "message_id", None)
+    if message_id is not None:
+        save_displayed_dream_message(chat_id, message_id=int(message_id), refs=displayed_refs)
 
 
 def _visible_dream_references(reply_text: str, refs: Any) -> list[Any]:
@@ -1351,6 +1384,50 @@ def _is_negative_confirmation(text: str) -> bool:
     return text in {"нет", "не надо", "не нужно"}
 
 
+def _resolve_direct_note_target_dream_id(message: Any, chat_id: int) -> uuid.UUID | None:
+    reply = getattr(message, "reply_to_message", None)
+    reply_message_id = getattr(reply, "message_id", None)
+    if reply_message_id is not None:
+        displayed = load_displayed_dream_message(chat_id, int(reply_message_id))
+        dream_id = _single_displayed_ref_dream_id(getattr(displayed, "refs", []))
+        if dream_id is not None:
+            return dream_id
+
+    reply_context_text = _reply_context_text(message)
+    if reply_context_text:
+        reply_dream_ids = _extract_dream_ids_from_text(reply_context_text)
+        if len(reply_dream_ids) == 1:
+            return reply_dream_ids[0]
+
+    displayed = load_displayed_dream_set(chat_id)
+    return _single_displayed_ref_dream_id(getattr(displayed, "refs", []))
+
+
+def _single_displayed_ref_dream_id(refs: Any) -> uuid.UUID | None:
+    if not isinstance(refs, list) or len(refs) != 1:
+        return None
+    try:
+        return uuid.UUID(str(refs[0].dream_id))
+    except (AttributeError, ValueError):
+        return None
+
+
+def _direct_note_requires_context(text: str) -> bool:
+    lowered = text.casefold()
+    return any(
+        marker in lowered
+        for marker in (
+            "к этому сну",
+            "к этому",
+            "этому сну",
+            "к нему",
+            "для этого сна",
+            "this dream",
+            "that dream",
+        )
+    )
+
+
 def _extract_direct_note_text(text: str) -> str | None:
     lowered = text.casefold()
     for prefix in ("note:", "notes:", "заметка:", "заметки:"):
@@ -1380,14 +1457,21 @@ def _extract_direct_note_text(text: str) -> str | None:
 def _normalize_direct_note_tail(text: str) -> str | None:
     note_text = text.strip(" \t\r\n:—–-,.")
     note_text = re.sub(
-        r"^(?:к|для)\s+(?:последн(?:ему|ий|его)\s+)?сн[ау]\b",
+        r"^(?:к|для)\s+(?:(?:последн(?:ему|ий|его)|эт(?:ому|от|ого)|данн(?:ому|ый|ого))\s+)?сн[ау]\b",
         "",
         note_text,
         count=1,
         flags=re.IGNORECASE,
     ).strip(" \t\r\n:—–-,.")
     note_text = re.sub(
-        r"^to\s+(?:the\s+)?(?:(?:last|latest|previous)\s+)?dream\b",
+        r"^к\s+нему\b",
+        "",
+        note_text,
+        count=1,
+        flags=re.IGNORECASE,
+    ).strip(" \t\r\n:—–-,.")
+    note_text = re.sub(
+        r"^to\s+(?:the\s+)?(?:(?:last|latest|previous|this|that)\s+)?dream\b",
         "",
         note_text,
         count=1,

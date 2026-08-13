@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,12 +13,15 @@ from telegram.ext import ApplicationHandlerStop
 from app.assistant.chat import ChatResult, DreamReference
 from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.session import (
+    DisplayedDreamRef,
     clear_displayed_dream_set,
     clear_pending_batch_dream_note,
     clear_pending_dream_draft,
     clear_pending_interpretation_request,
     load_pending_batch_dream_note,
     load_pending_dream_draft,
+    save_displayed_dream_message,
+    save_displayed_dream_set,
     save_pending_interpretation_request,
     save_pending_dream_draft,
 )
@@ -741,8 +745,121 @@ async def test_text_message_handler_direct_note_bypasses_chat_loop() -> None:
         await text_message_handler(update, context)
 
     mock_chat.assert_not_awaited()
-    facade.add_dream_note.assert_awaited_once_with("красная дверь важна", chat_id=42)
+    facade.add_dream_note.assert_awaited_once_with(
+        "красная дверь важна",
+        dream_id=None,
+        chat_id=42,
+    )
     message.reply_text.assert_awaited_once_with("Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_direct_note_targets_replied_dream_message() -> None:
+    dream_id = "11111111-1111-4111-8111-111111111111"
+    update, message = _make_text_message_update(
+        "Добавь заметку к этому сну: красная дверь важна",
+        chat_id=42,
+    )
+    message.reply_to_message = SimpleNamespace(
+        message_id=777,
+        text="02.08.26 - Включение света в чужой системе",
+    )
+    save_displayed_dream_message(
+        42,
+        message_id=777,
+        refs=[
+            DisplayedDreamRef(
+                index=1,
+                dream_id=dream_id,
+                date="2026-08-02",
+                title="Включение света в чужой системе",
+            )
+        ],
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    context = _make_text_context(facade, 42)
+
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(update, context)
+
+    mock_chat.assert_not_awaited()
+    facade.add_dream_note.assert_awaited_once_with(
+        "красная дверь важна",
+        dream_id=uuid.UUID(dream_id),
+        chat_id=42,
+    )
+    message.reply_text.assert_awaited_once_with("Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_direct_note_targets_single_latest_mentioned_dream() -> None:
+    dream_id = "22222222-2222-4222-8222-222222222222"
+    update, message = _make_text_message_update(
+        "Добавь заметку к этому сну: красная дверь важна",
+        chat_id=42,
+    )
+    save_displayed_dream_set(
+        42,
+        refs=[
+            DisplayedDreamRef(
+                index=1,
+                dream_id=dream_id,
+                date="2026-08-02",
+                title="Включение света в чужой системе",
+            )
+        ],
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    context = _make_text_context(facade, 42)
+
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(update, context)
+
+    mock_chat.assert_not_awaited()
+    facade.add_dream_note.assert_awaited_once_with(
+        "красная дверь важна",
+        dream_id=uuid.UUID(dream_id),
+        chat_id=42,
+    )
+    message.reply_text.assert_awaited_once_with("Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_direct_note_does_not_fallback_on_ambiguous_this_dream() -> None:
+    update, message = _make_text_message_update(
+        "Добавь заметку к этому сну: красная дверь важна",
+        chat_id=42,
+    )
+    save_displayed_dream_set(
+        42,
+        refs=[
+            DisplayedDreamRef(
+                index=1,
+                dream_id="11111111-1111-4111-8111-111111111111",
+                date="2026-08-02",
+                title="Первый сон",
+            ),
+            DisplayedDreamRef(
+                index=2,
+                dream_id="22222222-2222-4222-8222-222222222222",
+                date="2026-08-03",
+                title="Второй сон",
+            ),
+        ],
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock()
+    context = _make_text_context(facade, 42)
+
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(update, context)
+
+    mock_chat.assert_not_awaited()
+    facade.add_dream_note.assert_not_awaited()
+    message.reply_text.assert_awaited_once()
+    assert "к какому сну" in message.reply_text.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -782,7 +899,10 @@ async def test_text_message_handler_runs_pending_interpretation_after_approval()
             "Добавь еще заметку к последнему сну: во сне была дача",
             "во сне была дача",
         ),
+        ("Добавь заметку к этому сну: во сне была дача", "во сне была дача"),
+        ("Добавь заметку к нему: во сне была дача", "во сне была дача"),
         ("add note to the latest dream: red door felt important", "red door felt important"),
+        ("add note to this dream: red door felt important", "red door felt important"),
     ],
 )
 def test_extract_direct_note_text_from_command_phrases(text: str, expected: str) -> None:

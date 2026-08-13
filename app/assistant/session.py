@@ -80,6 +80,7 @@ _pending_dream_drafts: dict[int, PendingDreamDraft] = {}
 _pending_interpretation_requests: dict[int, PendingInterpretationRequest] = {}
 _recent_dream_sets: dict[int, RecentDreamSet] = {}
 _displayed_dream_sets: dict[int, DisplayedDreamSet] = {}
+_displayed_dream_messages: dict[tuple[int, int], DisplayedDreamSet] = {}
 _pending_batch_dream_notes: dict[int, PendingBatchDreamNote] = {}
 
 
@@ -250,15 +251,40 @@ def save_displayed_dream_set(
     return displayed
 
 
+def save_displayed_dream_message(
+    chat_id: int,
+    *,
+    message_id: int,
+    refs: list[DisplayedDreamRef],
+) -> DisplayedDreamSet:
+    """Store dream refs shown in a specific Telegram message for reply context."""
+    _evict_expired_displayed_dream_sets()
+    displayed = DisplayedDreamSet(
+        refs=list(refs),
+        created_at=datetime.now(tz=timezone.utc),
+    )
+    _displayed_dream_messages[(chat_id, message_id)] = displayed
+    _evict_excess_displayed_dream_sets()
+    return displayed
+
+
 def load_displayed_dream_set(chat_id: int) -> DisplayedDreamSet | None:
     """Return the last displayed dream list for chat_id, if still fresh."""
     _evict_expired_displayed_dream_sets()
     return _displayed_dream_sets.get(chat_id)
 
 
+def load_displayed_dream_message(chat_id: int, message_id: int) -> DisplayedDreamSet | None:
+    """Return dream refs shown in a specific Telegram message, if still fresh."""
+    _evict_expired_displayed_dream_sets()
+    return _displayed_dream_messages.get((chat_id, message_id))
+
+
 def clear_displayed_dream_set(chat_id: int) -> None:
     """Remove the last displayed dream list for chat_id."""
     _displayed_dream_sets.pop(chat_id, None)
+    for key in [key for key in _displayed_dream_messages if key[0] == chat_id]:
+        _displayed_dream_messages.pop(key, None)
 
 
 def save_pending_batch_dream_note(
@@ -342,6 +368,13 @@ def _evict_expired_displayed_dream_sets(*, now: datetime | None = None) -> None:
     ]
     for chat_id in expired_chat_ids:
         _displayed_dream_sets.pop(chat_id, None)
+    expired_message_keys = [
+        key
+        for key, displayed in _displayed_dream_messages.items()
+        if current - displayed.created_at > ttl
+    ]
+    for key in expired_message_keys:
+        _displayed_dream_messages.pop(key, None)
 
 
 def _evict_expired_pending_batch_dream_notes(*, now: datetime | None = None) -> None:
@@ -393,15 +426,21 @@ def _evict_excess_recent_dream_sets() -> None:
 
 
 def _evict_excess_displayed_dream_sets() -> None:
-    excess = len(_displayed_dream_sets) - MAX_RECENT_DREAM_SETS
+    excess = len(_displayed_dream_sets) + len(_displayed_dream_messages) - MAX_RECENT_DREAM_SETS
     if excess <= 0:
         return
-    oldest_chat_ids = sorted(
-        _displayed_dream_sets,
-        key=lambda chat_id: _displayed_dream_sets[chat_id].created_at,
-    )[:excess]
-    for chat_id in oldest_chat_ids:
-        _displayed_dream_sets.pop(chat_id, None)
+    candidates = [
+        ("chat", chat_id, displayed.created_at)
+        for chat_id, displayed in _displayed_dream_sets.items()
+    ] + [
+        ("message", key, displayed.created_at)
+        for key, displayed in _displayed_dream_messages.items()
+    ]
+    for kind, key, _created_at in sorted(candidates, key=lambda item: item[2])[:excess]:
+        if kind == "chat":
+            _displayed_dream_sets.pop(key, None)
+        else:
+            _displayed_dream_messages.pop(key, None)
 
 
 def _evict_excess_pending_batch_dream_notes() -> None:

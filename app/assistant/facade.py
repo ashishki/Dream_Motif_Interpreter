@@ -767,13 +767,17 @@ class AssistantFacade:
         note_line = f"[Note {date_str}]: {normalized_text}"
         target_doc_id = self._resolve_note_doc_id(dream)
         gdocs_client = GDocsClient()
+        placed = False
         try:
             with tracer.start_as_current_span("assistant.add_dream_note.write_google_doc"):
-                placed = gdocs_client.insert_text_under_heading(
-                    target_doc_id,
-                    heading=_dream_doc_heading(dream),
-                    text=note_line,
-                )
+                for heading in _dream_doc_heading_candidates(dream):
+                    placed = gdocs_client.insert_text_under_heading(
+                        target_doc_id,
+                        heading=heading,
+                        text=note_line,
+                    )
+                    if placed:
+                        break
                 if not placed:
                     logger.info(
                         "Dream note heading not found; Google Doc was not updated",
@@ -1199,13 +1203,54 @@ def _dream_summary_item(dream: DreamEntry, *, theme_names: list[str] | None = No
 
 
 def _dream_doc_heading(dream: DreamEntry) -> str:
-    clean_title = _DATE_PREFIX_RE.sub("", dream.title).strip()
+    return _dream_doc_heading_candidates(dream)[0]
+
+
+def _dream_doc_heading_candidates(dream: DreamEntry) -> list[str]:
+    title = (dream.title or "").strip()
+    clean_title = _DATE_PREFIX_RE.sub("", title).strip()
+    candidates: list[str] = []
+
+    def add(value: str | None) -> None:
+        normalized = (value or "").strip()
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+
     if dream.date is None:
-        return clean_title
-    return f"{dream.date.strftime('%d.%m.%y')} - {clean_title}"
+        add(clean_title)
+        add(title)
+        parsed_title = _split_title_date_prefix(title)
+        if parsed_title is not None:
+            title_date, title_without_date = parsed_title
+            add(f"{title_date} - {title_without_date}")
+            add(f"{title_date} {title_without_date}")
+        return candidates
+
+    date_str = dream.date.strftime("%d.%m.%y")
+    add(f"{date_str} - {clean_title}")
+    add(f"{date_str} {clean_title}")
+    add(title)
+    return candidates
+
+
+def _split_title_date_prefix(title: str) -> tuple[str, str] | None:
+    match = _DATE_TITLE_PREFIX_RE.match(title.strip())
+    if match is None:
+        return None
+    day = int(match.group("day"))
+    month = int(match.group("month"))
+    year = match.group("year")
+    suffix = match.group("title").strip()
+    if not suffix:
+        return None
+    return f"{day:02d}.{month:02d}.{year[-2:]}", suffix
 
 
 _DATE_PREFIX_RE = re.compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")
+_DATE_TITLE_PREFIX_RE = re.compile(
+    r"^\s*(?P<day>\d{1,2})[./](?P<month>\d{1,2})[./](?P<year>\d{2,4})"
+    r"(?:\s*[-–—,]\s*|\s+)(?P<title>\S.*)$"
+)
 _WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
 _INLINE_TITLE_PATTERNS = (
     re.compile(

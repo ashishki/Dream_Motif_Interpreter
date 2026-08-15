@@ -1184,12 +1184,10 @@ def _full_text_reply_markup(
     if not dream_ids:
         refs = getattr(result, "dream_refs", [])
         dream_ids = _visible_dream_reference_ids(reply_text, refs)
-        if not dream_ids and refs:
+        visible_count = _visible_numbered_result_count(reply_text)
+        if refs and visible_count and visible_count <= len(refs) and len(dream_ids) < visible_count:
             dream_ids = _coerce_dream_ids(
-                [
-                    str(getattr(ref, "dream_id", "") or "")
-                    for ref in refs[: _visible_numbered_result_count(reply_text)]
-                ]
+                [str(getattr(ref, "dream_id", "") or "") for ref in refs[:visible_count]]
             )
         if not dream_ids and refs:
             return None
@@ -1260,9 +1258,9 @@ def _visible_dream_references(reply_text: str, refs: Any) -> list[Any]:
         if _dream_reference_visible(normalized_reply, title=title, date_value=date_value):
             visible_refs.append(ref)
 
-    if not visible_refs and refs:
+    if refs:
         visible_count = _visible_numbered_result_count(reply_text)
-        if visible_count:
+        if visible_count and visible_count <= len(refs) and len(visible_refs) < visible_count:
             visible_refs = list(refs[:visible_count])
 
     return visible_refs

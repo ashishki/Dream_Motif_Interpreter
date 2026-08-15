@@ -320,6 +320,47 @@ async def test_text_message_handler_limits_full_text_buttons_to_numbered_visible
 
 
 @pytest.mark.asyncio
+async def test_text_message_handler_uses_numbered_count_when_only_some_titles_match() -> None:
+    dream_ids = [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+    ]
+    update, message = _make_text_message_update("найди сны про работу", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(
+            return_value=ChatResult(
+                "\n".join(
+                    [
+                        "1. 01.05.26, Офис: рабочий сюжет.",
+                        "2. 02.05.26, сон про начальника и задачу.",
+                        "3. 03.05.26, сон про документы.",
+                    ]
+                ),
+                ["search_dreams"],
+                dream_ids=dream_ids,
+                dream_refs=[
+                    DreamReference(dream_ids[0], date="2026-05-01", title="Офис"),
+                    DreamReference(dream_ids[1], date="2026-05-02", title="Руководитель"),
+                    DreamReference(dream_ids[2], date="2026-05-03", title="Документы"),
+                ],
+            )
+        ),
+    ):
+        await text_message_handler(update, context)
+
+    keyboard = message.reply_text.await_args.kwargs["reply_markup"].inline_keyboard
+    buttons = [row[0] for row in keyboard]
+    assert [button.callback_data for button in buttons] == [
+        f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}" for dream_id in dream_ids
+    ]
+
+
+@pytest.mark.asyncio
 async def test_text_message_handler_confirms_batch_note_for_numbered_search_results() -> None:
     dream_ids = [
         "11111111-1111-4111-8111-111111111111",
@@ -391,9 +432,9 @@ async def test_text_message_handler_confirms_batch_note_for_numbered_search_resu
     assert [
         str(call.kwargs["dream_id"]) for call in facade.add_dream_note.await_args_list
     ] == dream_ids[1:]
-    assert {
-        call.args[0] for call in facade.add_dream_note.await_args_list
-    } == {"проявление негативных эмоций по отношению к матери"}
+    assert {call.args[0] for call in facade.add_dream_note.await_args_list} == {
+        "проявление негативных эмоций по отношению к матери"
+    }
     confirm_message.reply_text.assert_awaited_once_with("Готово. Добавил заметку к 3 снам.")
 
 

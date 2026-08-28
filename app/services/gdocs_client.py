@@ -26,6 +26,11 @@ logger = get_logger(__name__)
 
 _DATE_PREFIX_RE = re.compile(r"^\d{2}\.\d{2}\.\d{2,4}[\s\-,]+")
 _DREAM_HEADING_DATE_RE = re.compile(r"^\s*(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})\b")
+_DREAM_HEADING_RE = re.compile(
+    r"^\s*(?P<day>\d{1,2})\.(?P<month>\d{1,2})\.(?P<year>\d{2}|\d{4})"
+    r"(?:\s*[-–—,]\s*|\s+)(?P<title>\S.*)$"
+)
+_HEADING_WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
 
 
 class GDocsAuthError(Exception):
@@ -217,6 +222,13 @@ class GDocsClient:
                 service = self._build_docs_service()
                 document = service.documents().get(documentId=doc_id).execute()
                 insertion_index = _find_heading_section_end_index(document, heading)
+                if insertion_index is None:
+                    insertion_index = _find_similar_heading_section_end_index(document, heading)
+                    if insertion_index is not None:
+                        logger.info(
+                            "Google Docs target heading matched by date/title similarity",
+                            document_id=doc_id,
+                        )
                 if insertion_index is None:
                     logger.info("Google Docs target heading not found", document_id=doc_id)
                     return False
@@ -626,6 +638,21 @@ def _parse_dream_heading_date(value: str) -> date | None:
         return None
 
 
+def _parse_dream_heading(value: str) -> tuple[date, str] | None:
+    match = _DREAM_HEADING_RE.search(value)
+    if match is None:
+        return None
+    year_raw = match.group("year")
+    year = int(year_raw)
+    if len(year_raw) == 2:
+        year += 2000
+    try:
+        heading_date = date(year, int(match.group("month")), int(match.group("day")))
+    except ValueError:
+        return None
+    return heading_date, match.group("title").strip()
+
+
 def _paragraph_text(paragraph: Mapping[str, Any]) -> str:
     return "".join(
         str(element.get("textRun", {}).get("content", ""))
@@ -641,34 +668,98 @@ def _find_heading_section_end_index(document: Mapping[str, Any], heading: str) -
 
     blocks = document.get("body", {}).get("content", [])
     for index, block in enumerate(blocks):
-        paragraph = block.get("paragraph")
-        if not isinstance(paragraph, dict):
+        paragraph_text = _heading_text(block)
+        if paragraph_text is None:
             continue
-        style = paragraph.get("paragraphStyle", {})
-        if style.get("namedStyleType") != "HEADING_1":
-            continue
-        paragraph_text = _paragraph_text(paragraph)
         if _normalize_doc_text(paragraph_text) == target:
-            heading_end_index = int(block.get("endIndex") or 1)
-            if index == len(blocks) - 1:
-                return heading_end_index
-            for following_block in blocks[index + 1 :]:
-                following_paragraph = following_block.get("paragraph")
-                if not isinstance(following_paragraph, dict):
-                    continue
-                following_style = following_paragraph.get("paragraphStyle", {})
-                if following_style.get("namedStyleType") == "HEADING_1":
-                    next_start_index = int(
-                        following_block.get("startIndex")
-                        or following_block.get("endIndex")
-                        or heading_end_index
-                    )
-                    return max(heading_end_index, next_start_index - 1)
-
-            if blocks:
-                return max(1, int(blocks[-1].get("endIndex") or heading_end_index) - 1)
-            return heading_end_index
+            return _heading_section_end_index(blocks, index)
     return None
+
+
+def _find_similar_heading_section_end_index(
+    document: Mapping[str, Any],
+    heading: str,
+) -> int | None:
+    parsed_target = _parse_dream_heading(heading)
+    if parsed_target is None:
+        return None
+    target_date, target_title = parsed_target
+    blocks = document.get("body", {}).get("content", [])
+    best_index: int | None = None
+    best_score = 0.0
+    tied = False
+    for index, block in enumerate(blocks):
+        paragraph_text = _heading_text(block)
+        if paragraph_text is None:
+            continue
+        parsed_candidate = _parse_dream_heading(paragraph_text)
+        if parsed_candidate is None:
+            continue
+        candidate_date, candidate_title = parsed_candidate
+        if candidate_date != target_date:
+            continue
+        score = _heading_title_similarity(target_title, candidate_title)
+        if score < 0.6:
+            continue
+        if score > best_score:
+            best_index = index
+            best_score = score
+            tied = False
+        elif score == best_score:
+            tied = True
+
+    if best_index is None or tied:
+        return None
+    return _heading_section_end_index(blocks, best_index)
+
+
+def _heading_text(block: Mapping[str, Any]) -> str | None:
+    paragraph = block.get("paragraph")
+    if not isinstance(paragraph, dict):
+        return None
+    style = paragraph.get("paragraphStyle", {})
+    if style.get("namedStyleType") != "HEADING_1":
+        return None
+    return _paragraph_text(paragraph)
+
+
+def _heading_section_end_index(blocks: list[Any], heading_index: int) -> int:
+    block = blocks[heading_index]
+    heading_end_index = int(block.get("endIndex") or 1)
+    if heading_index == len(blocks) - 1:
+        return heading_end_index
+    for following_block in blocks[heading_index + 1 :]:
+        following_paragraph = following_block.get("paragraph")
+        if not isinstance(following_paragraph, dict):
+            continue
+        following_style = following_paragraph.get("paragraphStyle", {})
+        if following_style.get("namedStyleType") == "HEADING_1":
+            next_start_index = int(
+                following_block.get("startIndex")
+                or following_block.get("endIndex")
+                or heading_end_index
+            )
+            return max(heading_end_index, next_start_index - 1)
+
+    return max(1, int(blocks[-1].get("endIndex") or heading_end_index) - 1)
+
+
+def _heading_title_similarity(first: str, second: str) -> float:
+    first_normalized = _normalize_doc_text(first)
+    second_normalized = _normalize_doc_text(second)
+    if not first_normalized or not second_normalized:
+        return 0.0
+    if first_normalized in second_normalized or second_normalized in first_normalized:
+        return 1.0
+
+    first_tokens = set(_HEADING_WORD_RE.findall(first_normalized))
+    second_tokens = set(_HEADING_WORD_RE.findall(second_normalized))
+    if not first_tokens or not second_tokens:
+        return 0.0
+    shared = first_tokens & second_tokens
+    if len(shared) < 2:
+        return 0.0
+    return len(shared) / max(len(first_tokens), len(second_tokens))
 
 
 def _normalize_doc_text(value: str) -> str:

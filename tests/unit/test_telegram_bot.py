@@ -18,8 +18,10 @@ from app.assistant.session import (
     clear_pending_batch_dream_note,
     clear_pending_dream_draft,
     clear_pending_interpretation_request,
+    clear_pending_single_dream_note,
     load_pending_batch_dream_note,
     load_pending_dream_draft,
+    load_pending_single_dream_note,
     save_displayed_dream_message,
     save_displayed_dream_set,
     save_pending_interpretation_request,
@@ -157,6 +159,7 @@ def _clear_pending_drafts() -> None:
     clear_pending_interpretation_request(55)
     clear_pending_interpretation_request(77)
     clear_pending_interpretation_request(100)
+    clear_pending_single_dream_note(42)
     yield
     clear_pending_dream_draft(42)
     clear_pending_dream_draft(55)
@@ -168,6 +171,7 @@ def _clear_pending_drafts() -> None:
     clear_pending_interpretation_request(55)
     clear_pending_interpretation_request(77)
     clear_pending_interpretation_request(100)
+    clear_pending_single_dream_note(42)
 
 
 @pytest.mark.asyncio
@@ -901,6 +905,121 @@ async def test_text_message_handler_direct_note_does_not_fallback_on_ambiguous_t
     facade.add_dream_note.assert_not_awaited()
     message.reply_text.assert_awaited_once()
     assert "к какому сну" in message.reply_text.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_remembers_created_dream_confirmation_for_reply_note() -> None:
+    dream_id = "11111111-1111-4111-8111-111111111111"
+    create_update, create_message = _make_text_message_update(
+        "Запиши сон: мы прощаемся на станции метро",
+        chat_id=42,
+    )
+    create_message.reply_text.return_value = SimpleNamespace(message_id=901)
+    created = SimpleNamespace(
+        id=uuid.UUID(dream_id),
+        date="2026-08-23",
+        title="Прощание с Лизой на станции метро",
+        written_to_google_doc=True,
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream = AsyncMock(return_value=created)
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    context = _make_text_context(facade, 42)
+
+    await text_message_handler(create_update, context)
+
+    note_update, note_message = _make_text_message_update(
+        "Добавь заметку к этому сну: #Лиза #анима #одноклассники",
+        chat_id=42,
+    )
+    note_message.reply_to_message = SimpleNamespace(
+        message_id=901,
+        text="Сон сохранён и добавлен в документ",
+    )
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(note_update, context)
+
+    mock_chat.assert_not_awaited()
+    facade.add_dream_note.assert_awaited_once_with(
+        "#Лиза #анима #одноклассники",
+        dream_id=uuid.UUID(dream_id),
+        chat_id=42,
+    )
+    note_message.reply_text.assert_awaited_once_with("Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_applies_pending_single_note_to_replied_dream() -> None:
+    dream_id = "11111111-1111-4111-8111-111111111111"
+    update, message = _make_text_message_update(
+        "Добавь заметку к этому сну: #Лиза #анима #одноклассники",
+        chat_id=42,
+    )
+    save_displayed_dream_set(
+        42,
+        refs=[
+            DisplayedDreamRef(
+                index=1,
+                dream_id="22222222-2222-4222-8222-222222222222",
+                date="2026-08-22",
+                title="Первый сон",
+            ),
+            DisplayedDreamRef(
+                index=2,
+                dream_id=dream_id,
+                date="2026-08-23",
+                title="Прощание с Лизой на станции метро",
+            ),
+        ],
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    context = _make_text_context(facade, 42)
+
+    await text_message_handler(update, context)
+
+    assert load_pending_single_dream_note(42) is not None
+    follow_update, follow_message = _make_text_message_update("К этому", chat_id=42)
+    follow_message.reply_to_message = SimpleNamespace(message_id=902)
+    save_displayed_dream_message(
+        42,
+        message_id=902,
+        refs=[
+            DisplayedDreamRef(
+                index=1,
+                dream_id=dream_id,
+                date="2026-08-23",
+                title="Прощание с Лизой на станции метро",
+            )
+        ],
+    )
+
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(follow_update, context)
+
+    mock_chat.assert_not_awaited()
+    facade.add_dream_note.assert_awaited_once_with(
+        "#Лиза #анима #одноклассники",
+        dream_id=uuid.UUID(dream_id),
+        chat_id=42,
+    )
+    assert load_pending_single_dream_note(42) is None
+    follow_message.reply_text.assert_awaited_once_with("Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.asyncio
+async def test_text_message_handler_bare_context_reference_does_not_create_dream() -> None:
+    update, message = _make_text_message_update("К этому", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+
+    with patch("app.telegram.handlers.handle_chat_with_metadata", new=AsyncMock()) as mock_chat:
+        await text_message_handler(update, context)
+
+    mock_chat.assert_not_awaited()
+    facade.create_dream.assert_not_awaited()
+    message.reply_text.assert_awaited_once()
+    assert "что именно сделать" in message.reply_text.await_args.args[0]
 
 
 @pytest.mark.asyncio

@@ -408,6 +408,57 @@ def test_insert_text_under_heading_returns_false_when_heading_missing() -> None:
     mocked_service.documents.return_value.batchUpdate.assert_not_called()
 
 
+def test_insert_text_under_heading_uses_similar_same_date_heading() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1,
+                    "endIndex": 40,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [
+                            {"textRun": {"content": "23.08.26 - Прощание с Лизой на станции\n"}}
+                        ],
+                    },
+                },
+                {
+                    "startIndex": 40,
+                    "endIndex": 120,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                        "elements": [{"textRun": {"content": "Dream body\n"}}],
+                    },
+                },
+            ]
+        }
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        placed = client.insert_text_under_heading(
+            "doc-123",
+            heading="23.08.26 - Прощание с Лизой на станции метро",
+            text="[Note 23.08.26]: #Лиза",
+        )
+
+    assert placed is True
+    mocked_service.documents.return_value.batchUpdate.assert_called_once_with(
+        documentId="doc-123",
+        body={
+            "requests": [
+                {
+                    "insertText": {
+                        "location": {"index": 119},
+                        "text": "\n[Note 23.08.26]: #Лиза",
+                    }
+                }
+            ]
+        },
+    )
+
+
 def test_append_dream_entry_strips_duplicate_date_from_title_heading() -> None:
     client = GDocsClient(settings=_build_settings())
     mocked_service = Mock()

@@ -22,19 +22,23 @@ from app.assistant.session import (
     clear_pending_batch_dream_note,
     clear_pending_interpretation_request,
     clear_pending_dream_draft,
+    clear_pending_single_dream_note,
     load_displayed_dream_message,
     load_displayed_dream_set,
     load_recent_dream_set,
     load_pending_batch_dream_note,
     load_pending_interpretation_request,
     load_pending_dream_draft,
+    load_pending_single_dream_note,
     pop_pending_batch_dream_note,
     pop_pending_interpretation_request,
     pop_pending_dream_draft,
+    pop_pending_single_dream_note,
     save_displayed_dream_message,
     save_displayed_dream_set,
     save_pending_batch_dream_note,
     save_pending_dream_draft,
+    save_pending_single_dream_note,
 )
 from app.assistant.tools import _has_natural_dream_opening, _is_explicit_create_request
 from app.assistant.voice_media import create_voice_media_event
@@ -337,6 +341,17 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             bot_msg_ids.pop(chat_key, None)
         return
 
+    if chat_id is not None and await _handle_pending_single_note_target(
+        message,
+        stripped_text,
+        chat_id=chat_id,
+        facade=_get_facade(context),
+    ):
+        if chat_key is not None:
+            pending_feedback.pop(chat_key, None)
+            bot_msg_ids.pop(chat_key, None)
+        return
+
     if chat_id is not None and await _try_start_batch_note_confirmation(
         message,
         stripped_text,
@@ -354,9 +369,10 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             bot_msg_ids.pop(chat_key, None)
         target_dream_id = _resolve_direct_note_target_dream_id(message, chat_id)
         if target_dream_id is None and _direct_note_requires_context(stripped_text):
+            save_pending_single_dream_note(chat_id, note_text=direct_note_text)
             await message.reply_text(
                 "Не понял, к какому сну добавить заметку. "
-                "Ответьте на сообщение с одним конкретным сном или укажите номер сна из списка."
+                "Ответьте на сообщение с одним конкретным сном коротко: «к этому»."
             )
             return
         _success, reply = await _get_facade(context).add_dream_note(
@@ -385,7 +401,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await message.reply_text(str(exc))
             return
         clear_pending_dream_draft(chat_id)
-        await message.reply_text(_format_create_dream_reply(created))
+        await _reply_create_dream_and_remember(message, chat_id, created)
         return
 
     if chat_id is not None and _has_natural_dream_opening(stripped_text.casefold()):
@@ -403,7 +419,14 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await message.reply_text(str(exc))
             return
         clear_pending_dream_draft(chat_id)
-        await message.reply_text(_format_create_dream_reply(created))
+        await _reply_create_dream_and_remember(message, chat_id, created)
+        return
+
+    if _is_bare_context_reference(stripped_text):
+        await message.reply_text(
+            "Не понял, что именно сделать с этим сном. "
+            "Если нужно добавить заметку, напишите: «добавь заметку: ...»."
+        )
         return
 
     reply_context_text = _reply_context_text(message)
@@ -762,7 +785,7 @@ async def _handle_pending_dream_confirmation(
     except DreamRecordingUnavailable as exc:
         await message.reply_text(str(exc))
         return True
-    await message.reply_text(_format_create_dream_reply(created))
+    await _reply_create_dream_and_remember(message, chat_id, created)
     return True
 
 
@@ -833,6 +856,46 @@ async def _handle_pending_batch_note_confirmation(
         return False
 
     await message.reply_text(await _apply_pending_batch_note(chat_id, facade))
+    return True
+
+
+async def _handle_pending_single_note_target(
+    message: Any,
+    text: str,
+    *,
+    chat_id: int,
+    facade: AssistantFacade,
+) -> bool:
+    pending = load_pending_single_dream_note(chat_id)
+    if pending is None:
+        return False
+
+    normalized = _normalize_confirmation_text(text)
+    if _is_negative_confirmation(normalized):
+        clear_pending_single_dream_note(chat_id)
+        await message.reply_text("Хорошо, не добавляю заметку.")
+        return True
+
+    if not (_is_bare_context_reference(text) or _is_positive_confirmation(normalized)):
+        return False
+
+    target_dream_id = _resolve_direct_note_target_dream_id(message, chat_id)
+    if target_dream_id is None:
+        await message.reply_text(
+            "Всё ещё не понял, к какому сну добавить заметку. "
+            "Ответьте «к этому» именно на сообщение с одним конкретным сном."
+        )
+        return True
+
+    pending = pop_pending_single_dream_note(chat_id)
+    if pending is None:
+        return True
+    _success, reply = await facade.add_dream_note(
+        pending.note_text,
+        dream_id=target_dream_id,
+        chat_id=chat_id,
+    )
+    await message.reply_text(reply)
     return True
 
 
@@ -1061,7 +1124,7 @@ async def _handle_reply_to_voice_save(
     except DreamRecordingUnavailable as exc:
         await message.reply_text(str(exc))
         return True
-    await message.reply_text(_format_create_dream_reply(created))
+    await _reply_create_dream_and_remember(message, chat_id, created)
     clear_pending_dream_draft(chat_id)
     return True
 
@@ -1424,6 +1487,42 @@ def _direct_note_requires_context(text: str) -> bool:
             "that dream",
         )
     )
+
+
+def _is_bare_context_reference(text: str) -> bool:
+    normalized = _normalize_confirmation_text(text)
+    return normalized in {
+        "к этому",
+        "к этому сну",
+        "этому",
+        "этому сну",
+        "к нему",
+        "вот к этому",
+        "вот к этому сну",
+        "сюда",
+        "сюда добавь",
+    }
+
+
+async def _reply_create_dream_and_remember(message: Any, chat_id: int, created: Any) -> None:
+    sent_message = await message.reply_text(_format_create_dream_reply(created))
+    _remember_created_dream(chat_id, created, sent_message=sent_message)
+
+
+def _remember_created_dream(chat_id: int, created: Any, *, sent_message: Any | None = None) -> None:
+    dream_id = str(getattr(created, "id", "") or "").strip()
+    if not dream_id:
+        return
+    ref = DisplayedDreamRef(
+        index=1,
+        dream_id=dream_id,
+        date=str(getattr(created, "date", "") or ""),
+        title=str(getattr(created, "title", "") or "без названия"),
+    )
+    save_displayed_dream_set(chat_id, refs=[ref])
+    message_id = getattr(sent_message, "message_id", None)
+    if isinstance(message_id, int):
+        save_displayed_dream_message(chat_id, message_id=message_id, refs=[ref])
 
 
 def _extract_direct_note_text(text: str) -> str | None:

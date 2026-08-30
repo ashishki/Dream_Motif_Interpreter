@@ -39,7 +39,7 @@ jobs:
         run: pip install -r requirements-dev.txt -e .
 
   # ── Ruff lint ─────────────────────────────────────────────────────────────
-  # Zero violations required. Ruff replaces flake8 + isort + pyupgrade.
+  # Zero violations required for the project-selected Ruff rule set.
   ruff-check:
     name: Ruff lint
     runs-on: ubuntu-latest

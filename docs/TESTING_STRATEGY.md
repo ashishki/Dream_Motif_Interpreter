@@ -22,7 +22,10 @@ Current local checkpoint:
 - `.venv/bin/ruff check app/ scripts/ tests/`
 - `.venv/bin/ruff format --check app/ scripts/ tests/`
 - `.venv/bin/pytest tests/unit -q`
-- `python scripts/eval_public_fixture.py --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json`
+- `.venv/bin/python scripts/eval_public_fixture.py --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json`
+
+Ruff rule selection is pinned in `pyproject.toml` (`E4`, `E7`, `E9`, `F`) so local
+checks and GitHub Actions do not inherit stricter host-level defaults.
 
 Interpretation:
 

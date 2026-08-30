@@ -1,6 +1,6 @@
 # Environment and Configuration
 
-Last updated: 2026-04-21
+Last updated: 2026-08-30
 
 ## 1. Current Backend Variables
 
@@ -58,6 +58,10 @@ routes such as `GET /dream-memory/state`.
 
 `TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS` — maximum accepted age for Telegram
 WebApp `initData` authentication on protected backend routes. Default: `86400`.
+
+`runtime_extra_docs.json` — local runtime state for the active primary Google Doc, extra connected
+docs, and cached document names. It is read by config helpers but is intentionally ignored by git:
+do not commit live document IDs or operator-specific runtime choices.
 
 ## 2. Phase 6 Telegram Variables
 

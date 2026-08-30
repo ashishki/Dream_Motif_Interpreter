@@ -1,6 +1,6 @@
 # Testing Strategy
 
-Last updated: 2026-04-21
+Last updated: 2026-08-30
 
 ## 1. Current Testing Posture
 
@@ -15,17 +15,22 @@ Dream Motif Interpreter already has a stronger backend testing posture than many
 - voice pipeline tests
 - motif/research/feedback tests
 
-This should remain a project strength during Phase 6+.
+This should remain a project strength during Telegram UX hardening and Google Docs sync work.
 
 Current local checkpoint:
 
-- targeted setup-sensitive tests passed: `tests/unit/test_config.py` (`8 passed`), `tests/unit/test_gdocs_client.py` (`7 passed`)
-- `.venv/bin/pytest --collect-only -q` currently reports `295 tests collected`
+- `.venv/bin/ruff check app/ scripts/ tests/`
+- `.venv/bin/ruff format --check app/ scripts/ tests/`
+- `.venv/bin/pytest tests/unit -q`
+- `python scripts/eval_public_fixture.py --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json`
 
 Interpretation:
 
-- installation is far enough along to validate runtime services and targeted tests
-- clean full collect baseline has been restored; the next testing task is a real full-suite run inside `.venv`
+- unit and privacy-safe replay checks are deterministic and should pass without live provider keys
+- full `pytest tests/` mirrors CI more closely and requires the disposable PostgreSQL/pgvector
+  environment used by GitHub Actions
+- live Google Docs, Telegram, Anthropic, and OpenAI behavior must be smoke-tested separately on
+  the operator deployment
 
 ## 2. Phase 6 Test Expansion
 
@@ -78,25 +83,32 @@ Highest-priority new tests:
 - session state survives restart
 - voice jobs do not leak media files indefinitely
 
-## 6. Current Testing Stop Point
+## 6. Local CI Equivalent
 
-The project is currently stopped at this practical boundary:
+Before pushing maintenance or Telegram UX changes, run the same classes of checks as CI:
 
-- local DB/Redis/app health checks have been validated
-- targeted config and Google Docs client tests pass
-- full-suite collection is green at the collect stage
-- live Google Docs fetch with a real `GOOGLE_DOC_ID` still needs to be validated after credentials are finalized
+```bash
+.venv/bin/ruff check app/ scripts/ tests/
+.venv/bin/ruff format --check app/ scripts/ tests/
+.venv/bin/pytest tests/ -q --tb=short
+.venv/bin/python scripts/eval_public_fixture.py \
+  --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json
+.venv/bin/python scripts/eval.py --task-id CI --no-write-markdown
+```
 
-If the next pass reveals only isolated defects, treat them as a maintenance/fix queue rather than inventing a new product phase.
+Use the same placeholder env values as `.github/workflows/ci.yml` for tests/evals that should not
+touch live providers. Do not rely on production `.env` to prove CI safety.
 
-## 7. CI Implication
+## 7. Live Smoke Boundary
 
-If the Telegram runtime is added, CI should evolve to cover:
+Green CI does not prove live integrations. After deployment, run the relevant smoke checklist in:
 
-- assistant-related unit tests
-- Telegram integration tests
-- voice pipeline tests that use mocks/fakes rather than real external media services
+- [Telegram bot runbook](RUNBOOK_TELEGRAM_BOT.md)
+- [Voice pipeline runbook](RUNBOOK_VOICE_PIPELINE.md)
 
-Active implementation sequencing for these tests:
+At minimum after Telegram handler changes, verify:
 
-- [docs/tasks_phase6.md](tasks_phase6.md)
+- one running polling process
+- `/health` reports zero unindexed dreams/notes
+- reply notes work on one displayed dream and one newly saved dream confirmation
+- full-text button count matches the visible dream list

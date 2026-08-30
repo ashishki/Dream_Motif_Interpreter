@@ -1,6 +1,6 @@
 # Telegram Interaction Model
 
-Last updated: 2026-05-20 (Phase 25 — backdated writes and duplicate rewrites)
+Last updated: 2026-08-30 (reply notes, full-text buttons, semantic-by-default search)
 
 ## 1. Purpose
 
@@ -99,12 +99,14 @@ Recommended:
 
 - one persisted session per allowed chat
 - short recent history retained for conversational continuity
-- pending action state stored durably
+- short-lived operational state for displayed dream lists and pending confirmations
+- reply-target state for displayed dreams and newly saved dream confirmations
 
 Do not:
 
 - treat chat history as dream memory
 - silently create archive content from casual chat without an explicit domain flow
+- route bare context phrases such as `к этому` into the LLM as a possible new dream
 
 ## 9. Authorization
 
@@ -159,12 +161,64 @@ not ask the user for UUIDs and must not claim success before the facade returns 
 If all notes are stored in the archive but Google Doc insertion is partial, the bot must say that
 plainly and identify that the remaining issue is the document heading match.
 
+### Single-dream notes via reply/context
+
+Telegram supports a native, non-command UX for adding a note to one dream:
+
+- reply to a bot message that contains one concrete dream and write
+  `Добавь заметку к этому сну: ...`
+- reply to the bot's `Сон сохранён и добавлен в документ` confirmation and write
+  `Добавь заметку к этому сну: ...`
+- write `Добавь заметку к этому сну: ...` after the bot has shown exactly one recent dream
+
+If the user writes `Добавь заметку к этому сну: ...` while the target is ambiguous, the handler
+must store the note text as short-lived pending state and ask the user to reply `к этому` to one
+specific dream message. A later bare `к этому` is allowed only to resolve that pending note. If no
+pending note exists, `к этому` must produce a clarification message and must not be sent to the LLM
+as a dream-recording candidate.
+
+The success path is:
+
+1. Resolve exactly one `dream_id` from the replied message or latest single displayed dream.
+2. Call `AssistantFacade.add_dream_note(note_text, dream_id=..., chat_id=...)`.
+3. Reply with the facade message exactly, including partial Google Doc failure messages.
+
+Do not fallback to the latest archived dream when the user wrote `this dream` and the visible
+context is ambiguous.
+
+### Google Doc note placement
+
+`add_dream_note` persists and indexes the note first, then tries to insert it into the relevant
+Google Doc section. The Google Doc insert should:
+
+- try exact Heading 1 variants first
+- if exact matching fails, allow a similar heading with the same date and overlapping title words
+- refuse ambiguous same-score fuzzy matches
+- return a partial-success message if the archive save succeeded but no document heading matched
+
+This protects the common case where a user manually edits or shortens a Google Doc title after the
+dream was saved.
+
+### Full-text buttons
+
+When a response mentions dreams from `dream_refs`, Telegram should attach full-text buttons only
+for dreams actually visible in the sent message. For numbered lists, if titles/dates were
+paraphrased and only some refs match literally, the visible numbered count may be used as a bound:
+`refs[:visible_count]`. The handler must not expose buttons for hidden retrieval candidates.
+
 ### Manual Google Doc title edits
 
 When Google Doc sync sees a dream body whose `content_hash` already exists, it must not create a
 duplicate row. Instead, it updates mutable document metadata on the existing dream: source document
 ID, date, title, parser profile, and parse warnings. This lets a user rename headings manually in
 Google Docs and have later title search and note insertion use the renamed heading after sync.
+
+### Semantic vs exact search
+
+Default search behavior is semantic. The bot should return dreams close in meaning to the user's
+request and should not draw a user-facing line between exact word hits and semantically close
+plots. Exact word/FTS search remains available, but only when the user explicitly asks for a
+literal word or phrase match.
 
 Preconditions before enabling the still-deferred curation tools above:
 1. Design a two-phase confirmation UX (intent → explicit confirmation message → execute).
@@ -259,7 +313,8 @@ These rules apply to all assistant responses in Telegram. They override any defa
 
 - No markdown: no `**bold**`, no `*italic*`, no `__underline__`, no inline code
 - Lists use numbered format: `1.`, `2.`, `3.`
-- No grouping results by section headers (e.g. "Сильная связь:", "Умеренная связь:") — use inline labels instead
+- No grouping or inline labels by connection strength (e.g. "Сильная связь:",
+  "Умеренная связь:", "слабая связь")
 
 ### Date format
 

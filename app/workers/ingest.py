@@ -14,7 +14,11 @@ from app.api.dreams import SyncJobState, get_and_delete_sync_notify, write_sync_
 from app.models.dream import DreamChunk, DreamEntry
 from app.models.note import DreamNote
 from app.models.theme import DreamTheme
-from app.retrieval.ingestion import ValidatedDreamEntry, fetch_source_documents, process_source_document
+from app.retrieval.ingestion import (
+    ValidatedDreamEntry,
+    fetch_source_documents,
+    process_source_document,
+)
 from app.retrieval.types import FetchedSourceDocument, SourceConnector
 from app.services.analysis import AnalysisService
 from app.services.gdocs_client import GDocsAuthError, GDocsClient

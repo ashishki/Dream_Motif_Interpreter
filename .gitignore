@@ -5,6 +5,7 @@ dream-493107-1663e9547597.json
 # Environment variables
 .env
 .env.*
+runtime_extra_docs.json
 
 # Python
 __pycache__/
@@ -45,3 +46,4 @@ Thumbs.db
 # Logs
 *.log
 .run/
+docs/hooks_log.txt

@@ -2,7 +2,7 @@
 
 Локальный single-operator прототип для работы с приватным архивом записей.
 
-Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом и обратной связью.
+Принимает записи снов из Google Docs, хранит и курирует темы, поддерживает семантический поиск, индуцирует абстрактные мотивы, обогащает их внешними культурными параллелями и предоставляет Telegram-интерфейс с голосовым вводом, записью снов, контекстными заметками и кнопками полного текста.
 
 **Статус: case-study prototype, не product release.** Репозиторий содержит реализованные
 компоненты и детерминированный synthetic eval, но не доказывает hosted/production operation,
@@ -62,7 +62,9 @@ Suspected vulnerabilities or private-data exposure follow
 - Текстовый разговорный интерфейс (Claude, ограниченный tool loop)
 - Голосовые сообщения → async транскрипция (OpenAI Whisper)
 - Персистентные chat-сессии через перезапуски (`bot_sessions`)
-- Контекстные заметки к нескольким снам из последней показанной подборки с preview-подтверждением
+- Контекстные заметки к одному сну через Telegram reply, к последнему явно показанному сну
+  и к нескольким снам из последней подборки с preview-подтверждением
+- Кнопки полного текста для снов, реально показанных в поисковой выдаче или списке
 - Отслеживание жизненного цикла медиафайлов + авточистка
 
 ### Операционный harden (Phase 8)
@@ -93,11 +95,12 @@ Suspected vulnerabilities or private-data exposure follow
 - Operator controls: явное назначение профиля на источник/клиента через env config; low-confidence warnings; folder intake
 
 ### Цикл обратной связи (Phase 11)
-- Reply на сообщение бота с `"4"` или `"5 Отлично"` → оценка + комментарий сохраняются
-- Fallback: одиночная цифра `1–5` без Telegram-reply тоже принимается
-- Последние 20 комментариев и низких оценок (≤2) инжектируются в system prompt перед каждым ответом — ассистент адаптирует стиль и глубину
+- Numeric feedback в Telegram feature-gated и по умолчанию выключен, чтобы цифры `1–5`
+  не конфликтовали с выбором вариантов в обычном диалоге
+- Emoji reactions могут сохраняться как сырой сигнал, если включена обработка реакций
+- Сохранённый feedback изолирован от RAG-пайплайна и не меняет архив снов
 - `GET /feedback` — просмотр рейтингов с пагинацией
-- Хранится в `assistant_feedback`, изолировано от RAG-пайплайна
+- Хранится в `assistant_feedback`
 
 ### UX-исправления по итогам первого private operator review (Phase 12)
 
@@ -106,7 +109,7 @@ Suspected vulnerabilities or private-data exposure follow
 - `get_dream_motifs` теперь возвращает UUID мотива — поиск параллелей разблокирован
 - Запрет markdown в ответах: никаких `**`, даты в формате `дд.мм.гг`, списки нумерованные
 - `list_recent_dreams` показывает превью текста и темы вместо UUID и счётчика слов
-- `search_dreams` возвращает название сна и вербальную силу связи (сильная/умеренная/слабая)
+- `search_dreams` возвращает название сна и доказательный фрагмент без user-facing score/strength
 - `get_dream` очищает `*` и `<` из текста Google Docs; лимит текста увеличен до 2000 символов
 - `create_dream` срабатывает на «занеси в архив», «запиши это», «сохрани этот сон» и др.
 - Заголовок при сохранении сна: «дд.мм.гг - Название» или «дд.мм.гг, без названия»
@@ -140,6 +143,22 @@ Suspected vulnerabilities or private-data exposure follow
 - `GDocsWriteError` — новый класс ошибки для всех write-сценариев (403, 404, quota, auth)
 
 Примечание: требует Google service account с правами записи (scope=documents). Без write-credentials запись в Google Doc завершается GDocsWriteError с понятным сообщением.
+
+### Telegram UX hardening (Phases 25–27)
+
+Свежие private-operator fixes вокруг Telegram-поведения:
+
+- после ответа `Сон сохранён и добавлен в документ` бот запоминает связанный `dream_id`, поэтому
+  Telegram reply на это сообщение может добавить заметку именно к сохранённому сну
+- если пользователь написал `Добавь заметку к этому сну: ...`, но цель неясна, текст заметки
+  временно сохраняется; затем можно ответить `к этому` на сообщение с одним конкретным сном
+- короткое `К этому` не отправляется в LLM как новый сон и не должно случайно создавать запись
+- вставка заметок в Google Doc сначала ищет точный heading, затем допустимый похожий heading с
+  той же датой, чтобы ручная правка/усечение названия не блокировали заметку
+- семантический поиск остаётся поведением по умолчанию; буквальный word/FTS-поиск вызывается
+  только отдельным точным запросом
+- кнопки `Полный текст` / `Текст N` строятся по видимым снам в ответе, а не по скрытому
+  количеству retrieval-кандидатов
 
 ---
 
@@ -226,6 +245,20 @@ CI выполняет Ruff, полный pytest suite с disposable PostgreSQL/p
 database retrieval eval и отдельный privacy-safe public replay. Placeholder credentials в CI не
 дают доступ к Google Docs, Telegram или model providers. Поэтому зелёный CI подтверждает
 детерминированные code/eval contracts, но не live integrations или operator outcomes.
+
+Локальный эквивалент перед push:
+
+```bash
+.venv/bin/ruff check app/ scripts/ tests/
+.venv/bin/ruff format --check app/ scripts/ tests/
+.venv/bin/pytest tests/ -q --tb=short
+.venv/bin/python scripts/eval_public_fixture.py \
+  --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json
+.venv/bin/python scripts/eval.py --task-id CI --no-write-markdown
+```
+
+Для этих проверок используйте test/placeholder env, как в `.github/workflows/ci.yml`. Live
+Google Docs, Telegram и provider quota проверяются отдельными smoke-тестами на operator deploy.
 
 ---
 

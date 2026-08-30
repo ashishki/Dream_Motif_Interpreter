@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse hook: log_bash.sh
 # Logs every Bash command (with exit code) to docs/hooks_log.txt.
+# The log is local/ignored and must not contain live credentials.
 # Extracts IMPLEMENTATION_RESULT from codex exec invocations.
 #
 # Runs async (async: true in settings.json) — does not block the Orchestrator.
@@ -31,6 +32,26 @@ import sys, json
 d = json.load(sys.stdin)
 print(d.get('tool_response', {}).get('stdout', '')[:800])
 " 2>/dev/null || echo "")
+
+sanitize() {
+  python3 -c '
+import re
+import sys
+
+text = sys.stdin.read()
+text = re.sub(r"https://api\.telegram\.org/bot[0-9]+:[A-Za-z0-9_-]+", "https://api.telegram.org/bot<redacted>", text)
+text = re.sub(r"\bbot[0-9]+:[A-Za-z0-9_-]+", "bot<redacted>", text)
+text = re.sub(
+    r"\b(ANTHROPIC_API_KEY|OPENAI_API_KEY|TELEGRAM_BOT_TOKEN|GOOGLE_REFRESH_TOKEN|GOOGLE_CLIENT_SECRET|DATABASE_URL|SECRET_KEY)=\S+",
+    r"\1=<redacted>",
+    text,
+)
+print(text, end="")
+'
+}
+
+COMMAND=$(printf "%s" "$COMMAND" | sanitize)
+STDOUT=$(printf "%s" "$STDOUT" | sanitize)
 
 LOG_FILE="${PLAYBOOK_HOOKS_LOG:-docs/hooks_log.txt}"
 mkdir -p "$(dirname "$LOG_FILE")"

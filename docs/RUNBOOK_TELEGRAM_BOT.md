@@ -1,6 +1,6 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-07-16 (contextual batch notes from displayed dream lists)
+Last updated: 2026-08-30 (reply notes, full-text buttons, Google Doc heading fallback)
 
 ## 1. Purpose
 
@@ -225,7 +225,33 @@ Automated regression slice:
 .venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_assistant_session.py tests/integration/test_ingestion_pipeline.py -q
 ```
 
-## 10. Common Failure Modes
+## 10. Test 15 Reply Notes and Full-Text Buttons Checklist
+
+Run this after deployments that touch Telegram note routing, Google Doc write placement, or
+full-text button generation.
+
+1. Save a fresh dream through Telegram and verify the bot replies
+   `Сон сохранён и добавлен в документ`.
+2. Reply to that exact confirmation message with
+   `Добавь заметку к этому сну: #smoke-test`. Verify the note is added to that saved dream,
+   not to the latest unrelated archive dream.
+3. Create an ambiguous context by showing several dreams, then send
+   `Добавь заметку к этому сну: #pending-smoke`. Verify the bot asks the user to reply `к этому`
+   to one specific dream.
+4. Reply `к этому` to a message that contains one concrete dream. Verify the stored pending note
+   is applied and the bot does not route `к этому` to the LLM.
+5. In Google Doc, shorten a saved dream heading without changing its date or body. Add a note to
+   that dream. Verify the targeted insert succeeds through same-date title similarity.
+6. Ask for a dream list where the visible response contains N numbered dreams. Verify the inline
+   full-text keyboard contains exactly N buttons and does not include hidden retrieval candidates.
+
+Automated regression slice:
+
+```bash
+.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py -q --tb=short
+```
+
+## 11. Common Failure Modes
 
 ### Bot starts but receives nothing
 

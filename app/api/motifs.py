@@ -5,10 +5,11 @@ import uuid
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 
 from app.models.annotation import AnnotationVersion
+from app.models.dream import DreamEntry
 from app.models.motif import MotifInduction
 from app.services.dream_memory_graph import motif_to_dream_edge, motif_to_graph_node
 from app.services.proof_receipts import (
@@ -48,7 +49,31 @@ class MotifListResponse(BaseModel):
 
 
 class MotifStatusUpdateRequest(BaseModel):
-    status: Literal["confirmed", "rejected"]
+    status: Literal["draft", "confirmed", "rejected"] | None = None
+    label: str | None = Field(default=None, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_review_update(self) -> MotifStatusUpdateRequest:
+        if self.status is None and self.label is None:
+            raise ValueError("status or label is required")
+        if self.label is not None:
+            self.label = " ".join(self.label.split())
+            if not self.label:
+                raise ValueError("label must not be empty")
+        return self
+
+
+class MotifReviewItem(MotifResponse):
+    dream_title: str
+    dream_date: str | None
+    can_research: bool
+
+
+class MotifReviewListResponse(BaseModel):
+    items: list[MotifReviewItem]
+    draft_count: int
+    confirmed_count: int
+    rejected_count: int
 
 
 class MotifHistoryItem(BaseModel):
@@ -62,6 +87,37 @@ class MotifHistoryItem(BaseModel):
 class MotifHistoryResponse(BaseModel):
     dream_id: uuid.UUID
     items: list[MotifHistoryItem]
+
+
+@router.get("/motifs/review", response_model=MotifReviewListResponse)
+async def list_motifs_for_review(
+    status: Literal["draft", "confirmed", "rejected", "all"] = "draft",
+    limit: int = 100,
+) -> MotifReviewListResponse:
+    """Return an evidence-bearing review inbox for the authenticated mini app."""
+
+    bounded_limit = max(1, min(limit, 200))
+    tracer = get_tracer(__name__)
+    async with get_session_factory()() as session:
+        stmt = (
+            select(MotifInduction, DreamEntry)
+            .join(DreamEntry, DreamEntry.id == MotifInduction.dream_id)
+            .order_by(MotifInduction.created_at.desc(), MotifInduction.id.desc())
+            .limit(bounded_limit)
+        )
+        if status != "all":
+            stmt = stmt.where(MotifInduction.status == status)
+        with tracer.start_as_current_span("db.query.motifs.review"):
+            result = await session.execute(stmt)
+        rows = list(result.all())
+
+    items = [_to_review_item(motif, dream) for motif, dream in rows]
+    return MotifReviewListResponse(
+        items=items,
+        draft_count=sum(item.status == "draft" for item in items),
+        confirmed_count=sum(item.status == "confirmed" for item in items),
+        rejected_count=sum(item.status == "rejected" for item in items),
+    )
 
 
 @router.get("/dreams/{dream_id}/motifs", response_model=MotifListResponse)
@@ -81,18 +137,7 @@ async def list_motifs(
 
     return MotifListResponse(
         dream_id=dream_id,
-        items=[
-            MotifResponse(
-                id=m.id,
-                dream_id=m.dream_id,
-                label=m.label,
-                rationale=m.rationale,
-                confidence=m.confidence,
-                status=m.status,
-                fragments=m.fragments if isinstance(m.fragments, list) else [],
-            )
-            for m in motifs
-        ],
+        items=[_to_motif_response(motif) for motif in motifs],
     )
 
 
@@ -109,27 +154,45 @@ async def update_motif_status(
     async with get_session_factory()() as session:
         with tracer.start_as_current_span("db.query.motifs.load"):
             result = await session.execute(
-                select(MotifInduction).where(
+                select(MotifInduction)
+                .where(
                     MotifInduction.id == motif_id,
                     MotifInduction.dream_id == dream_id,
                 )
+                .with_for_update()
             )
         motif = result.scalar_one_or_none()
 
         if motif is None:
             raise HTTPException(status_code=404, detail="Motif not found")
 
+        status_before = motif.status
+        label_before = motif.label
+        status_after = payload.status or status_before
+        label_after = payload.label or label_before
+        if status_after == status_before and label_after == label_before:
+            return _to_motif_response(motif)
+
         # AC-2: write AnnotationVersion before committing
         snapshot = {
             "entity_type": "motif_induction",
             "entity_id": str(motif.id),
             "dream_id": str(motif.dream_id),
-            "label": motif.label,
-            "status_before": motif.status,
-            "status_after": payload.status,
+            "label_before": label_before,
+            "label_after": label_after,
+            "status_before": status_before,
+            "status_after": status_after,
             "changed_by": "user",
         }
-        local_receipts = _build_local_memory_action_receipts(motif, payload.status)
+        # Receipts attest the committed graph projection, including a rename
+        # submitted in the same request. Build them from the after-state.
+        motif.status = status_after
+        motif.label = label_after
+        local_receipts = (
+            _build_local_memory_action_receipts(motif, status_after)
+            if status_before != "confirmed" and status_after == "confirmed"
+            else ()
+        )
         if local_receipts:
             snapshot["local_memory_action_receipts"] = [
                 _receipt_payload(receipt) for receipt in local_receipts
@@ -144,10 +207,13 @@ async def update_motif_status(
         with tracer.start_as_current_span("db.query.motifs.flush_annotation"):
             await session.flush()
 
-        motif.status = payload.status
         with tracer.start_as_current_span("db.query.motifs.commit"):
             await session.commit()
 
+    return _to_motif_response(motif)
+
+
+def _to_motif_response(motif: MotifInduction) -> MotifResponse:
     return MotifResponse(
         id=motif.id,
         dream_id=motif.dream_id,
@@ -157,6 +223,56 @@ async def update_motif_status(
         status=motif.status,
         fragments=motif.fragments if isinstance(motif.fragments, list) else [],
     )
+
+
+def _to_review_item(motif: MotifInduction, dream: DreamEntry) -> MotifReviewItem:
+    data = _to_motif_response(motif).model_dump()
+    data["fragments"] = _verified_review_fragments(motif.fragments, dream.raw_text)
+    return MotifReviewItem(
+        **data,
+        dream_title=dream.title.strip() or "Без названия",
+        dream_date=dream.date.isoformat() if dream.date is not None else None,
+        can_research=motif.status == "confirmed",
+    )
+
+
+def _verified_review_fragments(
+    fragments: object,
+    raw_text: str,
+) -> list[dict[str, Any]]:
+    """Expose only excerpts that can be checked byte-for-byte against the dream."""
+
+    if not isinstance(fragments, list):
+        return []
+
+    verified: list[dict[str, Any]] = []
+    for fragment in fragments:
+        if not isinstance(fragment, dict) or fragment.get("verified") is False:
+            continue
+        text = fragment.get("text")
+        if not isinstance(text, str) or not text:
+            continue
+        start = fragment.get("start_offset", fragment.get("start_char"))
+        end = fragment.get("end_offset", fragment.get("end_char"))
+        if not (
+            isinstance(start, int)
+            and isinstance(end, int)
+            and 0 <= start < end <= len(raw_text)
+            and raw_text[start:end] == text
+        ):
+            start = raw_text.find(text)
+            if start < 0:
+                continue
+            end = start + len(text)
+        verified.append(
+            {
+                "text": text,
+                "start_offset": start,
+                "end_offset": end,
+                "verified": True,
+            }
+        )
+    return verified
 
 
 def _build_local_memory_action_receipts(

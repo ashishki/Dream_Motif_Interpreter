@@ -1,169 +1,198 @@
 # Runbook — Voice Pipeline
 
-Last updated: 2026-04-15 (P8-T01 update — reflects Phase 7 implemented behavior)
+Last updated: 2026-08-31
 
-## 1. Purpose
+## Purpose
 
-Operate and troubleshoot the voice-message path for Dream Motif Interpreter (Phase 7 implemented).
+This runbook covers Telegram voice-message ingestion, transcription, reply delivery,
+crash recovery, and retention. A voice event is operational state, not an archived
+dream. The archive changes only when the user explicitly asks to save a dream or note.
 
-## 2. Provider
+## Runtime contract
 
-Transcription is provided by **OpenAI Whisper API** (`whisper-1` model, managed).
+- PostgreSQL migrations must be at Alembic head. Migrations `008`, `016`, and `021`
+  create the voice event table and its durable recovery/delivery fields.
+- `VOICE_MEDIA_DIR` must be an absolute, writable, persistent path shared across bot
+  restarts. Compose mounts the `voice_media` volume there.
+- `VOICE_RETENTION_SECONDS` controls raw `.ogg` retention (default: one hour).
+- `VOICE_TRANSCRIPT_RETENTION_SECONDS` controls operational transcript retention
+  (default: seven days).
+- `OPENAI_API_KEY` is required for the managed Whisper `whisper-1` transcription call.
+- `TELEGRAM_BOT_TOKEN`, PostgreSQL, and Redis must be available to the bot process.
 
-No local Whisper installation or model management is required. All transcription is done via `asyncio.to_thread` wrapping the synchronous OpenAI client call.
+The bot runs both transcription and the maintenance supervisor in its event loop. The
+supervisor polls durable events, renews five-minute leases while they are being handled,
+retries due work, and performs retention cleanup every five minutes. No separate voice
+worker or cron job is required.
 
-## 3. Startup Checklist
+## Durable lifecycle
 
-- `OPENAI_API_KEY` is set and valid (required for transcription)
-- `VOICE_MEDIA_DIR` is a writable directory (default: `/tmp/dream_voice`)
-- `VOICE_RETENTION_SECONDS` is set (default: `3600` — 1 hour)
-- Database migration `008_add_voice_media_events` has been applied
-- `telegram-bot` service is running (transcription task runs inside the bot process)
+```text
+received -> downloaded -> processing -> transcribed -> processing
+                                                      |
+                                                      v
+                                              reply_pending -> delivered
 
-No separate worker process is required. Transcription runs as an `asyncio.create_task` within the bot event loop.
-
-## 4. VoiceMediaEvent Status Lifecycle
-
-Each voice message creates a `VoiceMediaEvent` row with a UUID identifier.
-
+processing -> transcription_retryable -> processing
+processing -> transcription_failed -> reply_pending -> delivered
 ```
-received → transcribed → done
-         ↘
-           failed
+
+`done` and `failed` remain readable for legacy rows. New work uses the states above.
+
+| State | Meaning | Recovery behavior |
+|---|---|---|
+| `received` | Metadata is committed; media may still need downloading | Claim after a crash and download by Telegram file id |
+| `downloaded` | `local_path` is committed | Resume transcription |
+| `processing` | A leased worker is active | Reclaim only after lease expiry |
+| `transcribed` | Transcript is committed | Resume assistant processing without retranscribing |
+| `transcription_retryable` | Provider attempt failed, below the limit | Retry when `next_attempt_at` is due |
+| `transcription_failed` | Three transcription attempts failed | Persist and deliver a clear failure reply |
+| `reply_pending` | Reply text and chunk cursor are committed | Resume from the first undelivered chunk |
+| `delivered` | Every reply chunk was acknowledged by Telegram | Terminal |
+
+The unique `(chat_id, telegram_message_id)` constraint makes repeated Telegram updates
+idempotent. `lease_owner` and `lease_expires_at` prevent two bot instances from handling
+the same event at once. Delivery progress is stored after each chunk, so a retry does not
+start the whole reply over.
+
+## Retention and privacy
+
+Raw audio is deleted immediately after the reply is durably staged. If the process dies
+earlier, tracked raw media and untracked stale `.ogg`/`.ogg.part` files are deleted after
+`VOICE_RETENTION_SECONDS`. Cleanup accepts only regular files under the configured media
+root and refuses symlinks or outside paths.
+
+Operational transcript text is kept only to recover assistant processing and is cleared
+after `VOICE_TRANSCRIPT_RETENTION_SECONDS`. Logs may contain identifiers, state, attempt
+counts, and character counts; they must never contain transcript or dream text.
+
+## Deploy and startup checks
+
+```bash
+export BUILD_SHA="$(git rev-parse HEAD)"
+./scripts/deploy_compose.sh
+docker compose ps
+docker compose logs --tail=100 telegram-bot
 ```
 
-| Status       | Meaning                                           |
-|--------------|---------------------------------------------------|
-| `received`   | Event row created; download not yet complete      |
-| `transcribed`| Whisper API returned transcript; chat pending     |
-| `done`       | Assistant reply sent; file deleted immediately    |
-| `failed`     | Any step failed; user was notified                |
+The shared deploy script stops API, bot and auto-sync before Alembic runs. Do not migrate a live
+voice/capture writer or replace this sequence with a direct Compose start during an upgrade.
 
-Terminal states: `done`, `failed`.
+Confirm that startup logs show voice recovery and no repeating maintenance failure.
+Verify the mounted path from inside the service:
 
-## 5. Raw Audio Retention
+```bash
+docker compose exec telegram-bot sh -lc 'test -d /var/lib/dream-voice && test -w /var/lib/dream-voice'
+```
 
-Two-tier cleanup is in place:
+Do not print directory contents in shared incident channels: filenames are operational
+identifiers.
 
-**Immediate:** `delete_local_voice_file(local_path)` is called by `transcribe_and_reply` after successful reply. Raw audio is deleted as soon as the reply is sent.
+## Diagnostics
 
-**Sweep:** `cleanup_voice_media(session_factory, retention_seconds=...)` deletes files for events in terminal states with `updated_at < now - VOICE_RETENTION_SECONDS`. Run periodically (e.g., cron or scheduled task) to catch any files that survived a transient failure.
+Recent non-terminal events:
+
+```sql
+SELECT id, chat_id, telegram_message_id, status,
+       transcription_attempt_count, delivery_attempt_count,
+       reply_chunks_delivered, next_attempt_at,
+       lease_owner, lease_expires_at, updated_at
+FROM voice_media_events
+WHERE status NOT IN ('delivered', 'done', 'failed')
+ORDER BY updated_at ASC
+LIMIT 100;
+```
+
+Due or abandoned work:
+
+```sql
+SELECT id, status, next_attempt_at, lease_expires_at, updated_at
+FROM voice_media_events
+WHERE (next_attempt_at IS NULL OR next_attempt_at <= now())
+  AND (lease_expires_at IS NULL OR lease_expires_at < now())
+  AND status IN (
+    'received', 'downloaded', 'processing', 'transcribed',
+    'transcription_retryable', 'transcription_failed', 'reply_pending'
+  )
+ORDER BY updated_at;
+```
+
+Aggregate backlog:
+
+```sql
+SELECT status, count(*) AS events, min(updated_at) AS oldest
+FROM voice_media_events
+GROUP BY status
+ORDER BY status;
+```
+
+Useful log fields are `event_id`, `chat_id`, `message_id`, `status`, attempt counts,
+and filename only. Relevant messages include claimed recovery batches, lease loss,
+retry scheduling, durable reply staging, chunk delivery, and retention counts.
+
+## Incident recovery
+
+### Download failed or process crashed before path commit
+
+Check Telegram connectivity, free disk space, and write access to `VOICE_MEDIA_DIR`.
+The event remains recoverable in `received`; the live supervisor retries the download.
+An identical Telegram update also safely resumes a `received` row that has no path.
+
+### Transcription provider failed
+
+Check `OPENAI_API_KEY`, provider status, and quota. Do not rewrite the event manually.
+The supervisor retries with backoff up to three attempts. After the final attempt it
+delivers an explicit failure message and retains no raw audio beyond the normal policy.
+
+### Assistant failed after transcription
+
+The committed transcript is reused; Whisper is not called again. Fix the model/provider
+dependency and restart the bot if necessary. The startup sweep will reclaim the row.
+
+### Telegram reply failed midway
+
+The row remains `reply_pending`, with `reply_chunks_delivered` pointing at the next chunk.
+Restore Bot API connectivity. The live supervisor retries with backoff; restarting the bot
+is also safe.
+
+### Bot was restarted
+
+No SQL intervention is required. Startup claims due and expired events, while a periodic
+sweep handles later retries. Confirm that `lease_expires_at` advances for active rows and
+that the backlog decreases.
+
+### Media volume is growing
+
+Check retention-cycle errors and confirm the configured directory matches the mounted
+volume. Never use a recursive delete or a wildcard cleanup. The supported cleanup path is:
 
 ```python
-from app.workers.cleanup import cleanup_voice_media
-await cleanup_voice_media(session_factory, retention_seconds=settings.VOICE_RETENTION_SECONDS)
+from app.workers.cleanup import cleanup_orphan_voice_files, cleanup_voice_media
+
+await cleanup_voice_media(
+    session_factory,
+    retention_seconds=settings.VOICE_RETENTION_SECONDS,
+    media_dir=settings.VOICE_MEDIA_DIR,
+)
+await cleanup_orphan_voice_files(
+    session_factory,
+    retention_seconds=settings.VOICE_RETENTION_SECONDS,
+    media_dir=settings.VOICE_MEDIA_DIR,
+)
 ```
 
-## 6. Common Failure Modes
+If cleanup refuses a path, investigate the configuration or symlink; do not bypass the
+media-root check.
 
-### Voice download fails
+## Acceptance smoke test
 
-Symptoms: user receives "Could not download your voice message" reply; bot log shows `Voice download failed for message_id=... event_id=...`.
-
-Check:
-- Telegram Bot API connectivity
-- `VOICE_MEDIA_DIR` exists and is writable (`ls -la $VOICE_MEDIA_DIR`)
-- disk space on the host
-
-Recovery: the VoiceMediaEvent row is created but remains at `received` status. Rerun `cleanup_voice_media` to sweep any partial files.
-
-### Transcription fails (OPENAI_API_KEY missing)
-
-Symptoms: user receives "I could not transcribe your voice note"; bot log shows `RuntimeError: OPENAI_API_KEY is not set`.
-
-Check:
-- `OPENAI_API_KEY` env var is set in the running process
-- restart the `telegram-bot` service after setting the key
-
-### Transcription fails (API error)
-
-Symptoms: user receives "I could not transcribe your voice note"; bot log shows `Transcription failed for event_id=...`.
-
-Check:
-- OpenAI API status
-- quota limits on the account
-- audio file format (must be `.ogg` — Telegram default)
-
-The VoiceMediaEvent status is updated to `failed`. The raw file remains on disk until the cleanup sweep removes it.
-
-### handle_chat fails after transcription
-
-Symptoms: user receives "I could not transcribe your voice note"; bot log shows `handle_chat failed after transcription for event_id=...`.
-
-Check:
-- `ANTHROPIC_API_KEY` is valid
-- Anthropic API status
-- assistant model availability (`ASSISTANT_MODEL`)
-
-### Bot reply fails to send
-
-Symptoms: transcription succeeds but user receives nothing; log shows `Failed to send Telegram reply for chat_id=...`.
-
-Note: the `transcribe_and_reply` worker creates a standalone `Bot(token=...)` to send the final reply. This is separate from the polling Application instance.
-
-Check:
-- bot token remains valid
-- Telegram API connectivity from host
-
-### Raw media files accumulate
-
-Symptoms: disk usage grows under `VOICE_MEDIA_DIR`.
-
-Check:
-- whether the cleanup sweep is scheduled and running
-- log for `Deleted voice media event_id=` or `Failed to delete voice media` entries
-- VoiceMediaEvent rows stuck in non-terminal state (query: `SELECT id, status, updated_at FROM voice_media_events WHERE status NOT IN ('done', 'failed')`)
-
-If files persist beyond retention, delete manually and record the incident:
-```bash
-ls -la $VOICE_MEDIA_DIR
-rm -i $VOICE_MEDIA_DIR/*.ogg   # confirm each before deletion
-```
-
-## 7. Diagnostics
-
-### Find an event by Telegram message ID
-
-```sql
-SELECT id, chat_id, status, local_path, created_at, updated_at
-FROM voice_media_events
-WHERE telegram_message_id = <message_id>;
-```
-
-### List recent failures
-
-```sql
-SELECT id, chat_id, status, updated_at
-FROM voice_media_events
-WHERE status = 'failed'
-ORDER BY updated_at DESC
-LIMIT 20;
-```
-
-### Check active transcription tasks (runtime)
-
-The bot keeps active tasks in `bot_data["_transcription_tasks"]`. No external visibility; use logs.
-
-Key log patterns:
-- `Transcription task enqueued event_id=... duration=...s`
-- `Transcription succeeded event_id=... chars=...`
-- `Transcription failed for event_id=...`
-- `handle_chat failed after transcription for event_id=...`
-- `Deleted local voice file after transcription path=...`
-
-## 8. Recovery Rules
-
-- failed jobs are traceable by `event_id` (UUID) across logs and DB
-- manual retries are not supported — user must resend the voice note
-- if raw media remains after repeated failure, clean manually and update the event status:
-  ```sql
-  UPDATE voice_media_events SET status = 'failed', local_path = ''
-  WHERE id = '<event_id>';
-  ```
-- retries at the API level are the provider's responsibility (OpenAI SDK handles transient errors)
-
-## 9. Logging Rules
-
-- log identifiers: `event_id`, `chat_id`, `message_id`, `path` (filename only, not full path with content)
-- log status transitions and char counts; never log transcript text or raw dream content
-- `chars=` in success log refers to transcript length (not the text itself)
+1. Send a short voice note and observe the immediate processing acknowledgement.
+2. Confirm one database row exists for the Telegram message id.
+3. Wait for the assistant reply and confirm the row reaches `delivered`.
+4. Resend the same update in a controlled test and confirm no second row or second reply.
+5. In staging, interrupt the bot after transcript persistence; restart it and confirm the
+   same row resumes without another transcription.
+6. In staging, interrupt a multi-chunk reply; restart it and confirm delivery resumes from
+   `reply_chunks_delivered`.
+7. Confirm raw audio disappears after reply staging and transcript text is purged after the
+   configured retention window.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import uuid
 from pathlib import Path
@@ -89,6 +90,21 @@ class StubEmbeddingClient:
         return [[0.125] * EMBEDDING_DIMENSIONS for _ in texts]
 
 
+class CoordinatedEmbeddingClient(StubEmbeddingClient):
+    """Release both embedding calls together so their DB writes overlap."""
+
+    def __init__(self) -> None:
+        self._arrivals = 0
+        self._both_ready = asyncio.Event()
+
+    async def embed(self, texts: list[str], *, dream_id: str | None = None) -> list[list[float]]:
+        self._arrivals += 1
+        if self._arrivals >= 2:
+            self._both_ready.set()
+        await asyncio.wait_for(self._both_ready.wait(), timeout=5)
+        return await super().embed(texts, dream_id=dream_id)
+
+
 @pytest.mark.asyncio
 async def test_index_note_creates_searchable_note_chunk(
     migrated_session_factory: async_sessionmaker[AsyncSession],
@@ -108,6 +124,7 @@ async def test_index_note_creates_searchable_note_chunk(
         note = DreamNote(
             dream_id=dream.id,
             text="after waking the red door felt important",
+            content_hash=hashlib.sha256(b"after waking the red door felt important").hexdigest(),
             source="telegram",
         )
         session.add(note)
@@ -129,6 +146,53 @@ async def test_index_note_creates_searchable_note_chunk(
     assert chunks[0].source_kind == "note"
     assert chunks[0].note_id == note.id
     assert "red door felt important" in chunks[0].chunk_text
+
+
+@pytest.mark.asyncio
+async def test_index_two_notes_concurrently_allocates_distinct_chunk_indices(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with migrated_session_factory() as session:
+        dream = DreamEntry(
+            source_doc_id="doc-rag-concurrent-notes",
+            date=None,
+            title="Concurrent note indexing dream",
+            raw_text="Two details returned after waking.",
+            word_count=5,
+            content_hash=f"rag-concurrent-note-hash-{uuid.uuid4()}",
+            segmentation_confidence="high",
+        )
+        session.add(dream)
+        await session.flush()
+        notes = [
+            DreamNote(
+                dream_id=dream.id,
+                text=note_text,
+                content_hash=hashlib.sha256(note_text.encode("utf-8")).hexdigest(),
+                source="telegram",
+            )
+            for note_text in ("the first detail", "the second detail")
+        ]
+        session.add_all(notes)
+        await session.commit()
+
+    service = RagIngestionService(
+        session_factory=migrated_session_factory,
+        embedding_client=CoordinatedEmbeddingClient(),
+    )
+    inserted = await asyncio.gather(*(service.index_note(note.id) for note in notes))
+
+    async with migrated_session_factory() as session:
+        chunks = [
+            chunk
+            for chunk in await fetch_indexed_chunks(session, dream.id)
+            if chunk.source_kind == "note"
+        ]
+
+    assert inserted == [1, 1]
+    assert {chunk.note_id for chunk in chunks} == {note.id for note in notes}
+    assert [chunk.chunk_index for chunk in chunks] == [1_000_000_000, 1_000_000_001]
+    assert all(chunk.embedding is not None for chunk in chunks)
 
 
 @pytest.mark.skipif(

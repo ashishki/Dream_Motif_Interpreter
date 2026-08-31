@@ -1,0 +1,46 @@
+[
+  {
+    "id": "start_discovers_primary_workflow",
+    "update": {
+      "update_id": 1001,
+      "message": {
+        "message_id": 501,
+        "date": 1788048000,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "/start",
+        "entities": [{"type": "bot_command", "offset": 0, "length": 6}]
+      }
+    },
+    "reply_contains": "Мне приснилось"
+  },
+  {
+    "id": "negated_dream_is_not_captured",
+    "update": {
+      "update_id": 1002,
+      "message": {
+        "message_id": 502,
+        "date": 1788048001,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "Не сохраняй, но мне приснилось, что я иду по мосту."
+      }
+    },
+    "reply_contains": "Понял"
+  },
+  {
+    "id": "compound_capture_keeps_question_out_of_archive",
+    "update": {
+      "update_id": 1003,
+      "message": {
+        "message_id": 503,
+        "date": 1788048002,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "Мне приснилось, что я иду по мосту. Что это значит?"
+      }
+    },
+    "captured_text": "Мне приснилось, что я иду по мосту.",
+    "reply_contains": "Вопрос заметил"
+  }
+]

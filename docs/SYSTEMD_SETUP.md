@@ -1,6 +1,6 @@
 # Systemd Setup
 
-Актуально на 2026-04-21
+Актуально на 2026-08-31
 
 Для постоянной работы после перезагрузки нужны три сервиса:
 
@@ -34,6 +34,26 @@ sudo systemctl enable --now dream-motif-auto-sync.service
 ```
 
 ## Полезные команды
+
+### Безопасное обновление кода и схемы
+
+Перед `alembic upgrade head` остановите все процессы, которые могут писать в базу. Не обновляйте
+схему при работающем API, Telegram-боте или auto-sync:
+
+```bash
+sudo systemctl stop dream-motif-api.service \
+  dream-motif-telegram.service \
+  dream-motif-auto-sync.service
+
+alembic upgrade head
+
+sudo systemctl start dream-motif-api.service \
+  dream-motif-telegram.service \
+  dream-motif-auto-sync.service
+```
+
+Если миграция вернула ненулевой код, не выполняйте блок `start`: исправьте причину, сохраняя
+процессы приложения остановленными.
 
 Проверить статус:
 

@@ -204,6 +204,108 @@ def test_set_google_doc_id_override_persists_runtime_primary_and_existing_extras
     assert [entry["id"] for entry in payload["extras"]] == ["test-doc-id", "other-doc"]
 
 
+def test_runtime_state_file_can_live_on_a_persistent_volume(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _set_required_env(monkeypatch)
+    state_file = tmp_path / "persistent" / "runtime-state.json"
+    monkeypatch.setenv("RUNTIME_STATE_FILE", str(state_file))
+    config_module.get_settings.cache_clear()
+
+    config_module.set_google_doc_id_override("persistent-primary-doc")
+
+    payload = json.loads(state_file.read_text(encoding="utf-8"))
+    assert payload["primary"] == "persistent-primary-doc"
+
+
+def test_runtime_state_atomic_replace_failure_preserves_previous_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _set_required_env(monkeypatch)
+    state_file = tmp_path / "persistent" / "runtime-state.json"
+    state_file.parent.mkdir(parents=True)
+    original = '{"primary":"known-good","extras":[]}'
+    state_file.write_text(original, encoding="utf-8")
+    monkeypatch.setenv("RUNTIME_STATE_FILE", str(state_file))
+    config_module.get_settings.cache_clear()
+
+    monkeypatch.setattr(
+        config_module.os,
+        "replace",
+        lambda *_args: (_ for _ in ()).throw(OSError("simulated crash")),
+    )
+    config_module.set_google_doc_id_override("new-primary")
+
+    assert state_file.read_text(encoding="utf-8") == original
+    assert list(state_file.parent.glob("*.tmp")) == []
+
+
+def test_runtime_extra_docs_override_survives_process_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("GOOGLE_DOC_IDS", "env-doc")
+    config_module.get_settings.cache_clear()
+
+    config_module.set_google_doc_ids_override(["runtime-doc"])
+
+    # A different/restarted process has no in-memory override.  The shared
+    # state file remains authoritative over the startup environment.
+    config_module._google_doc_ids_override = None
+    assert config_module.get_all_doc_ids() == ["test-doc-id", "runtime-doc"]
+
+
+def test_runtime_state_update_merges_fresh_cross_process_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("GOOGLE_DOC_IDS", "")
+    config_module.get_settings.cache_clear()
+    config_module._google_doc_id_override = "stale-local-primary"
+    config_module._google_doc_ids_override = ["stale-local-extra"]
+    config_module._doc_names["local-doc"] = "Local name"
+    config_module._doc_names["fresh-extra"] = "Stale name"
+    config_module._EXTRA_DOCS_FILE.write_text(
+        json.dumps(
+            {
+                "primary": "fresh-primary",
+                "extras": [{"id": "fresh-extra", "name": "Fresh extra"}],
+                "names": {"fresh-primary": "Fresh primary"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config_module.register_doc_name("new-doc", "New name")
+
+    payload = json.loads(config_module._EXTRA_DOCS_FILE.read_text(encoding="utf-8"))
+    assert payload["primary"] == "fresh-primary"
+    assert [item["id"] for item in payload["extras"]] == ["test-doc-id", "fresh-extra"]
+    assert payload["names"] == {
+        "fresh-primary": "Fresh primary",
+        "fresh-extra": "Fresh extra",
+        "local-doc": "Local name",
+        "new-doc": "New name",
+    }
+
+
+def test_doc_name_refreshes_after_another_process_updates_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    config_module.get_settings.cache_clear()
+
+    assert config_module.get_doc_name("shared-doc") == "…ared-doc"
+    config_module._EXTRA_DOCS_FILE.write_text(
+        json.dumps({"primary": "test-doc-id", "extras": [], "names": {"shared-doc": "Shared"}}),
+        encoding="utf-8",
+    )
+
+    assert config_module.get_doc_name("shared-doc") == "Shared"
+
+
 def test_google_doc_ids_parse_from_env_csv(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_env(monkeypatch)
     monkeypatch.setenv("GOOGLE_DOC_IDS", "doc-b, doc-c ,,")
@@ -234,6 +336,67 @@ def test_research_api_key_can_be_empty_when_research_disabled(
     settings = Settings(_env_file=None)
 
     assert settings.RESEARCH_API_KEY == ""
+
+
+def test_config_rejects_blank_secret_key_even_in_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("SECRET_KEY", "   ")
+
+    with pytest.raises(ValidationError, match="SECRET_KEY must not be blank"):
+        Settings(_env_file=None)
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    ["short-secret", "a" * 64, "test-secret-key-32-bytes-minimum-xx"],
+)
+def test_config_rejects_weak_secret_key_outside_tests(
+    monkeypatch: pytest.MonkeyPatch,
+    secret_key: str,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", secret_key)
+
+    with pytest.raises(ValidationError, match="SECRET_KEY"):
+        Settings(_env_file=None)
+
+
+def test_config_accepts_strong_secret_key_outside_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", "fC1wR9-Qk7vL2xP8sN4mT6yH3aB5dE0z")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.BUILD_SHA == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("AUTO_SYNC_INTERVAL_SECONDS", "0"),
+        ("TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS", "0"),
+        ("GOOGLE_API_TIMEOUT_SECONDS", "0"),
+        ("VOICE_RETENTION_SECONDS", "-1"),
+        ("VOICE_TRANSCRIPT_RETENTION_SECONDS", "-1"),
+        ("BULK_CONFIRM_TOKEN_TTL_SECONDS", "0"),
+    ],
+)
+def test_config_rejects_unsafe_non_positive_operational_windows(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    value: str,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
 
 
 def test_get_all_doc_ids_primary_first_and_deduplicated(

@@ -51,8 +51,8 @@ Suspected vulnerabilities or private-data exposure follow
 
 ### Ядро архива (Phases 1–5)
 - FastAPI API: синхронизация, просмотр снов, поиск, курирование тем, паттерны, откат
-- PostgreSQL 16 + pgvector как система истины
-- Redis для очередей и координации воркеров
+- PostgreSQL 16 + pgvector как система истины, включая durable outbox/receipts
+- Redis для sync-state и короткоживущего Telegram-контекста с TTL
 - Ingestion из Google Docs
 - LLM-assisted: извлечение тем, grounding, метафорный поиск
 - Append-only annotation versioning (история всех мутаций)
@@ -90,8 +90,10 @@ Suspected vulnerabilities or private-data exposure follow
 - `NormalizedDocument` contract — сегментация принимает только нормализованный вход, не сырые SDK-ответы
 - Parser profiles: `default`, `dated_entries`, `heading_based` с авто-определением и явным override
 - Канонический staged pipeline: source connector → normalized document → parser profile → dream entry candidates → validated dream entries → embeddings/indexing
-- Идемпотентность по `external_id + content_hash`; embedding не запускается для не прошедших валидацию документов
-- Ручные правки заголовка/даты в Google Docs обновляют существующую запись по `content_hash`, без дублей
+- Идемпотентность по устойчивому ключу позиции записи внутри источника; `content_hash` служит
+  проверкой изменений, а не глобальной идентичностью записи. Embedding не запускается для не
+  прошедших валидацию документов
+- Ручные правки заголовка/даты в Google Docs обновляют ту же запись; изменение тела обнаруживается как конфликт и не создаёт тихий дубль
 - Operator controls: явное назначение профиля на источник/клиента через env config; low-confidence warnings; folder intake
 
 ### Цикл обратной связи (Phase 11)
@@ -131,24 +133,29 @@ Suspected vulnerabilities or private-data exposure follow
 - `SYSTEM_PROMPT`: правило выбора инструмента, формат с цитатой, запрет обрезки «и другие»
 
 
-### Запись снов в Google Docs — двусторонняя синхронизация (Phase 14)
+### Надёжная запись снов и Google Docs mirror (Phase 14+)
 
 Реализована запись новых снов из бота напрямую в Google Doc:
 
-- `GDocsClient.append_text`: вставляет форматированный текст в конец документа через Google Docs API batchUpdate
-- `write_dream_to_google_doc`: форматирует запись («дд.мм.гг - Название\n\nтекст») и передаёт в GDocsClient
-- `create_dream` автоматически записывает сон в Google Doc после сохранения в БД
+- `create_dream` одной транзакцией сохраняет `DreamEntry` и durable jobs, поэтому ответ пользователю не зависит от LLM, embeddings или Google API
+- повторная доставка одного Telegram-сообщения определяется по стабильному event key и не
+  создаёт дубль; новое сообщение с тем же текстом считается отдельной допустимой записью
+- индексирование, анализ, мотивы и Google Docs выполняются независимо и повторяются после временных сбоев/рестарта
+- `GDocsClient` записывает форматированную запись («дд.мм.гг - Название\n\nтекст») через Google Docs API batchUpdate
+- DB receipt и document-side named range делают повторную доставку идемпотентной
 - активный Google Doc для записи сохраняется в runtime-конфиге и не откатывается к `.env` после рестарта
-- Сбой записи в Google Doc не откатывает создание записи в БД — пользователь уведомлён явно
+- Сбой любого post-capture этапа не откатывает каноническую запись в PostgreSQL; статус остаётся честно видимым как pending/retryable/failed
+- заметка и её задания `index`/`gdocs` также фиксируются транзакционно; подтверждение в Telegram
+  означает «сохранено и принято в очередь», а не уже завершённую доставку во внешние системы
 - `GDocsWriteError` — новый класс ошибки для всех write-сценариев (403, 404, quota, auth)
 
-Примечание: требует Google service account с правами записи (scope=documents). Без write-credentials запись в Google Doc завершается GDocsWriteError с понятным сообщением.
+Примечание: Google Docs mirror требует OAuth credentials или service account с правами записи (scope=documents). Сам сон уже сохранён до сетевой попытки.
 
 ### Telegram UX hardening (Phases 25–27)
 
 Свежие private-operator fixes вокруг Telegram-поведения:
 
-- после ответа `Сон сохранён и добавлен в документ` бот запоминает связанный `dream_id`, поэтому
+- после save-card `✅ Сон сохранён` бот запоминает связанный `dream_id`, поэтому
   Telegram reply на это сообщение может добавить заметку именно к сохранённому сну
 - если пользователь написал `Добавь заметку к этому сну: ...`, но цель неясна, текст заметки
   временно сохраняется; затем можно ответить `к этому` на сообщение с одним конкретным сном
@@ -179,7 +186,7 @@ app/
                  motif_service, research_service, feedback_service)
   shared/        config, tracing, DB session factory
   telegram/      bot runtime, handlers, voice download
-  workers/       background jobs (ingest, indexing, transcription, cleanup)
+  workers/       durable post-capture/voice recovery, ingest, indexing and cleanup
 
 alembic/         schema migrations
 docs/            architecture, planning, runbooks, ADRs, user guide
@@ -207,8 +214,11 @@ tests/           unit + integration checks
 | `TELEGRAM_ALLOWED_CHAT_ID` | Allowlist chat_id | — |
 | `TELEGRAM_MINI_APP_URL` | URL для кнопки `/map`, открывающей Dream Memory Map как Telegram Web App | `""` |
 | `TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS` | TTL для Telegram WebApp initData auth | `86400` |
-| `API_KEY` | Backend REST auth | — |
-| `GOOGLE_SERVICE_ACCOUNT_FILE` | Путь к service-account JSON для Google Docs | `""` |
+| `SECRET_KEY` | Backend REST auth; use a random value of at least 32 bytes | — |
+| `BUILD_SHA` | Deployed Git commit shown by `GET /health` | `unknown` |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Путь к service-account JSON, видимый процессу | `""` |
+| `GOOGLE_SERVICE_ACCOUNT_HOST_FILE` | Host path для opt-in read-only Compose mount | `""` |
+| `GOOGLE_API_TIMEOUT_SECONDS` | Верхняя граница одного сетевого вызова Google API | `60` |
 | `AUTO_SYNC_ENABLED` | Включить лёгкий metadata-ping и автосинк из Google Docs | `false` |
 | `AUTO_SYNC_INTERVAL_SECONDS` | Интервал metadata-ping перед автосинком | `300` |
 | `MOTIF_INDUCTION_ENABLED` | Мотивная индукция | `true` |
@@ -220,10 +230,18 @@ tests/           unit + integration checks
 **Запуск:**
 
 ```bash
+python3 -m venv .venv
+.venv/bin/pip install --require-hashes -r requirements.lock
+.venv/bin/pip install --no-deps -e .
 alembic upgrade head
 python3 -m app.telegram
 python3 -m app.auto_sync
 ```
+
+`uv.lock`, `requirements.lock` и `requirements-dev.lock` фиксируют один проверяемый граф
+зависимостей. После осознанного изменения `pyproject.toml` обновите их через `uv lock`, затем
+`uv export --frozen --no-dev --no-emit-project --no-annotate -o requirements.lock` и
+`uv export --frozen --extra dev --no-emit-project --no-annotate -o requirements-dev.lock`.
 
 **Локальный запуск в фоне:**
 
@@ -236,8 +254,45 @@ python3 -m app.auto_sync
 **Docker Compose:**
 
 ```bash
-docker compose up
+cp .env.example .env
+# заполните секреты; для проверяемого deploy задайте точный commit
+export BUILD_SHA="$(git rev-parse HEAD)"
+./scripts/deploy_compose.sh
+docker compose ps
+curl --fail http://127.0.0.1:8000/health
 ```
+
+Скрипт обязателен и для первого запуска, и для upgrade: он сначала останавливает `api`,
+`telegram-bot` и `auto-sync`, затем поднимает инфраструктуру, применяет Alembic без активных
+писателей и только после успеха запускает процессы приложения. Не заменяйте его прямым
+`docker compose up` при обновлении кода или схемы.
+Скрипт откажется собирать незакоммиченное дерево или маркировать образ SHA, отличным от текущего
+`HEAD`, чтобы `/health` не подтверждал ложную версию.
+
+Базовый Compose не монтирует credential-файлы и работает с OAuth-переменными либо без
+Google-интеграции. Для service account укажите существующий защищённый JSON только на хосте и
+явно подключите overlay:
+
+```bash
+GOOGLE_SERVICE_ACCOUNT_HOST_FILE=/absolute/path/google-service-account.json \
+  BUILD_SHA="$(git rev-parse HEAD)" \
+  ./scripts/deploy_compose.sh --google-service-account
+```
+
+Overlay монтирует файл read-only в `/run/secrets/google-service-account.json`; JSON не попадает
+в image или named volume. Не подключайте overlay без существующего файла.
+
+Auto-sync вынесен в optional profile и запускается только при `AUTO_SYNC_ENABLED=true`. Чтобы
+включить его в тот же quiesced rollout:
+
+```bash
+BUILD_SHA="$(git rev-parse HEAD)" ./scripts/deploy_compose.sh --with-auto-sync
+```
+
+`POSTGRES_PASSWORD` обязателен: у Compose нет fallback-пароля. PostgreSQL, Redis и API по
+умолчанию публикуются только на `127.0.0.1`; изменение bind-address — отдельное операторское
+решение, которое требует firewall/reverse proxy и аутентификации. Секреты храните вне
+репозитория. В production `health.build_sha` не должен быть `unknown`.
 
 ## Verification boundary
 
@@ -254,11 +309,16 @@ database retrieval eval и отдельный privacy-safe public replay. Placeh
 .venv/bin/pytest tests/ -q --tb=short
 .venv/bin/python scripts/eval_public_fixture.py \
   --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json
-.venv/bin/python scripts/eval.py --task-id CI --no-write-markdown
+ENV=test TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/dmi_eval \
+  .venv/bin/python scripts/eval.py --task-id CI --no-write-markdown --confirm-reset
 ```
 
 Для этих проверок используйте test/placeholder env, как в `.github/workflows/ci.yml`. Live
 Google Docs, Telegram и provider quota проверяются отдельными smoke-тестами на operator deploy.
+`scripts/eval.py` полностью пересоздаёт `public` schema, поэтому он принимает только
+`TEST_DATABASE_URL` с именем базы, оканчивающимся на `_test`, `_tests`, `_eval` или
+`_evaluation`, и требует `ENV=test|testing|eval|evaluation|ci`; обычный `DATABASE_URL`
+скрипт намеренно игнорирует.
 
 ---
 

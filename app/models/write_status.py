@@ -3,7 +3,17 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, text as sa_text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text as sa_text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +29,16 @@ class DreamWriteStatus(Base):
         CheckConstraint(
             "status IN ('pending', 'succeeded', 'failed')",
             name="ck_dream_write_statuses_status",
+        ),
+        UniqueConstraint(
+            "dream_id",
+            "target_doc_id",
+            name="uq_dream_write_statuses_dream_target",
+        ),
+        Index(
+            "ix_dream_write_statuses_status_updated_at",
+            "status",
+            "updated_at",
         ),
     )
 
@@ -39,6 +59,7 @@ class DreamWriteStatus(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     attempt_count: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    claim_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -22,10 +22,14 @@ from sqlalchemy.pool import NullPool
 from app.assistant.facade import AssistantFacade
 from app.models.dream import DreamChunk, DreamEntry
 from app.models.note import DreamNote
+from app.models.processing import DreamProcessingJob, NoteProcessingJob
+from app.models.write_status import DreamWriteStatus
 from app.retrieval.ingestion import DreamEntryValidationError
 from app.retrieval.ingestion import EMBEDDING_DIMENSIONS
 from app.retrieval.query import RagQueryService
 from app.workers.ingest import ingest_document
+from app.workers.index import index_note
+from app.workers.note_processing import process_pending_note_jobs
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -133,6 +137,27 @@ def _worker_ctx(
         "embedding_client": StubEmbeddingClient(),
         "motif_service": NoopMotifService(),
     }
+
+
+async def _drain_note_jobs(
+    session_factory: async_sessionmaker[AsyncSession],
+    worker_ctx: dict[str, object],
+) -> int:
+    async def _index(note_id: uuid.UUID) -> int:
+        return await index_note(worker_ctx, note_id=note_id)
+
+    facade = AssistantFacade(
+        session_factory=session_factory,
+        rag_query_service=RagQueryService(session_factory=session_factory),
+        index_note_callable=_index,
+    )
+    return await process_pending_note_jobs(
+        {
+            "session_factory": session_factory,
+            "assistant_facade": facade,
+        },
+        limit=20,
+    )
 
 
 @pytest.mark.asyncio
@@ -350,6 +375,67 @@ async def test_reingest_updates_existing_telegram_dream_title_from_google_doc(
 
 
 @pytest.mark.asyncio
+async def test_google_ingest_marks_adopted_telegram_delivery_as_succeeded(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    raw_text = "I found the same blue gate from my captured dream."
+    content_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+    dream_id = uuid.uuid4()
+    gdocs_job_id = uuid.uuid4()
+    async with migrated_session_factory() as session:
+        session.add_all(
+            [
+                DreamEntry(
+                    id=dream_id,
+                    source_doc_id="telegram:42",
+                    date=None,
+                    title="Blue gate",
+                    raw_text=raw_text,
+                    word_count=len(raw_text.split()),
+                    content_hash=content_hash,
+                    source_event_key="event-blue-gate",
+                    segmentation_confidence="low",
+                    parser_profile="telegram",
+                    parse_warnings=[],
+                ),
+                DreamProcessingJob(
+                    id=gdocs_job_id,
+                    dream_id=dream_id,
+                    stage="gdocs",
+                    status="pending",
+                    attempt_count=0,
+                ),
+            ]
+        )
+        await session.commit()
+
+    added = await ingest_document(
+        _worker_ctx(
+            migrated_session_factory,
+            paragraphs=["2026-05-01 - Blue gate", raw_text],
+        ),
+        job_id=uuid.uuid4(),
+        doc_id="doc-adopted-capture",
+    )
+
+    async with migrated_session_factory() as session:
+        dream = await session.get(DreamEntry, dream_id)
+        job = await session.get(DreamProcessingJob, gdocs_job_id)
+        receipt = await session.scalar(
+            select(DreamWriteStatus).where(
+                DreamWriteStatus.dream_id == dream_id,
+                DreamWriteStatus.target_doc_id == "doc-adopted-capture",
+            )
+        )
+
+    assert added == 0
+    assert dream is not None
+    assert dream.source_doc_id == "doc-adopted-capture"
+    assert job is not None and job.status == "succeeded"
+    assert receipt is not None and receipt.status == "succeeded"
+
+
+@pytest.mark.asyncio
 async def test_user_added_google_doc_note_is_synced_once_and_searchable(
     migrated_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -372,6 +458,28 @@ async def test_user_added_google_doc_note_is_synced_once_and_searchable(
         job_id=uuid.uuid4(),
         doc_id="doc-user-note-simulation",
     )
+
+    async with migrated_session_factory() as session:
+        queued_jobs = (
+            (
+                await session.execute(
+                    select(NoteProcessingJob).order_by(NoteProcessingJob.stage.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        note_chunks_before_drain = await session.scalar(
+            select(func.count()).select_from(DreamChunk).where(DreamChunk.source_kind == "note")
+        )
+
+    assert len(queued_jobs) == 1
+    assert queued_jobs[0].stage == "index"
+    assert queued_jobs[0].status == "pending"
+    assert queued_jobs[0].target_doc_id is None
+    assert note_chunks_before_drain == 0
+
+    processed_jobs = await _drain_note_jobs(migrated_session_factory, worker_ctx)
 
     search_service = RagQueryService(session_factory=migrated_session_factory)
     exact_matches = await search_service.exact_search("красная дверь важной")
@@ -397,9 +505,287 @@ async def test_user_added_google_doc_note_is_synced_once_and_searchable(
 
     assert first_new_entries == 1
     assert second_new_entries == 0
+    assert processed_jobs == 1
     assert entry_count == 1
     assert note_count == 1
     assert dream is not None
     assert "после пробуждения" not in dream.raw_text
     assert {chunk.source_kind for chunk in chunks} == {"dream_text", "note"}
     assert any("красная дверь ощущалась важной" in row["chunk_text"] for row in exact_matches)
+
+
+@pytest.mark.asyncio
+async def test_google_note_and_index_job_roll_back_together(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.workers import ingest as ingest_module
+
+    async def _fail_outbox_insert(**_kwargs: object) -> None:
+        raise RuntimeError("simulated outbox insert failure")
+
+    monkeypatch.setattr(
+        ingest_module,
+        "_ensure_imported_note_index_job",
+        _fail_outbox_insert,
+    )
+
+    with pytest.raises(RuntimeError, match="outbox insert failure"):
+        await ingest_document(
+            _worker_ctx(
+                migrated_session_factory,
+                paragraphs=[
+                    "2026-05-01 - Атомарная заметка",
+                    "I crossed a bridge under a silent sky.",
+                    "[Note 06.05.26]: эта заметка не должна сохраниться отдельно",
+                ],
+            ),
+            job_id=uuid.uuid4(),
+            doc_id="doc-note-atomic-rollback",
+        )
+
+    async with migrated_session_factory() as session:
+        dream_count = await session.scalar(select(func.count()).select_from(DreamEntry))
+        note_count = await session.scalar(select(func.count()).select_from(DreamNote))
+        job_count = await session.scalar(select(func.count()).select_from(NoteProcessingJob))
+
+    assert dream_count == 0
+    assert note_count == 0
+    assert job_count == 0
+
+
+@pytest.mark.asyncio
+async def test_reingest_repairs_existing_note_with_null_embedding(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    worker_ctx = _worker_ctx(
+        migrated_session_factory,
+        paragraphs=[
+            "2026-05-02 - Красная дверь",
+            "I walked through a hallway with red doors.",
+            "[Note 06.05.26]: после пробуждения дверь ощущалась важной",
+        ],
+    )
+    await ingest_document(
+        worker_ctx,
+        job_id=uuid.uuid4(),
+        doc_id="doc-note-index-repair",
+    )
+    assert await _drain_note_jobs(migrated_session_factory, worker_ctx) == 1
+
+    async with migrated_session_factory() as session:
+        note = await session.scalar(select(DreamNote))
+        assert note is not None
+        await session.execute(
+            update(DreamChunk).where(DreamChunk.note_id == note.id).values(embedding=None)
+        )
+        await session.commit()
+
+    await ingest_document(
+        worker_ctx,
+        job_id=uuid.uuid4(),
+        doc_id="doc-note-index-repair",
+    )
+
+    async with migrated_session_factory() as session:
+        repaired_job = await session.scalar(
+            select(NoteProcessingJob).where(NoteProcessingJob.note_id == note.id)
+        )
+    assert repaired_job is not None
+    assert repaired_job.stage == "index"
+    assert repaired_job.status == "retryable"
+    assert await _drain_note_jobs(migrated_session_factory, worker_ctx) == 1
+
+    async with migrated_session_factory() as session:
+        repaired_chunk = await session.scalar(
+            select(DreamChunk).where(DreamChunk.note_id == note.id)
+        )
+    assert repaired_chunk is not None
+    assert repaired_chunk.source_kind == "note"
+    assert repaired_chunk.embedding is not None
+
+
+@pytest.mark.asyncio
+async def test_google_doc_body_edit_fails_closed_without_silent_duplicate(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    first_ctx = _worker_ctx(
+        migrated_session_factory,
+        paragraphs=[
+            "2026-05-03 - Мост над рекой",
+            "The original dream body crossed a river.",
+        ],
+    )
+    await ingest_document(
+        first_ctx,
+        job_id=uuid.uuid4(),
+        doc_id="doc-body-edit-conflict",
+    )
+
+    edited_ctx = _worker_ctx(
+        migrated_session_factory,
+        paragraphs=[
+            "2026-05-03 - Мост над рекой",
+            "The edited dream body crossed a dark river.",
+        ],
+    )
+    added = await ingest_document(
+        edited_ctx,
+        job_id=uuid.uuid4(),
+        doc_id="doc-body-edit-conflict",
+    )
+
+    async with migrated_session_factory() as session:
+        dreams = (await session.execute(select(DreamEntry))).scalars().all()
+
+    assert added == 0
+    assert len(dreams) == 1
+    assert dreams[0].raw_text == "The original dream body crossed a river."
+
+
+@pytest.mark.asyncio
+async def test_source_slot_identity_survives_unrelated_heading_insert(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await ingest_document(
+        _worker_ctx(
+            migrated_session_factory,
+            paragraphs=[
+                "2026-05-01 - Первый",
+                "The first stable dream body.",
+                "2026-05-03 - Третий",
+                "The third stable dream body.",
+            ],
+        ),
+        job_id=uuid.uuid4(),
+        doc_id="doc-heading-slot-stability",
+    )
+
+    added = await ingest_document(
+        _worker_ctx(
+            migrated_session_factory,
+            paragraphs=[
+                "2026-05-01 - Первый",
+                "The first stable dream body.",
+                "2026-05-02 - Второй",
+                "The newly inserted second dream body.",
+                "2026-05-03 - Третий",
+                "The third stable dream body.",
+            ],
+        ),
+        job_id=uuid.uuid4(),
+        doc_id="doc-heading-slot-stability",
+    )
+
+    async with migrated_session_factory() as session:
+        dreams = (await session.execute(select(DreamEntry))).scalars().all()
+        source_keys = {dream.source_entry_key for dream in dreams}
+
+    assert added == 1
+    assert len(dreams) == 3
+    assert None not in source_keys
+    assert len(source_keys) == 3
+
+
+@pytest.mark.asyncio
+async def test_same_body_in_second_doc_does_not_flip_source_identity(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    paragraphs = [
+        "2026-05-04 - Один и тот же сон",
+        "The same stable dream body appears in two documents.",
+    ]
+    await ingest_document(
+        _worker_ctx(migrated_session_factory, paragraphs=paragraphs),
+        job_id=uuid.uuid4(),
+        doc_id="doc-source-owner-a",
+    )
+
+    added = await ingest_document(
+        _worker_ctx(migrated_session_factory, paragraphs=paragraphs),
+        job_id=uuid.uuid4(),
+        doc_id="doc-source-owner-b",
+    )
+
+    async with migrated_session_factory() as session:
+        dreams = (await session.execute(select(DreamEntry))).scalars().all()
+
+    assert added == 1
+    assert len(dreams) == 2
+    assert {dream.source_doc_id for dream in dreams} == {
+        "doc-source-owner-a",
+        "doc-source-owner-b",
+    }
+    assert len({dream.source_entry_key for dream in dreams}) == 2
+
+
+@pytest.mark.asyncio
+async def test_same_body_in_distinct_slots_of_one_doc_creates_distinct_dreams(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    body = "The same dream body was intentionally recorded twice."
+    added = await ingest_document(
+        _worker_ctx(
+            migrated_session_factory,
+            paragraphs=[
+                "2026-05-04 - Первый повтор",
+                body,
+                "2026-05-05 - Второй повтор",
+                body,
+            ],
+        ),
+        job_id=uuid.uuid4(),
+        doc_id="doc-repeated-body-slots",
+    )
+
+    async with migrated_session_factory() as session:
+        dreams = (
+            (
+                await session.execute(
+                    select(DreamEntry).where(DreamEntry.source_doc_id == "doc-repeated-body-slots")
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert added == 2
+    assert len(dreams) == 2
+    assert len({dream.source_entry_key for dream in dreams}) == 2
+
+
+@pytest.mark.asyncio
+async def test_combined_heading_and_body_edit_fails_closed(
+    migrated_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await ingest_document(
+        _worker_ctx(
+            migrated_session_factory,
+            paragraphs=[
+                "2026-05-05 - Старый мост",
+                "The original body crossed an old bridge.",
+            ],
+        ),
+        job_id=uuid.uuid4(),
+        doc_id="doc-heading-body-edit",
+    )
+
+    added = await ingest_document(
+        _worker_ctx(
+            migrated_session_factory,
+            paragraphs=[
+                "2026-05-06 - Новый маяк",
+                "The changed body climbed a bright lighthouse.",
+            ],
+        ),
+        job_id=uuid.uuid4(),
+        doc_id="doc-heading-body-edit",
+    )
+
+    async with migrated_session_factory() as session:
+        dreams = (await session.execute(select(DreamEntry))).scalars().all()
+
+    assert added == 0
+    assert len(dreams) == 1
+    assert dreams[0].title == "Старый мост"
+    assert dreams[0].raw_text == "The original body crossed an old bridge."

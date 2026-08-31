@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, Text, text
+from sqlalchemy import BigInteger, DateTime, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,6 +26,19 @@ class VoiceMediaEvent(Base):
     """
 
     __tablename__ = "voice_media_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "chat_id",
+            "telegram_message_id",
+            name="uq_voice_media_events_chat_message",
+        ),
+        Index(
+            "ix_voice_media_events_recovery",
+            "status",
+            "next_attempt_at",
+            "lease_expires_at",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -38,6 +51,31 @@ class VoiceMediaEvent(Base):
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     local_path: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
     transcript_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reply_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcription_attempt_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
+    reply_chunks_delivered: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
+    delivery_attempt_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,

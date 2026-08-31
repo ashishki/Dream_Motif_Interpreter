@@ -1,7 +1,7 @@
 # Implementation Contract — Dream Motif Interpreter
 
 Status: **IMMUTABLE** — changes to this document require an Architectural Decision Record filed in `docs/adr/`.
-Version: 1.0
+Version: 1.1 (amended by ADR-011)
 Effective date: 2026-04-10
 
 Any agent (Codex or review) may cite this document as the authority on implementation rules. Any finding that this contract was violated is automatically P1.
@@ -73,7 +73,11 @@ _This is a single-tenant system. This section does not apply._
 
 **OBS-2 — Metrics.** For each external call type, emit a success/error counter and a latency histogram. For RAG paths: `insufficient_evidence` rate as a labeled counter; `retrieval_ms` and `generation_ms` as separate spans. Violation for missing RAG metrics: P2.
 
-**OBS-3 — Health endpoint.** `GET /health` returns `{"status": "ok", "index_last_updated": "<ISO8601>", "unindexed_dreams": 0, "unindexed_notes": 0}` (HTTP 200) when all stored dreams and notes are represented in `dream_chunks`. It returns HTTP 503 only when unreadable index state or a real indexing backlog is detected. Old-but-complete archives are healthy. This endpoint must not log PII, must not count toward rate limits, and must not require authentication. Violation: P1.
+**OBS-3 — Health endpoint.** `GET /health` returns `status`, deployed `build_sha`,
+`index_last_updated`, `unindexed_dreams`, and `unindexed_notes`. It returns HTTP 200 when all
+stored dreams and notes are represented in `dream_chunks`, and HTTP 503 only when index state is
+unreadable or a real backlog exists. Old-but-complete archives are healthy. The endpoint must not
+log PII, count toward rate limits, or require authentication. Violation: P1.
 
 ---
 
@@ -87,7 +91,11 @@ Dream content (`raw_text`, `chunk_text`, `fragment_text`) must never appear in:
 - Log messages at any level
 - OpenTelemetry span attributes
 - HTTP error response bodies
-- Redis keys or values (Redis stores only job IDs, statuses, and session tokens)
+- Redis keys
+
+Per ADR-011, Redis values may contain the minimum pending Telegram workflow text needed for an
+explicit confirmation. Those values require a bounded TTL and must never be printed, logged,
+traced, exported or copied into fixtures. Canonical dreams and durable work remain in PostgreSQL.
 
 References in observability must use `dream_id` (UUID) only. A dream's text is accessed only through the database via parameterized queries.
 
@@ -113,7 +121,11 @@ Violation: automatic P1.
 
 ### Idempotent Workers
 
-All background workers (ingestion, indexing) must be idempotent. Re-queuing the same job with the same input must not produce duplicate records. Use content hashes for dream entries and (dream_id, chunk_index) composite keys for chunks.
+All background workers (ingestion, indexing, post-capture stages and voice delivery) must be
+idempotent. Re-queuing the same input must not produce duplicate records or externally visible
+delivery. Use scoped source/content identities for dreams, `(dream_id, chunk_index)` for chunks,
+`(dream_id, stage)` for post-capture jobs, Telegram update identity for voice, and durable receipts
+for external writes.
 
 Violation: P1.
 
@@ -131,11 +143,11 @@ Violation: P2.
 
 | Boundary | Rule |
 |----------|------|
-| Secrets scope | All secrets via environment variables only. No secrets in source, migrations, fixtures, or Redis. |
-| Network egress | Allowed: Google Docs API, Anthropic API, OpenAI Embeddings API. All other egress denied by default in production. |
+| Secrets scope | Secrets arrive through environment variables or read-only secret-mounted files. No secrets in source, migrations, fixtures, or Redis. |
+| Network egress | Allowed: Google APIs, Telegram Bot API, Anthropic, OpenAI and the explicitly configured research provider when its feature gate is enabled. Other egress is denied by default. |
 | Privileged actions | Theme category promotion, rename, merge, delete — all require authenticated API call. No automated path for these. |
 | Runtime mutation | No shell mutation at runtime. Package installation is build-time only. Workers execute job handlers only. |
-| Persistence | DreamEntry, DreamTheme, ThemeCategory, AnnotationVersion, DreamChunk — all in PostgreSQL. Redis: job queue and session tokens only. |
+| Persistence | Canonical archive, sessions, durable processing/voice state, annotations and receipts are in PostgreSQL. Redis contains only TTL interaction state and sync coordination under ADR-011. |
 | Auditability | All taxonomy mutations logged via AnnotationVersion. All API calls logged with trace_id (no dream content in logs). |
 
 ### Runtime Tier Guardrails
@@ -157,7 +169,9 @@ _Applies because `docs/ARCHITECTURE.md` declares RAG Status = ON._
 ### insufficient_evidence Path
 
 - Every query-time handler must implement the `insufficient_evidence` path.
-- When retrieved evidence does not meet the relevance threshold (default 0.35), the system must return `InsufficientEvidence` — not a hallucinated answer.
+- When retrieved evidence does not meet the configured threshold (default `0.20`, with a verified
+  vector-only floor of `0.40`), the system must return `InsufficientEvidence` — not a hallucinated
+  answer.
 - This path must have at least one explicit test in the integration test suite.
 - Omitting this path is an automatic P1.
 

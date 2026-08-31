@@ -102,3 +102,14 @@ def test_phase21_fish_image_regression_dataset_is_documented() -> None:
     assert phase21_rows
     assert phase21_rows[-1]["Date"] == "2026-06-02"
     assert "tests/unit/test_assistant_chat.py" in phase21_rows[-1]["Eval Source"]
+
+
+def test_query_layer_evidence_verification_regressions_are_documented() -> None:
+    text = DOCS_PATH.read_text(encoding="utf-8")
+
+    assert "## Query-Layer Evidence Verification Regression Dataset" in text
+    for case_id in ["QLEV-01", "QLEV-02", "QLEV-03"]:
+        assert case_id in text
+    assert "Embedding request fails" in text
+    assert "`стеклянным лифтом`" in text
+    assert "unrelated fragment list is empty" in text

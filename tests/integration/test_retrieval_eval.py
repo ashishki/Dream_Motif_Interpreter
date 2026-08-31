@@ -21,6 +21,7 @@ async def test_eval_script_writes_baseline_metrics() -> None:
             docs_path=DOCS_PATH,
             fixture_path=FIXTURE_PATH,
             write_markdown=True,
+            confirm_reset=True,
         )
         updated = DOCS_PATH.read_text(encoding="utf-8")
     finally:
@@ -42,6 +43,7 @@ async def test_no_answer_queries_return_insufficient_evidence() -> None:
         docs_path=DOCS_PATH,
         fixture_path=FIXTURE_PATH,
         write_markdown=False,
+        confirm_reset=True,
     )
 
     no_answer_outcomes = [

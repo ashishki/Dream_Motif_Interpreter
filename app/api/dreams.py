@@ -17,13 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models.dream import DreamEntry
 from app.models.theme import DreamTheme
 from app.services.gdocs_client import GDocsClient
-from app.shared.config import get_settings
+from app.shared.config import get_effective_google_doc_id, get_settings
 from app.shared.database import get_session_factory
 from app.shared.tracing import get_logger, get_tracer
 
 router = APIRouter()
 logger = get_logger(__name__)
 SYNC_NOTIFY_PREFIX = "sync_notify:"
+SYNC_JOB_STATE_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
 class _InMemoryRedisClient:
@@ -110,7 +111,7 @@ class JobEnqueuer(Protocol):
 
 
 class RedisSyncBackend:
-    def __init__(self, *, redis_client: Any, job_enqueuer: JobEnqueuer, doc_id: str) -> None:
+    def __init__(self, *, redis_client: Any, job_enqueuer: JobEnqueuer, doc_id: str | None) -> None:
         self._redis_client = redis_client
         self._job_enqueuer = job_enqueuer
         self._doc_id = doc_id
@@ -118,7 +119,8 @@ class RedisSyncBackend:
     async def enqueue_sync(self) -> uuid.UUID:
         job_id = uuid.uuid4()
         await write_sync_job_state(self._redis_client, job_id, SyncJobState(status="queued"))
-        await self._job_enqueuer.enqueue_ingest(job_id=job_id, doc_id=self._doc_id)
+        doc_id = self._doc_id or get_effective_google_doc_id()
+        await self._job_enqueuer.enqueue_ingest(job_id=job_id, doc_id=doc_id)
         return job_id
 
     async def get_status(self, job_id: uuid.UUID) -> SyncJobState | None:
@@ -207,7 +209,7 @@ def _get_sync_backend() -> SyncBackend:
     return RedisSyncBackend(
         redis_client=_get_redis_client(),
         job_enqueuer=_get_job_enqueuer(),
-        doc_id=get_settings().GOOGLE_DOC_ID,
+        doc_id=None,
     )
 
 
@@ -217,7 +219,11 @@ async def write_sync_job_state(redis_client: Any, job_id: uuid.UUID, state: Sync
     with tracer.start_as_current_span("redis.sync_job.set") as span:
         span.set_attribute("job_id", str(job_id))
         span.set_attribute("status", state.status)
-        await redis_client.set(_sync_job_key(job_id), json.dumps(payload))
+        await redis_client.set(
+            _sync_job_key(job_id),
+            json.dumps(payload),
+            ex=SYNC_JOB_STATE_TTL_SECONDS,
+        )
 
 
 async def read_sync_job_state(redis_client: Any, job_id: uuid.UUID) -> SyncJobState | None:
@@ -304,6 +310,8 @@ class LocalAsyncJobEnqueuer:
         self._redis_client = redis_client
         self._session_factory = session_factory
         self._tasks: set[asyncio.Task[None]] = set()
+        self._task_job_ids: dict[asyncio.Task[None], uuid.UUID] = {}
+        self._closing = False
 
     async def enqueue_ingest(
         self,
@@ -314,6 +322,9 @@ class LocalAsyncJobEnqueuer:
     ) -> None:
         from app.workers.ingest import ingest_document
 
+        if self._closing:
+            raise RuntimeError("Sync enqueuer is shutting down")
+
         await write_sync_job_state(self._redis_client, job_id, SyncJobState(status="queued"))
         if chat_id is not None:
             await set_sync_notify(self._redis_client, job_id, chat_id)
@@ -322,7 +333,50 @@ class LocalAsyncJobEnqueuer:
             self._run_ingest_job(job_id=job_id, doc_id=doc_id, ingest_document=ingest_document)
         )
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        self._task_job_ids[task] = job_id
+        task.add_done_callback(self._task_done)
+
+    def _task_done(self, task: asyncio.Task[None]) -> None:
+        self._tasks.discard(task)
+        self._task_job_ids.pop(task, None)
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            logger.error(
+                "sync.background_task_failed",
+                error_type=type(error).__name__,
+            )
+
+    async def shutdown(self, timeout_seconds: float = 15.0) -> None:
+        """Drain local sync work before closing its Redis connection.
+
+        The Google Docs sync itself is recoverable through the next automatic or
+        explicit sync.  A bounded drain prevents process shutdown from leaving an
+        unobserved task while still respecting the orchestrator's grace period.
+        """
+
+        self._closing = True
+        pending = set(self._tasks)
+        if pending:
+            _, pending = await asyncio.wait(pending, timeout=max(timeout_seconds, 0.0))
+            cancelled_job_ids = [
+                self._task_job_ids[task] for task in pending if task in self._task_job_ids
+            ]
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+                for job_id in cancelled_job_ids:
+                    await write_sync_job_state(
+                        self._redis_client,
+                        job_id,
+                        SyncJobState(status="failed"),
+                    )
+
+        close = getattr(self._redis_client, "aclose", None)
+        if close is not None:
+            await close()
 
     async def _run_ingest_job(self, *, job_id: uuid.UUID, doc_id: str, ingest_document) -> None:
         from app.services.auto_sync import AutoSyncState, read_auto_sync_state
@@ -378,6 +432,13 @@ class LocalAsyncJobEnqueuer:
                     last_sync_stage="done",
                 ),
             )
+        except asyncio.CancelledError:
+            await write_sync_job_state(
+                self._redis_client,
+                job_id,
+                SyncJobState(status="failed"),
+            )
+            raise
         except Exception:
             failed_at = _utcnow_iso()
             await write_auto_sync_state(

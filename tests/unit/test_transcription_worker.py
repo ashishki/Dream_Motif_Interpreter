@@ -651,6 +651,32 @@ async def test_delivery_resumes_after_persisted_chunk_cursor() -> None:
 
 
 @pytest.mark.asyncio
+async def test_delivery_marks_delivered_without_resending_after_final_cursor() -> None:
+    """Crash recovery after final cursor commit must not duplicate Telegram sends."""
+    long_reply = "A" * 4000
+    event = _state(status="reply_pending", reply=long_reply)
+    event = replace(event, reply_chunks_delivered=2)
+    session_factory = MagicMock()
+    with (
+        patch("app.workers.transcribe.get_voice_media_event", new=AsyncMock(return_value=event)),
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as send,
+        patch("app.workers.transcribe.store_voice_delivery_progress", new=AsyncMock()) as progress,
+        patch("app.workers.transcribe.mark_voice_reply_delivered", new=AsyncMock()) as mark,
+    ):
+        delivered = await deliver_pending_voice_reply(
+            event_id=event.id,
+            chat_id=42,
+            telegram_bot_token="TOKEN",
+            session_factory=session_factory,
+        )
+
+    assert delivered is True
+    send.assert_not_awaited()
+    progress.assert_not_awaited()
+    mark.assert_awaited_once_with(session_factory, event.id)
+
+
+@pytest.mark.asyncio
 async def test_startup_recovery_schedules_pending_delivery_and_transcription() -> None:
     pending = _state(status="reply_pending", reply="reply")
     transcribed = _state(status="transcribed", transcript="text")

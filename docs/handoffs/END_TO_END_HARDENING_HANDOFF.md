@@ -322,6 +322,13 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: remote commit `8f70d5f4217d83ac447d0287c0d06efe6e7398a0` was pushed. Live Telegram/Whisper crash-restart recovery is still not exercised without operator-owned credentials.
 - next step: continue Phase B with voice crash/restart recovery coverage, or move to the Phase C Google Docs canary. Keep the next slice a separate commit.
 
+### Phase B — voice delivery final-cursor recovery
+
+- completed: added test-only coverage for the crash window after the last Telegram reply chunk cursor is durably advanced but before the row is marked `delivered`. Recovery must mark the row delivered without re-sending already acknowledged chunks.
+- tests: updated `tests/unit/test_transcription_worker.py`. Local checks passed: `.venv/bin/ruff check tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`27 passed`); `git diff --check`.
+- remaining: this test-only slice still needs PR #5 CI on the remote commit. Real Telegram Bot API delivery idempotency cannot be proven locally because Telegram send itself has no idempotency key.
+- next step: push this test-only commit, wait for PR #5 CI, then continue Phase B with the next voice crash/restart seam or move to Phase C Google Docs canary.
+
 ## Exact next command for a new agent
 
 ```bash

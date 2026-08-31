@@ -31,19 +31,22 @@ Telegram/provider credentials, then:
 
 ```bash
 export BUILD_SHA="$(git rev-parse HEAD)"
-./scripts/deploy_compose.sh
+export DEPLOY_BACKUP_DIR=/var/backups/dream-motif
+./scripts/deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR"
 docker compose ps
 curl --fail http://127.0.0.1:8000/health
 ```
 
 `scripts/deploy_compose.sh` is the required rollout entry point, including for the first launch.
 It quiesces every application writer (`api`, `telegram-bot`, `auto-sync`), waits for PostgreSQL and
-Redis, builds the requested revision, runs Alembic to completion, and starts the application only
-after migration succeeds. After migration, it starts the API first and restarts Telegram/auto-sync
-only after the API reports `/ready` for the intended `BUILD_SHA`, so background writers do not
-accept new work during a failed readiness gate. If build, migration, or readiness fails after
-writers were stopped, writers remain stopped. A plain `docker compose up` is not a safe upgrade
-procedure because a previous application revision can continue writing while the schema changes.
+Redis, writes a custom-format PostgreSQL dump plus manifest into an absolute backup directory,
+validates the dump with `pg_restore --list`, builds the requested revision, runs Alembic to
+completion, and starts the application only after migration succeeds. After migration, it starts
+the API first and restarts Telegram/auto-sync only after the API reports `/ready` for the intended
+`BUILD_SHA`, so background writers do not accept new work during a failed readiness gate. If
+backup, build, migration, or readiness fails after writers were stopped, writers remain stopped. A
+plain `docker compose up` is not a safe upgrade procedure because a previous application revision
+can continue writing while the schema changes.
 
 The script refuses a dirty Git worktree and requires `BUILD_SHA` to equal the checked-out `HEAD`.
 Commit the intended release before rollout; do not use an arbitrary SHA to label a locally modified
@@ -57,7 +60,7 @@ tags until the rollback drill for that release has passed. Start optional auto-s
 `AUTO_SYNC_ENABLED=true`:
 
 ```bash
-./scripts/deploy_compose.sh --with-auto-sync
+./scripts/deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR" --with-auto-sync
 ```
 
 Compose persists:
@@ -93,10 +96,11 @@ Schema migrations require a quiesced application even when a specific revision a
 
 1. stop `api`, `telegram-bot` and `auto-sync`
 2. start/wait for PostgreSQL and Redis
-3. run `alembic upgrade head` and require exit code 0
-4. start the new API revision
-5. require `/ready` to report `status=ok` and the intended `BUILD_SHA`
-6. start the Telegram bot, then optional auto-sync
+3. create a custom-format `pg_dump`, verify it with `pg_restore --list`, and record its manifest
+4. run `alembic upgrade head` and require exit code 0
+5. start the new API revision
+6. require `/ready` to report `status=ok` and the intended `BUILD_SHA`
+7. start the Telegram bot, then optional auto-sync
 
 The provided script enforces this order. Do not start application dependencies implicitly through
 Compose while an upgrade is in progress.
@@ -163,7 +167,8 @@ unreliable advisory locking are unsupported.
 Before treating a rollout as healthy:
 
 1. The deploy script's migration command exited 0; `docker compose ps` shows Postgres/Redis
-   healthy, and the API passed readiness before bot/auto-sync were restarted.
+   healthy, the pre-migration backup manifest exists, and the API passed readiness before
+   bot/auto-sync were restarted.
 2. `/health.status` is `ok` (or an understood indexing backlog) and `health.build_sha` equals the
    intended Git commit; `unknown` is not acceptable in production.
 3. Redis returns `PONG`.

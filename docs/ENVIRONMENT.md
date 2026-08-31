@@ -56,6 +56,10 @@ the deployment pipeline so operator smoke tests can verify the running revision.
 the shared app image as `APP_IMAGE_REPOSITORY:BUILD_SHA` so an operator can select a previous
 release image during a rollback drill.
 
+`DEPLOY_BACKUP_DIR` is a deployment-script convenience variable equivalent to passing
+`--backup-dir`. It must be an absolute host path outside the repository checkout. It is not read by
+the application process.
+
 `ASSISTANT_MODEL` — Claude model used by the bounded tool-use loop. Defaults to `claude-haiku-4-5-20251001`.
 
 `VOICE_MEDIA_DIR` — writable directory for temporary voice files. Default: `/tmp/dream_voice`.

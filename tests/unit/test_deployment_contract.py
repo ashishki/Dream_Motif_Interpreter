@@ -113,6 +113,9 @@ def test_compose_rollout_quiesces_writers_before_migration() -> None:
         '"${compose[@]}" --profile autosync stop --timeout 50 api telegram-bot auto-sync'
     )
     infrastructure = script.index('"${compose[@]}" up -d --wait postgres redis')
+    backup_dump = script.index("pg_dump -U postgres -d dream_motif --format=custom")
+    backup_verify = script.index("pg_restore --list")
+    build = script.index('"${compose[@]}" --profile autosync build "${build_services[@]}"')
     migration = script.index('"${compose[@]}" run --rm --no-deps migrate')
     api_start = script.index('"${compose[@]}" up -d --no-deps --no-build api')
     ready_check = script.index('urllib.request.urlopen("http://127.0.0.1:8000/ready"')
@@ -121,7 +124,26 @@ def test_compose_rollout_quiesces_writers_before_migration() -> None:
         '"${compose[@]}" --profile autosync up -d --no-deps --no-build auto-sync'
     )
 
-    assert stop < infrastructure < migration < api_start < ready_check < bot_start < autosync_start
+    assert (
+        stop
+        < infrastructure
+        < backup_dump
+        < backup_verify
+        < build
+        < migration
+        < api_start
+        < ready_check
+        < bot_start
+        < autosync_start
+    )
+    assert "Usage: scripts/deploy_compose.sh --backup-dir DIR" in script
+    assert 'backup_dir="${DEPLOY_BACKUP_DIR:-}"' in script
+    assert "refusing to migrate without a verified pre-migration backup" in script
+    assert "Backup directory must be outside the repository checkout" in script
+    assert "Refusing to overwrite an existing backup archive or manifest" in script
+    assert "Pre-migration PostgreSQL backup is empty" in script
+    assert "backup_sha256=" in script
+    assert "alembic_revision=" in script
     assert "Refusing to deploy a dirty worktree" in script
     assert 'if [[ "${BUILD_SHA}" != "${head_sha}" ]]' in script
     assert "BUILD_SHA must identify the exact deployed commit" in script
@@ -146,7 +168,13 @@ def test_active_deployment_docs_use_the_quiesced_rollout_script() -> None:
         assert "./scripts/deploy_compose.sh" in document
 
     assert "stop `api`, `telegram-bot` and `auto-sync`" in deploy
+    assert 'deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR"' in readme
+    assert 'deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR"' in deploy
+    assert 'deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR"' in bot_runbook
+    assert 'deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR"' in voice_runbook
     assert "run `alembic upgrade head`" in deploy
-    assert "only after the API reports `/ready` for the intended `BUILD_SHA`" in deploy
+    assert "verify it with `pg_restore --list`" in deploy
+    assert "only after the API reports `/ready` for the intended" in deploy
+    assert "`BUILD_SHA`, so background writers do not accept new work" in deploy
     assert "Keep previous release" in deploy
     assert "tags until the rollback drill" in deploy

@@ -70,13 +70,15 @@ counts, and character counts; they must never contain transcript or dream text.
 
 ```bash
 export BUILD_SHA="$(git rev-parse HEAD)"
-./scripts/deploy_compose.sh
+export DEPLOY_BACKUP_DIR=/var/backups/dream-motif
+./scripts/deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR"
 docker compose ps
 docker compose logs --tail=100 telegram-bot
 ```
 
-The shared deploy script stops API, bot and auto-sync before Alembic runs. Do not migrate a live
-voice/capture writer or replace this sequence with a direct Compose start during an upgrade.
+The shared deploy script stops API, bot and auto-sync, creates a verified pre-migration database
+backup, and only then runs Alembic. Do not migrate a live voice/capture writer or replace this
+sequence with a direct Compose start during an upgrade.
 
 Confirm that startup logs show voice recovery and no repeating maintenance failure.
 Verify the mounted path from inside the service:

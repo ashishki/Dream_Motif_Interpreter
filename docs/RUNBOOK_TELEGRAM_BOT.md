@@ -23,14 +23,16 @@ Compose start:
 
 ```bash
 export BUILD_SHA="$(git rev-parse HEAD)"
-./scripts/deploy_compose.sh
+export DEPLOY_BACKUP_DIR=/var/backups/dream-motif
+./scripts/deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR"
 docker compose ps
 curl --fail http://127.0.0.1:8000/health
 docker compose exec redis redis-cli ping
 ```
 
 Expected: `migrate` exits 0; Postgres/Redis are healthy; API and bot stay running;
-`health.build_sha` equals `$BUILD_SHA`. `unknown` or a mismatch blocks production rollout.
+the pre-migration backup manifest exists; `health.build_sha` equals `$BUILD_SHA`. `unknown` or a
+mismatch blocks production rollout.
 
 Direct start:
 

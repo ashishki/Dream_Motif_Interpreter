@@ -231,7 +231,7 @@ Each phase must be a separate small commit. After every phase, update this file 
 ### A. Safety and deployment — P0/P1 gate
 
 - Run CI container and PostgreSQL integration gates.
-- Add/verify a concrete rollback preflight and documented previous-image/database restore drill without destructive automatic schema rollback.
+- Add/verify a concrete rollback preflight and documented database restore drill without destructive automatic schema rollback. Compose image tags now make previous app images addressable; deploy now needs a verified pre-migration dump before migration, but a non-production restore verifier remains pending.
 - Validate `/ready` versus `/health` behavior in Compose and deployment-contract tests. The local deployment contract now verifies that Telegram/auto-sync restart only after API `/ready` succeeds; CI/container runtime still needs to execute it in a real Compose environment.
 
 ### B. Durable capture/outbox and voice lifecycle — P1
@@ -284,15 +284,22 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - completed: centralized the Compose required-env `POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env` guard on the `postgres` service and changed the four application `DATABASE_URL` entries to reference `${POSTGRES_PASSWORD}` without duplicating the scanner-unfriendly guard text. Added a CI container-contract step that verifies `docker compose config` fails before a placeholder `.env` is created.
 - tests: local contract coverage was updated in `tests/unit/test_deployment_contract.py` to assert exactly one required password guard, four app DSNs using the shared value, no database-password fallback, and the new negative CI step. `docs/DEPLOY.md` was updated to explain the centralized guard. Local checks passed: `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py` (`8 passed`); `git diff --check`.
-- remaining: remote commit `9daf1873a027edb250495122b9532fb26e090770` was pushed and PR #5 CI run #195 is in progress. The historical GitGuardian incident `36739581` still must be marked `Skip: false positive` in the GitGuardian dashboard; local code changes alone may not clear a finding attached to commit `d3f3171`.
+- remaining: remote commit `9daf1873a027edb250495122b9532fb26e090770` was pushed; PR #5 CI run #195 was superseded/cancelled by the following push. The historical GitGuardian incident `36739581` still must be marked `Skip: false positive` in the GitGuardian dashboard; local code changes alone may not clear a finding attached to commit `d3f3171`.
 - next step: commit/push this small Phase A slice, then watch PR #5 CI.
 
 ### Phase A — immutable app image identity
 
 - completed: added an OCI revision label to the production Docker image and a shared Compose app-image tag `${APP_IMAGE_REPOSITORY:-dream-motif-interpreter}:${BUILD_SHA:-unknown}` for `migrate`, `api`, `telegram-bot`, and `auto-sync`. Documented `APP_IMAGE_REPOSITORY` and the requirement to retain previous release tags until rollback drill passes.
 - tests: contract coverage in `tests/unit/test_deployment_contract.py` now asserts the OCI label, shared app-image anchor, four service image references, `.env.example` default, CI image-label inspection, and rollback-tag note in `docs/DEPLOY.md`. Local checks passed: `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py` (`8 passed`); `git diff --check`.
-- remaining: run focused checks, commit/push this slice, and let PR #5 CI validate it. The next rollback slice must add a verified pre-migration `pg_dump`/manifest plus a non-production restore drill; this image-tag slice alone is not a complete rollback procedure.
-- next step: run `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`, `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`, `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py`, `git diff --check`, then commit/push as a small Phase A slice.
+- remaining: remote commit `2a95be31389233b38e53382843b1ae74670073a9` was pushed and PR #5 CI run #197 completed successfully. The next rollback slice must add a verified pre-migration `pg_dump`/manifest plus a non-production restore drill; this image-tag slice alone is not a complete rollback procedure.
+- next step: complete the pre-migration backup slice below, then watch PR #5 CI.
+
+### Phase A — pre-migration backup manifest
+
+- completed: `scripts/deploy_compose.sh` now requires `--backup-dir` or `DEPLOY_BACKUP_DIR`, rejects relative or in-repository backup paths, captures the currently running API container/image/OCI revision when present, stops writers, starts Postgres/Redis, writes a custom-format `pg_dump`, verifies it with `pg_restore --list`, records SHA256 plus Alembic revision in a mode-0600 manifest, and only then builds/runs migrations. README, DEPLOY, Telegram runbook, voice runbook, and ENVIRONMENT were updated for the new deployment contract.
+- tests: `tests/unit/test_deployment_contract.py` now asserts the new command usage, backup requirement, path guard, overwrite guard, nonempty dump guard, manifest fields, backup-before-build-before-migration order, and updated docs/runbook commands. Local checks passed: `bash -n scripts/deploy_compose.sh`; `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py` (`8 passed`); `git diff --check`.
+- remaining: run focused local checks, commit/push this slice, and let PR #5 CI validate it. A non-production restore verifier/drill is still required next; this slice creates and validates the archive but does not prove restore into a disposable DB.
+- next step: run `bash -n scripts/deploy_compose.sh`, `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`, `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`, `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py`, `git diff --check`, then commit/push as a small Phase A slice.
 
 ## Exact next command for a new agent
 

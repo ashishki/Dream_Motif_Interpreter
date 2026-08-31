@@ -258,15 +258,16 @@ python3 -m app.auto_sync
 cp .env.example .env
 # заполните секреты; для проверяемого deploy задайте точный commit
 export BUILD_SHA="$(git rev-parse HEAD)"
-./scripts/deploy_compose.sh
+export DEPLOY_BACKUP_DIR=/var/backups/dream-motif
+./scripts/deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR"
 docker compose ps
 curl --fail http://127.0.0.1:8000/health
 ```
 
 Скрипт обязателен и для первого запуска, и для upgrade: он сначала останавливает `api`,
-`telegram-bot` и `auto-sync`, затем поднимает инфраструктуру, применяет Alembic без активных
-писателей и только после успеха запускает процессы приложения. Не заменяйте его прямым
-`docker compose up` при обновлении кода или схемы.
+`telegram-bot` и `auto-sync`, затем поднимает инфраструктуру, создаёт проверенный pre-migration
+`pg_dump` с manifest, применяет Alembic без активных писателей и только после успеха запускает
+процессы приложения. Не заменяйте его прямым `docker compose up` при обновлении кода или схемы.
 Скрипт откажется собирать незакоммиченное дерево или маркировать образ SHA, отличным от текущего
 `HEAD`, чтобы `/health` не подтверждал ложную версию.
 
@@ -277,7 +278,7 @@ Google-интеграции. Для service account укажите сущест�
 ```bash
 GOOGLE_SERVICE_ACCOUNT_HOST_FILE=/absolute/path/google-service-account.json \
   BUILD_SHA="$(git rev-parse HEAD)" \
-  ./scripts/deploy_compose.sh --google-service-account
+  ./scripts/deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR" --google-service-account
 ```
 
 Overlay монтирует файл read-only в `/run/secrets/google-service-account.json`; JSON не попадает
@@ -287,7 +288,9 @@ Auto-sync вынесен в optional profile и запускается толь�
 включить его в тот же quiesced rollout:
 
 ```bash
-BUILD_SHA="$(git rev-parse HEAD)" ./scripts/deploy_compose.sh --with-auto-sync
+BUILD_SHA="$(git rev-parse HEAD)" ./scripts/deploy_compose.sh \
+  --backup-dir "$DEPLOY_BACKUP_DIR" \
+  --with-auto-sync
 ```
 
 `POSTGRES_PASSWORD` обязателен: у Compose нет fallback-пароля. PostgreSQL, Redis и API по

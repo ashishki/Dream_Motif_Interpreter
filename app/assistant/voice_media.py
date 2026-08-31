@@ -462,6 +462,26 @@ async def mark_voice_reply_delivered(
         await session.commit()
 
 
+async def mark_voice_reply_failed(
+    session_factory: async_sessionmaker[AsyncSession],
+    event_id: uuid.UUID,
+    *,
+    lease_owner: str | None = None,
+) -> None:
+    """Move a non-deliverable reply out of the recovery loop."""
+    now = datetime.now(tz=timezone.utc)
+    async with session_factory() as session:
+        event = await _owned_event(session, event_id, lease_owner=lease_owner)
+        event.status = "failed"
+        event.reply_text = None
+        event.reply_chunks_delivered = 0
+        event.next_attempt_at = None
+        event.lease_owner = None
+        event.lease_expires_at = None
+        event.updated_at = now
+        await session.commit()
+
+
 async def update_voice_media_event_status(
     session_factory: async_sessionmaker[AsyncSession],
     event_id: uuid.UUID,

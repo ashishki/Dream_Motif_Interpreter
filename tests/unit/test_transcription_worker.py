@@ -509,6 +509,29 @@ async def test_send_failure_keeps_reply_pending_for_retry() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pending_reply_without_text_is_failed_without_send() -> None:
+    event = _state(status="reply_pending")
+    owner = "worker-a"
+    session_factory = MagicMock()
+    with (
+        patch("app.workers.transcribe.get_voice_media_event", new=AsyncMock(return_value=event)),
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as send,
+        patch("app.workers.transcribe.mark_voice_reply_failed", new=AsyncMock()) as mark_failed,
+    ):
+        delivered = await deliver_pending_voice_reply(
+            event_id=event.id,
+            chat_id=42,
+            telegram_bot_token="TOKEN",
+            session_factory=session_factory,
+            lease_owner=owner,
+        )
+
+    assert delivered is False
+    send.assert_not_awaited()
+    mark_failed.assert_awaited_once_with(session_factory, event.id, lease_owner=owner)
+
+
+@pytest.mark.asyncio
 async def test_leased_send_failure_schedules_durable_backoff() -> None:
     event = _state(status="reply_pending", reply="durable reply")
     owner = "worker-a"

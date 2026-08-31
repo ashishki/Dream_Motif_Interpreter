@@ -24,6 +24,7 @@ from app.assistant.voice_media import (
     claim_recoverable_voice_media_events,
     get_voice_media_event,
     mark_voice_reply_delivered,
+    mark_voice_reply_failed,
     record_voice_delivery_failure,
     record_voice_transcription_failure,
     release_voice_media_lease,
@@ -626,6 +627,16 @@ async def deliver_pending_voice_reply(
         return state is not None
     if not state.reply_text:
         LOGGER.error("Voice reply is pending without text event_id=%s", event_id)
+        try:
+            await mark_voice_reply_failed(session_factory, event_id, **owner_kwargs)
+        except VoiceLeaseLost:
+            LOGGER.info(
+                "Voice lease lost before marking malformed reply failed event_id=%s", event_id
+            )
+        except LookupError:
+            LOGGER.info(
+                "Voice reply disappeared before malformed reply failure event_id=%s", event_id
+            )
         return False
     chunks = _split_telegram_text(state.reply_text)
     start_index = min(max(state.reply_chunks_delivered, 0), len(chunks))

@@ -9,7 +9,7 @@ Safely rolls out the current commit with Docker Compose:
   1. stop every application writer
   2. start and wait for PostgreSQL/Redis
   3. build the application image and run migrations to completion
-  4. start API, Telegram bot, and optionally auto-sync
+  4. start API, verify /ready for the exact revision, then start Telegram bot and optionally auto-sync
 
 Options:
   --with-auto-sync          Start the optional auto-sync service after migration.
@@ -74,14 +74,14 @@ if [[ "${with_google_service_account}" == true ]]; then
   compose_files+=(-f docker-compose.google-service-account.yml)
 fi
 compose=(docker compose "${compose_files[@]}")
-rollout_phase=pre_start
+rollout_phase=before_quiesce
 
 on_error() {
   exit_code=$?
-  if [[ "${rollout_phase}" == pre_start ]]; then
-    echo "Rollout failed; application writers remain stopped. Inspect the error before retrying." >&2
+  if [[ "${rollout_phase}" == before_quiesce ]]; then
+    echo "Rollout failed before quiescing application writers; inspect the error before retrying." >&2
   else
-    echo "Application start failed or is incomplete; stopping new application writers." >&2
+    echo "Rollout failed while application writers are quiesced or partially started; stopping new application writers." >&2
     "${compose[@]}" --profile autosync stop --timeout 50 api telegram-bot auto-sync >/dev/null 2>&1 || true
   fi
   exit "${exit_code}"
@@ -92,6 +92,7 @@ trap on_error ERR
 
 echo "Stopping API, Telegram bot, and auto-sync before schema migration..."
 "${compose[@]}" --profile autosync stop --timeout 50 api telegram-bot auto-sync
+rollout_phase=quiesced
 
 echo "Starting infrastructure and waiting for health checks..."
 "${compose[@]}" up -d --wait postgres redis
@@ -106,18 +107,21 @@ echo "Building application image for ${BUILD_SHA}..."
 echo "Applying Alembic migrations while application writers are stopped..."
 "${compose[@]}" run --rm --no-deps migrate
 
-echo "Starting API and Telegram bot from the migrated revision..."
-rollout_phase=starting
-"${compose[@]}" up -d --no-deps --no-build api telegram-bot
-if [[ "${with_auto_sync}" == true ]]; then
-  "${compose[@]}" --profile autosync up -d --no-deps --no-build auto-sync
-fi
+echo "Starting API from the migrated revision..."
+rollout_phase=starting_api
+"${compose[@]}" up -d --no-deps --no-build api
 
-echo "Waiting for the API readiness check..."
+echo "Waiting for the API readiness check before restarting background writers..."
 for attempt in {1..30}; do
   if "${compose[@]}" exec -T api python -c \
     'import json, os, urllib.request; payload=json.load(urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=3)); assert payload["build_sha"] == os.environ["BUILD_SHA"]; assert payload["status"] == "ok"' \
     >/dev/null 2>&1; then
+    echo "Starting Telegram bot and optional auto-sync after API readiness..."
+    rollout_phase=starting_writers
+    "${compose[@]}" up -d --no-deps --no-build telegram-bot
+    if [[ "${with_auto_sync}" == true ]]; then
+      "${compose[@]}" --profile autosync up -d --no-deps --no-build auto-sync
+    fi
     trap - ERR
     "${compose[@]}" --profile autosync ps
     echo "Rollout complete: ${BUILD_SHA}"

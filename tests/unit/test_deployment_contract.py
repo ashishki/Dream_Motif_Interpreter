@@ -101,13 +101,24 @@ def test_compose_rollout_quiesces_writers_before_migration() -> None:
     )
     infrastructure = script.index('"${compose[@]}" up -d --wait postgres redis')
     migration = script.index('"${compose[@]}" run --rm --no-deps migrate')
-    application = script.index('"${compose[@]}" up -d --no-deps --no-build api telegram-bot')
+    api_start = script.index('"${compose[@]}" up -d --no-deps --no-build api')
+    ready_check = script.index('urllib.request.urlopen("http://127.0.0.1:8000/ready"')
+    bot_start = script.index('"${compose[@]}" up -d --no-deps --no-build telegram-bot')
+    autosync_start = script.index(
+        '"${compose[@]}" --profile autosync up -d --no-deps --no-build auto-sync'
+    )
 
-    assert stop < infrastructure < migration < application
+    assert stop < infrastructure < migration < api_start < ready_check < bot_start < autosync_start
     assert "Refusing to deploy a dirty worktree" in script
     assert 'if [[ "${BUILD_SHA}" != "${head_sha}" ]]' in script
     assert "BUILD_SHA must identify the exact deployed commit" in script
     assert "trap on_error ERR" in script
+    assert "rollout_phase=before_quiesce" in script
+    assert "rollout_phase=quiesced" in script
+    assert "rollout_phase=starting_api" in script
+    assert "rollout_phase=starting_writers" in script
+    assert "Rollout failed before quiescing application writers" in script
+    assert "Rollout failed while application writers are quiesced or partially started" in script
 
 
 def test_active_deployment_docs_use_the_quiesced_rollout_script() -> None:
@@ -123,3 +134,4 @@ def test_active_deployment_docs_use_the_quiesced_rollout_script() -> None:
 
     assert "stop `api`, `telegram-bot` and `auto-sync`" in deploy
     assert "run `alembic upgrade head`" in deploy
+    assert "only after the API reports `/ready` for the intended `BUILD_SHA`" in deploy

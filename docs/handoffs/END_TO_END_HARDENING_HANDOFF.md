@@ -221,7 +221,7 @@ listed above plus `A docs/handoffs/END_TO_END_HARDENING_HANDOFF.md`.
 1. Local Docker is unavailable, so Compose/container runtime checks and the non-root container smoke must run in GitHub Actions.
 2. Local PostgreSQL/pgvector is unavailable on the expected test port. The full migration upgrade/downgrade, deferred-trigger, vector-query, and cleanup-race integration suite must run in CI.
 3. Manual `/sync` execution is still process-local. Graceful shutdown produces an honest failed/retryable status and autosync can recover data, but a hard kill between Redis state write and task execution is not a fully durable queue. A DB/Redis durable sync queue is follow-up work, not something to hide behind UI wording.
-4. Failed rollout stops the new writers, but automatic restoration of a previous image/schema is intentionally not attempted. A tested backup/restore and previous-image procedure remains required before production deployment.
+4. Failed rollout keeps or returns application writers to a stopped state once quiescing has begun, and the bot/auto-sync are not restarted until the new API passes exact-`BUILD_SHA` readiness. Automatic restoration of a previous image/schema is intentionally not attempted. A tested backup/restore and previous-image procedure remains required before production deployment.
 5. No live Telegram, Google Docs, OpenAI/Whisper, or production database mutation was performed; those require operator-owned credentials and an explicit canary window.
 
 ## Remaining work by independent phase
@@ -232,7 +232,7 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - Run CI container and PostgreSQL integration gates.
 - Add/verify a concrete rollback preflight and documented previous-image/database restore drill without destructive automatic schema rollback.
-- Validate `/ready` versus `/health` behavior in Compose and deployment-contract tests.
+- Validate `/ready` versus `/health` behavior in Compose and deployment-contract tests. The local deployment contract now verifies that Telegram/auto-sync restart only after API `/ready` succeeds; CI/container runtime still needs to execute it in a real Compose environment.
 
 ### B. Durable capture/outbox and voice lifecycle — P1
 
@@ -269,9 +269,16 @@ Each phase must be a separate small commit. After every phase, update this file 
 ### Phase A — CI repair 1
 
 - completed: draft PR #5 opened; install, lock, Ruff, and non-root container jobs passed. Corrected six PostgreSQL-CI mismatches without weakening production invariants: order-independent grounded-theme assertion, correct generic DBAPI exception type for deliberate downgrade guards, unique-safe draft timeline fixture, non-null vector evidence for complete-index health, and BUILD_SHA isolation in the configuration test.
-- tests: `ruff check` passed; 52 focused local tests passed; 51 affected PostgreSQL integration tests collect cleanly. CI run #189 established that dependency installation, frozen locks, formatting, lint, Compose rendering, image build, non-root runtime, and persistent-path permissions pass.
-- remaining: publish this phase commit, rerun the complete PostgreSQL/pgvector CI job, then record its result. The production rollback/restore drill remains separate Phase A work.
-- next step: run the full CI suite for the new phase commit; if green, begin the rollback preflight/documentation slice as another small Phase A commit.
+- tests: `ruff check` passed; 52 focused local tests passed; 51 affected PostgreSQL integration tests collected cleanly. Later PR CI completed successfully with 905 passed and 6 skipped across Ruff, container, public fixture, retrieval eval, unit, and PostgreSQL integration gates.
+- remaining: GitGuardian dashboard incident `36739581` still needs to be classified as a false positive; the production rollback/restore drill remains separate Phase A work.
+- next step: begin the first incomplete Phase A implementation slice below, then commit/push it separately.
+
+### Phase A — rollout writer gate
+
+- completed: narrowed the post-migration start sequence in `scripts/deploy_compose.sh`. The script now starts only `api`, waits for `/ready` to report `status=ok` and the exact intended `BUILD_SHA`, and only then starts `telegram-bot` plus optional `auto-sync`. The error trap now distinguishes failure before quiescing from failure after writers were stopped or partially restarted.
+- tests: local contract coverage was updated in `tests/unit/test_deployment_contract.py` to assert the order `stop writers -> infra -> migrate -> api -> /ready -> telegram-bot -> auto-sync`, plus the new rollout phases/messages. `docs/DEPLOY.md` was updated to match. Local checks passed: `bash -n scripts/deploy_compose.sh`; `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py` (`8 passed`); `git diff --check`.
+- remaining: commit/push this slice and let PR #5 CI validate it. GitGuardian incident `36739581` remains a false-positive dashboard action; the rollback preflight/previous-image drill is still the next implementation slice.
+- next step: commit this small Phase A slice, push `codex/end-to-end-hardening`, then watch PR #5 CI.
 
 ## Exact next command for a new agent
 

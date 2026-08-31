@@ -336,6 +336,13 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: remote commit `48fa757e34663ee3026a69379ec5af8b19e8067a` was pushed. This is a corrupt-state guard; normal reply staging still guarantees non-empty reply text before delivery.
 - next step: continue Phase B with another voice recovery gap or move to Phase C Google Docs canary. Keep the next slice a separate commit.
 
+### Phase B — malformed voice reply PostgreSQL coverage
+
+- completed: added PostgreSQL-backed integration coverage that a claimed malformed `reply_pending` event is marked `failed`, clears reply cursor and lease fields, and is no longer claimable by recovery.
+- tests: updated `tests/integration/test_migrations.py::test_voice_malformed_reply_failure_exits_recovery_queue`. Local checks passed: `.venv/bin/ruff check tests/integration/test_migrations.py app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check tests/integration/test_migrations.py app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`28 passed`); `.venv/bin/pytest -q --collect-only tests/integration/test_migrations.py` (`38 tests collected`); `git diff --check`.
+- remaining: this test-only slice still needs PR #5 CI because local PostgreSQL is unavailable.
+- next step: push this test-only commit, wait for PR #5 CI, then continue Phase B with another voice recovery gap or move to Phase C Google Docs canary.
+
 ## Exact next command for a new agent
 
 ```bash

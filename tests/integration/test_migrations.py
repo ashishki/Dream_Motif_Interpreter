@@ -17,6 +17,7 @@ from app.assistant.voice_media import (
     VoiceLeaseLost,
     claim_voice_media_event,
     get_or_create_voice_media_event,
+    mark_voice_reply_failed,
     release_voice_media_lease,
     store_voice_delivery_progress,
 )
@@ -2194,6 +2195,77 @@ async def test_voice_event_claim_is_exclusive_and_stale_owner_cannot_mutate(
             1,
             lease_owner="worker-a",
         )
+
+
+@pytest.mark.anyio
+async def test_voice_malformed_reply_failure_exits_recovery_queue(
+    migrated_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(migrated_engine, expire_on_commit=False)
+    event, _created = await get_or_create_voice_media_event(
+        session_factory,
+        chat_id=77,
+        telegram_message_id=303,
+        telegram_file_id="voice-malformed-reply",
+        duration_seconds=5,
+    )
+    claimed = await claim_voice_media_event(
+        session_factory,
+        event.id,
+        lease_owner="worker-a",
+        lease_seconds=60,
+    )
+    assert claimed is not None
+    async with migrated_engine.begin() as connection:
+        await connection.execute(
+            text(
+                """
+                UPDATE voice_media_events
+                SET status = 'reply_pending',
+                    reply_text = NULL,
+                    reply_chunks_delivered = 2,
+                    next_attempt_at = NULL
+                WHERE id = :event_id
+                """
+            ),
+            {"event_id": event.id},
+        )
+
+    await mark_voice_reply_failed(session_factory, event.id, lease_owner="worker-a")
+
+    async with migrated_engine.connect() as connection:
+        row = (
+            (
+                await connection.execute(
+                    text(
+                        """
+                    SELECT status, reply_text, reply_chunks_delivered,
+                           next_attempt_at, lease_owner, lease_expires_at
+                    FROM voice_media_events
+                    WHERE id = :event_id
+                    """
+                    ),
+                    {"event_id": event.id},
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert row["status"] == "failed"
+    assert row["reply_text"] is None
+    assert row["reply_chunks_delivered"] == 0
+    assert row["next_attempt_at"] is None
+    assert row["lease_owner"] is None
+    assert row["lease_expires_at"] is None
+    assert (
+        await claim_voice_media_event(
+            session_factory,
+            event.id,
+            lease_owner="worker-b",
+            lease_seconds=60,
+        )
+        is None
+    )
 
 
 @pytest.mark.anyio

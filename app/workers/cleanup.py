@@ -93,10 +93,6 @@ async def cleanup_voice_media(
                 event.id,
             )
             continue
-        if not file_path.exists():
-            LOGGER.debug("Voice media already absent event_id=%s path=%s", event.id, file_path.name)
-            continue
-
         claim_time = datetime.now(tz=timezone.utc)
         async with session_factory() as session:
             result = await session.execute(
@@ -119,11 +115,23 @@ async def cleanup_voice_media(
             if claimed_event is None:
                 continue
 
+            if not file_path.exists():
+                claimed_event.local_path = ""
+                await session.commit()
+                LOGGER.info(
+                    "Cleared missing voice media path event_id=%s path=%s",
+                    event.id,
+                    file_path.name,
+                )
+                continue
+
             try:
                 os.unlink(file_path)
             except FileNotFoundError:
+                claimed_event.local_path = ""
+                await session.commit()
                 LOGGER.debug(
-                    "Voice media already absent event_id=%s path=%s",
+                    "Cleared concurrently missing voice media path event_id=%s path=%s",
                     event.id,
                     file_path.name,
                 )

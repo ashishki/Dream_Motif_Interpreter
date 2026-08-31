@@ -129,13 +129,48 @@ async def test_cleanup_respects_custom_retention_seconds() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cleanup_skips_already_absent_files() -> None:
-    """If the file no longer exists, cleanup skips gracefully (no error)."""
-    event = _make_event(local_path="/tmp/nonexistent_FAKEFILE.ogg", age_seconds=7200)
+async def test_cleanup_clears_already_absent_files_with_cas(tmp_path: Path) -> None:
+    """If the tracked file is gone, cleanup clears the stale DB path under CAS."""
+    missing_path = tmp_path / "missing.ogg"
+    event = _make_event(local_path=str(missing_path), age_seconds=7200)
     factory = _make_session_factory([event])
 
-    deleted = await cleanup_voice_media(factory, retention_seconds=3600)
+    deleted = await cleanup_voice_media(
+        factory,
+        retention_seconds=3600,
+        media_dir=str(tmp_path),
+    )
     assert deleted == 0
+    assert event.local_path == ""
+
+    session = factory.return_value.__aenter__.return_value
+    claim_statement = session.execute.await_args_list[1].args[0]
+    rendered_claim = str(claim_statement)
+    assert "FOR UPDATE" in rendered_claim
+    assert "voice_media_events.updated_at =" in rendered_claim
+    assert "voice_media_events.local_path =" in rendered_claim
+    assert "voice_media_events.lease_owner IS NULL" in rendered_claim
+    assert "voice_media_events.lease_expires_at" in rendered_claim
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_keeps_absent_file_path_when_claim_lost(tmp_path: Path) -> None:
+    """A missing file cannot clear DB state if the event changed after the scan."""
+    missing_path = tmp_path / "missing-claim-lost.ogg"
+    event = _make_event(local_path=str(missing_path), age_seconds=7200)
+    factory = _make_session_factory([event], claimed_events=[None])
+
+    deleted = await cleanup_voice_media(
+        factory,
+        retention_seconds=3600,
+        media_dir=str(tmp_path),
+    )
+
+    assert deleted == 0
+    assert event.local_path == str(missing_path)
+    session = factory.return_value.__aenter__.return_value
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

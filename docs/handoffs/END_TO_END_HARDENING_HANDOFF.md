@@ -315,6 +315,13 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: remote commits `49e3e58dd5dc4e1cf0f9401b87f4f127577df843`, `8fe9541c94573ccb1eeb16da97d93f4c068d1f50`, `f5754cdd8bef43b4937e62a13565ad54ad3ebd42`, and `be83b7b29f759d3018594045b8db1efb7134dc21` were pushed. PR #5 CI runs #207 and #209 were superseded/cancelled after the follow-up pushes; PR #5 CI run #211 passed for the final code state. A live crash/restart canary against an operator-owned disposable Google Doc has not been executed locally.
 - next step: if continuing code-only work, start the next Phase B slice with PostgreSQL voice cleanup races/crash-restart recovery, or move to the Google Docs canary in Phase C. Keep it a separate commit and update this handoff after validation.
 
+### Phase B — voice cleanup stale path hygiene
+
+- completed: scheduled voice cleanup now re-checks and locks an eligible row before clearing a missing tracked raw-media path. If immediate post-transcription cleanup already deleted the `.ogg`, the durable event no longer keeps a stale `local_path`; if the row changed, was re-leased, or is skip-locked, the path is preserved for the active worker/reclaimer.
+- tests: updated `tests/unit/test_voice_cleanup.py` to cover missing-file path clearing under the same `FOR UPDATE`/CAS/lease predicate and to preserve DB state when the claim is lost. Local checks passed: `.venv/bin/ruff check app/workers/cleanup.py tests/unit/test_voice_cleanup.py`; `.venv/bin/ruff format --check app/workers/cleanup.py tests/unit/test_voice_cleanup.py`; `.venv/bin/pytest -q tests/unit/test_voice_cleanup.py --tb=short` (`21 passed`); `.venv/bin/pytest -q --collect-only tests/integration/test_voice_cleanup_races.py` (`2 tests collected`); `git diff --check`.
+- remaining: this slice still needs PR #5 CI to run the PostgreSQL-backed cleanup-race tests. Live Telegram/Whisper crash-restart recovery is still not exercised without operator-owned credentials.
+- next step: push this commit, wait for PR #5 CI, then continue Phase B with PostgreSQL voice crash/restart recovery or move to the Phase C Google Docs canary.
+
 ## Exact next command for a new agent
 
 ```bash

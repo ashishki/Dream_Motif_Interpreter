@@ -231,7 +231,7 @@ Each phase must be a separate small commit. After every phase, update this file 
 ### A. Safety and deployment — P0/P1 gate
 
 - Run CI container and PostgreSQL integration gates.
-- Add/verify a concrete rollback preflight and documented database restore drill without destructive automatic schema rollback. Compose image tags now make previous app images addressable, deploy now needs a verified pre-migration dump before migration, and the non-production restore verifier is implemented; a live Compose drill with operator-owned data remains pending.
+- Add/verify a concrete rollback preflight and documented database restore drill without destructive automatic schema rollback. Compose image tags now make previous app images addressable, deploy now needs a verified pre-migration dump before migration, and the non-production restore verifier is implemented with PR #5 CI green; a live Compose drill with operator-owned data remains pending.
 - Validate `/ready` versus `/health` behavior in Compose and deployment-contract tests. The local deployment contract now verifies that Telegram/auto-sync restart only after API `/ready` succeeds; CI/container runtime still needs to execute it in a real Compose environment.
 
 ### B. Durable capture/outbox and voice lifecycle — P1
@@ -305,8 +305,8 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - completed: added executable `scripts/verify_compose_rollback.sh`. It reads the deploy manifest without sourcing it, verifies the backup file is regular/private and matches SHA256, validates `pg_restore --list`, verifies the recorded previous API image and OCI revision label when present, restores into a simple database name ending `_restore_drill`, checks the restored Alembic revision when recorded, and drops the disposable database on exit. `docs/DEPLOY.md` and `docs/RUNBOOK_TELEGRAM_BOT.md` now document the drill and the refusal to restore canonical `dream_motif`.
 - tests: added `tests/unit/test_rollback_preflight.py` covering restore-drill-only safety, no manifest sourcing, checksum/archive checks, previous-image OCI checks, cleanup trap, and docs references. Local checks passed: `bash -n scripts/deploy_compose.sh scripts/verify_compose_rollback.sh`; `uv run --extra dev ruff check tests/unit/test_deployment_contract.py tests/unit/test_rollback_preflight.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py tests/unit/test_rollback_preflight.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py tests/unit/test_rollback_preflight.py` (`11 passed`); `git diff --check`.
-- remaining: commit/push this slice and let PR #5 CI validate it. GitGuardian incident `36739581` remains a dashboard false-positive action; live restore drill against operator-owned backup data has not been executed locally.
-- next step: commit/push this small Phase A slice, then watch PR #5 CI and GitGuardian status.
+- remaining: remote commit `9641d65c03144765b38074df9f75e338826726ef` was pushed and PR #5 CI run #201 completed successfully. GitGuardian incident `36739581` remains a dashboard false-positive action; live restore drill against operator-owned backup data has not been executed locally.
+- next step: have the operator mark GitGuardian incident `36739581` as `Skip: false positive` and run the documented live restore drill in a non-production window. If continuing code-only work, start Phase B with durable manual `/sync` execution and commit it separately.
 
 ## Exact next command for a new agent
 

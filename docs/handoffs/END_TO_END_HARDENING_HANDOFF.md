@@ -195,6 +195,8 @@ A uv.lock
 ```
 
 This handoff file is intentionally a later, separate documentation-only commit.
+The full branch-level inventory therefore contains **128 files**: the 127 files
+listed above plus `A docs/handoffs/END_TO_END_HARDENING_HANDOFF.md`.
 
 ## Completed checks
 
@@ -206,7 +208,7 @@ This handoff file is intentionally a later, separate documentation-only commit.
 - `alembic heads` — exactly `025_note_processing_jobs (head)`.
 - `pytest -q tests/unit` — **789 passed**.
 - `pytest -q tests/integration/test_telegram_conversation_replay.py` — **4 passed**.
-- `pytest -q --collect-only tests/integration` — **119 tests collected** before the final two readiness cases were added; collection itself passed.
+- `pytest -q --collect-only tests/integration` — **122 tests collected**.
 - `python scripts/eval_public_fixture.py --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json` — **PASS: 8 cases**, content hash `sha256:e92f2925dbe1fa1af305cd1fea328575665b2f93711cab2a0863d168693dd841`.
 - Focused lifecycle/voice verification — **137 passed**; deployment lifecycle subset — **3 passed**.
 - Focused deploy/docs/UX verification — **33 passed**; `bash -n scripts/deploy_compose.sh` and extracted inline Mini App JavaScript `node --check` passed.

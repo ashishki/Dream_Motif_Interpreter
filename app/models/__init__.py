@@ -24,7 +24,7 @@ from app.models.dream_graph_privacy import (
 )
 from app.models.motif import MotifInduction
 from app.models.note import DreamNote
-from app.models.processing import DreamProcessingJob, NoteProcessingJob
+from app.models.processing import DreamProcessingJob, ManualSyncJob, NoteProcessingJob
 from app.models.reaction import MessageReaction
 from app.models.research import ResearchResult
 from app.models.write_status import DreamWriteStatus
@@ -33,6 +33,7 @@ __all__ = [
     "AssistantFeedback",
     "DreamNote",
     "DreamProcessingJob",
+    "ManualSyncJob",
     "NoteProcessingJob",
     "DreamGraphExportOptions",
     "DreamGraphExportScope",

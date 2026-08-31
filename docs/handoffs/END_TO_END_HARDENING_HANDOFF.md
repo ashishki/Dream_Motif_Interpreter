@@ -205,7 +205,7 @@ listed above plus `A docs/handoffs/END_TO_END_HARDENING_HANDOFF.md`.
 - `git diff --check` — passed.
 - `python -m compileall -q app scripts tests` — passed.
 - `uv lock --check` — passed; 88 packages resolved.
-- `alembic heads` — exactly `025_note_processing_jobs (head)`.
+- `alembic heads` — exactly `026_manual_sync_jobs (head)`.
 - `pytest -q tests/unit` — **789 passed**.
 - `pytest -q tests/integration/test_telegram_conversation_replay.py` — **4 passed**.
 - `pytest -q --collect-only tests/integration` — **122 tests collected**.
@@ -220,7 +220,7 @@ listed above plus `A docs/handoffs/END_TO_END_HARDENING_HANDOFF.md`.
 
 1. Local Docker is unavailable, so Compose/container runtime checks and the non-root container smoke must run in GitHub Actions.
 2. Local PostgreSQL/pgvector is unavailable on the expected test port. The full migration upgrade/downgrade, deferred-trigger, vector-query, and cleanup-race integration suite must run in CI.
-3. Manual `/sync` execution is still process-local. Graceful shutdown produces an honest failed/retryable status and autosync can recover data, but a hard kill between Redis state write and task execution is not a fully durable queue. A DB/Redis durable sync queue is follow-up work, not something to hide behind UI wording.
+3. Manual `/sync` execution now creates a PostgreSQL `manual_sync_jobs` row before exposing queued status, and API/Telegram startup recover pending, retryable and stale-running manual sync work. A live crash/restart canary against operator-owned Google Docs credentials has not been performed locally.
 4. Failed rollout keeps or returns application writers to a stopped state once quiescing has begun, and the bot/auto-sync are not restarted until the new API passes exact-`BUILD_SHA` readiness. Application images are tagged by `APP_IMAGE_REPOSITORY:BUILD_SHA`, deploy creates and verifies a pre-migration dump, and a separate restore verifier drills that dump into a disposable database. Automatic restoration of a previous image/schema is intentionally not attempted.
 5. No live Telegram, Google Docs, OpenAI/Whisper, or production database mutation was performed; those require operator-owned credentials and an explicit canary window.
 
@@ -236,7 +236,7 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 ### B. Durable capture/outbox and voice lifecycle — P1
 
-- Replace process-local manual `/sync` execution with a durable claim/recovery queue, or explicitly scope and implement orphan recovery with an immutable job record.
+- Run a live crash/restart canary for the durable manual `/sync` queue with an operator-selected disposable Google Doc.
 - Run PostgreSQL voice cleanup races and crash/restart recovery tests.
 - Verify fencing at every irreversible external send boundary.
 
@@ -307,6 +307,13 @@ Each phase must be a separate small commit. After every phase, update this file 
 - tests: added `tests/unit/test_rollback_preflight.py` covering restore-drill-only safety, no manifest sourcing, checksum/archive checks, previous-image OCI checks, cleanup trap, and docs references. Local checks passed: `bash -n scripts/deploy_compose.sh scripts/verify_compose_rollback.sh`; `uv run --extra dev ruff check tests/unit/test_deployment_contract.py tests/unit/test_rollback_preflight.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py tests/unit/test_rollback_preflight.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py tests/unit/test_rollback_preflight.py` (`11 passed`); `git diff --check`.
 - remaining: remote commit `9641d65c03144765b38074df9f75e338826726ef` was pushed and PR #5 CI run #201 completed successfully. GitGuardian incident `36739581` remains a dashboard false-positive action; live restore drill against operator-owned backup data has not been executed locally.
 - next step: have the operator mark GitGuardian incident `36739581` as `Skip: false positive` and run the documented live restore drill in a non-production window. If continuing code-only work, start Phase B with durable manual `/sync` execution and commit it separately.
+
+### Phase B — durable manual sync jobs
+
+- completed: added Alembic revision `026_manual_sync_jobs`, the `ManualSyncJob` model, and `app/workers/sync_jobs.py` with claim/lease/retry/fenced finalize behavior for operator-triggered Google Docs sync. `LocalAsyncJobEnqueuer` now commits a PostgreSQL job before writing Redis status, starts one recovery loop instead of per-request fire-and-forget tasks, and reads durable status before Redis TTL state. FastAPI lifespan and Telegram `post_init` start the recovery loop after runtime validation.
+- tests: added `tests/unit/test_manual_sync_jobs.py` and updated enqueuer/facade/Telegram/migration coverage for durable creation, status fallback, stale Redis precedence, claim/retry, terminal worker-reported failure, lifecycle startup, schema and downgrade guard. Local checks passed: `uv run --extra dev ruff check app/api/dreams.py app/main.py app/assistant/facade.py app/telegram/bot.py app/models/processing.py app/models/__init__.py app/workers/sync_jobs.py tests/unit/test_sync_job_enqueuer.py tests/unit/test_manual_sync_jobs.py tests/unit/test_assistant_facade.py tests/unit/test_telegram_bot.py tests/integration/test_migrations.py alembic/versions/026_manual_sync_jobs.py`; `uv run --extra dev ruff format --check ...`; `uv run --extra dev pytest -q tests/unit/test_sync_job_enqueuer.py tests/unit/test_manual_sync_jobs.py tests/unit/test_assistant_facade.py tests/unit/test_telegram_bot.py` (`168 passed`); `uv run --extra dev pytest -q tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_dream_processing_supervisor.py tests/unit/test_dream_processing_worker.py tests/unit/test_note_processing_worker.py` (`36 passed`); `python -m compileall -q app alembic tests/unit/test_manual_sync_jobs.py tests/unit/test_sync_job_enqueuer.py`; `DATABASE_URL=postgresql+asyncpg://postgres@localhost:5433/dream_motif_test uv run --extra dev alembic heads` (`026_manual_sync_jobs (head)`).
+- remaining: commit/push this slice and let PR #5 CI validate the new migration and focused tests. A live crash/restart canary against an operator-owned disposable Google Doc has not been executed locally.
+- next step: commit/push this Phase B slice separately, watch PR #5 CI, then continue Phase B with PostgreSQL voice cleanup races/crash-restart recovery or move to the Google Docs canary in Phase C.
 
 ## Exact next command for a new agent
 

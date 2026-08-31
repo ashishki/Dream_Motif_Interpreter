@@ -407,6 +407,7 @@ def test_assistant_facade_exposes_only_approved_operations() -> None:
     assert public_methods == {
         "search_dreams",
         "shutdown",
+        "start_background_workers",
         "search_dreams_exact",
         "search_dreams_by_title",
         "get_dream",
@@ -460,6 +461,21 @@ async def test_facade_shutdown_awaits_owned_sync_enqueuer_only() -> None:
     await facade.shutdown()
 
     enqueuer.shutdown.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_facade_start_background_workers_awaits_owned_sync_enqueuer() -> None:
+    enqueuer = SimpleNamespace(start=AsyncMock())
+    session_factory = _FakeSessionFactory(_FakeSession())
+    facade = AssistantFacade(
+        session_factory=session_factory,
+        rag_query_service=SimpleNamespace(retrieve=AsyncMock()),
+        sync_job_enqueuer=enqueuer,
+    )
+
+    await facade.start_background_workers()
+
+    enqueuer.start.assert_awaited_once()
 
 
 @pytest.mark.asyncio

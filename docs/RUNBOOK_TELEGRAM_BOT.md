@@ -11,11 +11,16 @@ durable capture/voice work without exposing archive text.
 
 Required:
 
-- Alembic is at head (`025_note_processing_jobs` or later)
+- Alembic is at head (`026_manual_sync_jobs` or later)
 - PostgreSQL with pgvector is reachable
 - Redis returns `PONG`
 - Telegram token and the single allowed chat ID are configured
 - Anthropic/OpenAI and one Google Docs credential path are configured
+
+Manual Google Docs sync requests are durable: `/sync` and `trigger_sync` create rows in
+`manual_sync_jobs`, and Telegram startup recovers pending/retryable/stale-running rows. Redis keeps
+the short-lived user-visible status and notification cursor, so inspect PostgreSQL first when a sync
+job appears to have vanished after a process restart.
 - `VOICE_MEDIA_DIR` and `RUNTIME_STATE_FILE` are persistent and writable
 - `SECRET_KEY` is strong and `BUILD_SHA` is the intended commit
 

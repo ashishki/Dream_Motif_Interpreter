@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -142,6 +143,64 @@ class NoteProcessingJob(Base):
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     lock_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     target_doc_id: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class ManualSyncJob(Base):
+    """Durable row for operator-triggered Google Docs sync work."""
+
+    __tablename__ = "manual_sync_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'running', 'retryable', 'succeeded', 'failed')",
+            name="ck_manual_sync_jobs_status",
+        ),
+        CheckConstraint(
+            "new_entries IS NULL OR new_entries >= 0",
+            name="ck_manual_sync_jobs_new_entries",
+        ),
+        Index(
+            "ix_manual_sync_jobs_claim",
+            "status",
+            "available_at",
+            "locked_at",
+        ),
+        Index(
+            "ix_manual_sync_jobs_doc_created",
+            "doc_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        nullable=False,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    doc_id: Mapped[str] = mapped_column(Text(), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default=text("'pending'")
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        Integer(), nullable=False, default=0, server_default=text("0")
+    )
+    last_error: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    new_entries: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    notify_chat_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lock_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

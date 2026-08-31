@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hmac
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Protocol
 
@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.dream import DreamEntry
 from app.models.theme import DreamTheme
-from app.services.gdocs_client import GDocsClient
 from app.shared.config import get_effective_google_doc_id, get_settings
 from app.shared.database import get_session_factory
 from app.shared.tracing import get_logger, get_tracer
@@ -118,13 +117,27 @@ class RedisSyncBackend:
 
     async def enqueue_sync(self) -> uuid.UUID:
         job_id = uuid.uuid4()
-        await write_sync_job_state(self._redis_client, job_id, SyncJobState(status="queued"))
         doc_id = self._doc_id or get_effective_google_doc_id()
         await self._job_enqueuer.enqueue_ingest(job_id=job_id, doc_id=doc_id)
         return job_id
 
     async def get_status(self, job_id: uuid.UUID) -> SyncJobState | None:
-        return await read_sync_job_state(self._redis_client, job_id)
+        status_getter = getattr(self._job_enqueuer, "get_ingest_status", None)
+        if callable(status_getter):
+            try:
+                state = await status_getter(job_id)
+            except Exception:
+                logger.warning("sync.durable_status_read_failed", job_id=str(job_id), exc_info=True)
+                state = None
+            if state is not None:
+                return state
+
+        try:
+            state = await read_sync_job_state(self._redis_client, job_id)
+        except Exception:
+            logger.warning("sync.redis_status_read_failed", job_id=str(job_id), exc_info=True)
+            state = None
+        return state
 
 
 @router.post("/sync", response_model=SyncQueuedResponse, status_code=202)
@@ -309,9 +322,35 @@ class LocalAsyncJobEnqueuer:
     ) -> None:
         self._redis_client = redis_client
         self._session_factory = session_factory
-        self._tasks: set[asyncio.Task[None]] = set()
-        self._task_job_ids: dict[asyncio.Task[None], uuid.UUID] = {}
+        self._task: asyncio.Task[None] | None = None
+        self._stop: asyncio.Event | None = None
+        self._wake: asyncio.Event | None = None
         self._closing = False
+
+    def start(
+        self,
+        *,
+        poll_interval_seconds: float = 5.0,
+        batch_size: int = 20,
+    ) -> None:
+        if self._closing:
+            raise RuntimeError("Sync enqueuer is shutting down")
+        if self._task is not None and not self._task.done():
+            return
+
+        stop = asyncio.Event()
+        wake = asyncio.Event()
+        wake.set()
+        self._stop = stop
+        self._wake = wake
+        self._task = asyncio.create_task(
+            self._run_supervisor(
+                stop=stop,
+                wake=wake,
+                poll_interval_seconds=poll_interval_seconds,
+                batch_size=batch_size,
+            )
+        )
 
     async def enqueue_ingest(
         self,
@@ -320,143 +359,94 @@ class LocalAsyncJobEnqueuer:
         doc_id: str,
         chat_id: int | None = None,
     ) -> None:
-        from app.workers.ingest import ingest_document
+        from app.workers.sync_jobs import create_manual_sync_job
 
         if self._closing:
             raise RuntimeError("Sync enqueuer is shutting down")
 
-        await write_sync_job_state(self._redis_client, job_id, SyncJobState(status="queued"))
-        if chat_id is not None:
-            await set_sync_notify(self._redis_client, job_id, chat_id)
-
-        task = asyncio.create_task(
-            self._run_ingest_job(job_id=job_id, doc_id=doc_id, ingest_document=ingest_document)
+        await create_manual_sync_job(
+            session_factory=self._session_factory,
+            redis_client=self._redis_client,
+            job_id=job_id,
+            doc_id=doc_id,
+            chat_id=chat_id,
         )
-        self._tasks.add(task)
-        self._task_job_ids[task] = job_id
-        task.add_done_callback(self._task_done)
-
-    def _task_done(self, task: asyncio.Task[None]) -> None:
-        self._tasks.discard(task)
-        self._task_job_ids.pop(task, None)
-        if task.cancelled():
-            return
-        error = task.exception()
-        if error is not None:
-            logger.error(
-                "sync.background_task_failed",
-                error_type=type(error).__name__,
-            )
+        self.start()
+        if self._wake is not None:
+            self._wake.set()
 
     async def shutdown(self, timeout_seconds: float = 15.0) -> None:
-        """Drain local sync work before closing its Redis connection.
+        """Stop durable sync recovery before closing its Redis connection.
 
-        The Google Docs sync itself is recoverable through the next automatic or
-        explicit sync.  A bounded drain prevents process shutdown from leaving an
-        unobserved task while still respecting the orchestrator's grace period.
+        Running work is either allowed to finish or is released back to the
+        database-backed queue by the worker's token-fenced cancellation path.
         """
 
         self._closing = True
-        pending = set(self._tasks)
-        if pending:
-            _, pending = await asyncio.wait(pending, timeout=max(timeout_seconds, 0.0))
-            cancelled_job_ids = [
-                self._task_job_ids[task] for task in pending if task in self._task_job_ids
-            ]
-            for task in pending:
+        stop = self._stop
+        wake = self._wake
+        task = self._task
+        self._stop = None
+        self._wake = None
+        self._task = None
+        if stop is not None:
+            stop.set()
+        if wake is not None:
+            wake.set()
+        if task is not None and not task.done():
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(task),
+                    timeout=max(timeout_seconds, 0.0),
+                )
+            except TimeoutError:
+                logger.warning("Cancelling manual sync supervisor after shutdown timeout")
                 task.cancel()
-            if pending:
-                await asyncio.gather(*pending, return_exceptions=True)
-                for job_id in cancelled_job_ids:
-                    await write_sync_job_state(
-                        self._redis_client,
-                        job_id,
-                        SyncJobState(status="failed"),
-                    )
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Manual sync supervisor failed during shutdown")
 
         close = getattr(self._redis_client, "aclose", None)
         if close is not None:
             await close()
 
-    async def _run_ingest_job(self, *, job_id: uuid.UUID, doc_id: str, ingest_document) -> None:
-        from app.services.auto_sync import AutoSyncState, read_auto_sync_state
-        from app.services.auto_sync import write_auto_sync_state
+    async def _run_supervisor(
+        self,
+        *,
+        stop: asyncio.Event,
+        wake: asyncio.Event,
+        poll_interval_seconds: float,
+        batch_size: int,
+    ) -> None:
+        from app.workers.sync_jobs import process_pending_manual_sync_jobs
 
-        started_at = _utcnow_iso()
-        previous_state = await read_auto_sync_state(self._redis_client, doc_id)
-        gdocs_client = GDocsClient()
-        await write_auto_sync_state(
-            self._redis_client,
-            doc_id,
-            AutoSyncState(
-                last_seen_marker=previous_state.last_seen_marker,
-                last_checked_at=started_at,
-                last_sync_started_at=started_at,
-                last_synced_at=previous_state.last_synced_at,
-                last_sync_job_id=str(job_id),
-                last_sync_status="running",
-                last_sync_error=None,
-                last_added_count=None,
-                last_sync_stage="store",
-            ),
-        )
-        try:
-            added_count = await ingest_document(
-                {
-                    "redis": self._redis_client,
-                    "session_factory": self._session_factory,
-                    "gdocs_client": gdocs_client,
-                },
-                job_id=job_id,
-                doc_id=doc_id,
-            )
+        ctx = {"redis": self._redis_client, "session_factory": self._session_factory}
+        interval = max(0.1, poll_interval_seconds)
+        limit = max(1, min(batch_size, 100))
+        while not stop.is_set():
+            wake.clear()
             try:
-                metadata = await asyncio.to_thread(gdocs_client.fetch_document_metadata, doc_id)
-                last_seen_marker = metadata.change_marker
+                completed = await process_pending_manual_sync_jobs(ctx, limit=limit)
+            except asyncio.CancelledError:
+                raise
             except Exception:
-                logger.warning("sync.metadata_refresh_failed", doc_id=doc_id, exc_info=True)
-                last_seen_marker = previous_state.last_seen_marker
-            synced_at = _utcnow_iso()
-            await write_auto_sync_state(
-                self._redis_client,
-                doc_id,
-                AutoSyncState(
-                    last_seen_marker=last_seen_marker,
-                    last_checked_at=synced_at,
-                    last_sync_started_at=None,
-                    last_synced_at=synced_at,
-                    last_sync_job_id=str(job_id),
-                    last_sync_status="synced",
-                    last_sync_error=None,
-                    last_added_count=added_count,
-                    last_sync_stage="done",
-                ),
-            )
-        except asyncio.CancelledError:
-            await write_sync_job_state(
-                self._redis_client,
-                job_id,
-                SyncJobState(status="failed"),
-            )
-            raise
-        except Exception:
-            failed_at = _utcnow_iso()
-            await write_auto_sync_state(
-                self._redis_client,
-                doc_id,
-                AutoSyncState(
-                    last_seen_marker=previous_state.last_seen_marker,
-                    last_checked_at=failed_at,
-                    last_sync_started_at=None,
-                    last_synced_at=previous_state.last_synced_at,
-                    last_sync_job_id=str(job_id),
-                    last_sync_status="failed",
-                    last_sync_error="Внутренняя ошибка синхронизации",
-                    last_added_count=None,
-                    last_sync_stage="failed",
-                ),
-            )
-            logger.exception("sync.ingest_job_failed", job_id=str(job_id))
+                logger.exception("manual_sync.supervisor_turn_failed")
+                completed = 0
+            if completed >= limit:
+                await asyncio.sleep(0)
+                continue
+            try:
+                await asyncio.wait_for(wake.wait(), timeout=interval)
+            except TimeoutError:
+                continue
+
+    async def get_ingest_status(self, job_id: uuid.UUID) -> SyncJobState | None:
+        from app.workers.sync_jobs import read_manual_sync_job_state
+
+        return await read_manual_sync_job_state(self._session_factory, job_id)
 
     async def get_auto_sync_status(self, doc_id: str):
         from app.services.auto_sync import read_auto_sync_state
@@ -493,10 +483,6 @@ def _get_redis_client():
     if _REDIS_CLIENT is None:
         _REDIS_CLIENT = _build_redis_client()
     return _REDIS_CLIENT
-
-
-def _utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _sync_job_key(job_id: uuid.UUID) -> str:

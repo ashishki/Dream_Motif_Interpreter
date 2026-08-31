@@ -201,10 +201,11 @@ Explicit non-guarantees:
 | `app/services/` | Analysis, motifs, graph controls, Google Docs and receipts |
 | `app/telegram/` | Authorized polling adapter, save cards, commands and callbacks |
 | `app/workers/dream_processing.py` | Leased independent post-capture stages and recovery |
+| `app/workers/sync_jobs.py` | Leased manual Google Docs sync jobs and recovery |
 | `app/workers/transcribe.py` | Leased transcription/reply delivery and maintenance |
 | `app/workers/ingest.py` | Normalized multi-source ingestion and reconciliation |
 
-Schema changes are append-only Alembic revisions. Current head is `025_note_processing_jobs`.
+Schema changes are append-only Alembic revisions. Current head is `026_manual_sync_jobs`.
 Deployment must stop API, bot and auto-sync, run `alembic upgrade head` to completion, and only then
 start application processes; `scripts/deploy_compose.sh` enforces that quiesced sequence.
 

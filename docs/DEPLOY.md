@@ -85,12 +85,16 @@ Deploy only at Alembic head. The current hardening chain includes:
 - `023_dream_processing_jobs`: independent leased stages for index, analysis, motif and Google Docs
 - `024_restore_graph_controls`: append-only restore for hidden graph items
 - `025_note_processing_jobs`: independently leased indexing and Google Docs delivery for notes
+- `026_manual_sync_jobs`: durable manual Google Docs sync queue with restart recovery
 
 Text capture commits the dream and its stage jobs in one transaction. A provider outage therefore
 cannot erase the archive entry. Each stage retries independently; Google Docs uses both a database
 receipt and a document-side idempotency marker. A note acknowledgement has the same narrow meaning:
 the canonical note and its durable jobs were committed; indexing and Google Docs run in the
-background. Never repair either queue by deleting rows.
+background. Manual `/sync` creates a PostgreSQL job before exposing the queued status; API and
+Telegram startup both recover pending, retryable and stale-running manual sync jobs. Redis still
+holds short-lived status and Telegram notification keys, but it is no longer the only record of a
+manual sync request. Never repair these queues by deleting rows.
 
 Schema migrations require a quiesced application even when a specific revision appears additive:
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -53,8 +55,14 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        enqueuer = _get_job_enqueuer()
+        enqueuer_start = getattr(enqueuer, "start", None)
+        if callable(enqueuer_start):
+            result = enqueuer_start()
+            if inspect.isawaitable(result) and not isinstance(result, asyncio.Task):
+                await result
         yield
-        enqueuer_close = getattr(_get_job_enqueuer(), "shutdown", None)
+        enqueuer_close = getattr(enqueuer, "shutdown", None)
         if enqueuer_close is not None:
             await enqueuer_close()
         else:

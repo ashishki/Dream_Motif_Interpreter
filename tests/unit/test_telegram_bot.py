@@ -106,12 +106,13 @@ async def test_post_init_fails_closed_when_redis_is_unavailable_in_production() 
 
 @pytest.mark.asyncio
 async def test_post_init_starts_voice_supervisor_when_initial_resume_fails() -> None:
+    facade = MagicMock(spec=AssistantFacade)
     application = SimpleNamespace(
         bot_data={
             "allowed_chat_id": 42,
             "operational_state_store": RedisOperationalStateStore(_FakeRedis()),
             "session_factory": MagicMock(),
-            "facade": MagicMock(spec=AssistantFacade),
+            "facade": facade,
             "bot_token": "TOKEN",
         }
     )
@@ -140,6 +141,7 @@ async def test_post_init_starts_voice_supervisor_when_initial_resume_fails() -> 
         await post_init(application)
 
     start_voice.assert_called_once_with(application)
+    facade.start_background_workers.assert_awaited_once_with()
     retention.assert_awaited_once_with(application)
 
 
@@ -170,6 +172,7 @@ async def test_post_init_validates_database_before_spawning_supervisors() -> Non
 
     start_voice.assert_not_called()
     start_dream.assert_not_called()
+    facade.start_background_workers.assert_not_awaited()
     facade.shutdown.assert_awaited_once_with()
     assert redis.closed is True
 

@@ -147,7 +147,7 @@ Violation: P2.
 | Network egress | Allowed: Google APIs, Telegram Bot API, Anthropic, OpenAI and the explicitly configured research provider when its feature gate is enabled. Other egress is denied by default. |
 | Privileged actions | Theme category promotion, rename, merge, delete — all require authenticated API call. No automated path for these. |
 | Runtime mutation | No shell mutation at runtime. Package installation is build-time only. Workers execute job handlers only. |
-| Persistence | Canonical archive, sessions, durable processing/voice state, annotations and receipts are in PostgreSQL. Redis contains only TTL interaction state and sync coordination under ADR-011. |
+| Persistence | Canonical archive, sessions, durable processing/voice/manual-sync state, annotations and receipts are in PostgreSQL. Redis contains only TTL interaction state, user-visible sync status and notification cursors under ADR-011. |
 | Auditability | All taxonomy mutations logged via AnnotationVersion. All API calls logged with trace_id (no dream content in logs). |
 
 ### Runtime Tier Guardrails

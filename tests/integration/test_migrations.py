@@ -260,6 +260,7 @@ async def test_migrations_apply_cleanly(migrated_engine: AsyncEngine) -> None:
     assert "dream_write_statuses" in table_names
     assert "dream_processing_jobs" in table_names
     assert "note_processing_jobs" in table_names
+    assert "manual_sync_jobs" in table_names
 
 
 @pytest.mark.anyio
@@ -568,6 +569,37 @@ async def test_dream_processing_jobs_schema(migrated_engine: AsyncEngine) -> Non
         "is_deferrable": True,
         "is_initially_deferred": True,
     }
+
+
+@pytest.mark.anyio
+async def test_manual_sync_jobs_schema(migrated_engine: AsyncEngine) -> None:
+    columns = {column["name"] for column in await _columns(migrated_engine, "manual_sync_jobs")}
+    indexes = await _index_definitions(migrated_engine, "manual_sync_jobs")
+    constraints = {
+        constraint["name"]
+        for constraint in await _check_constraints(migrated_engine, "manual_sync_jobs")
+    }
+
+    assert columns == {
+        "id",
+        "doc_id",
+        "status",
+        "attempt_count",
+        "last_error",
+        "new_entries",
+        "notify_chat_id",
+        "available_at",
+        "locked_at",
+        "lock_token",
+        "started_at",
+        "finished_at",
+        "created_at",
+        "updated_at",
+    }
+    assert "ck_manual_sync_jobs_status" in constraints
+    assert "ck_manual_sync_jobs_new_entries" in constraints
+    assert any(index["indexname"] == "ix_manual_sync_jobs_claim" for index in indexes)
+    assert any(index["indexname"] == "ix_manual_sync_jobs_doc_created" for index in indexes)
 
 
 @pytest.mark.anyio
@@ -940,6 +972,43 @@ async def test_note_processing_migration_backfills_index_only_and_downgrades() -
             is None
         )
         assert not await _function_exists(engine, "ensure_note_processing_job_025")
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_manual_sync_downgrade_blocks_unfinished_durable_work() -> None:
+    database_url = os.environ["DATABASE_URL"]
+    engine = create_async_engine(database_url)
+    await _reset_public_schema(engine)
+    await engine.dispose()
+    config = _alembic_config()
+    await asyncio.to_thread(command.upgrade, config, "026_manual_sync_jobs")
+
+    engine = create_async_engine(database_url)
+    async with engine.begin() as connection:
+        await connection.execute(
+            text(
+                """
+                INSERT INTO manual_sync_jobs (doc_id, status)
+                VALUES ('doc-manual-sync', 'pending')
+                """
+            )
+        )
+    await engine.dispose()
+
+    with pytest.raises(DBAPIError, match="durable manual sync work is unfinished"):
+        await asyncio.to_thread(command.downgrade, config, "025_note_processing_jobs")
+
+    engine = create_async_engine(database_url)
+    async with engine.begin() as connection:
+        await connection.execute(text("UPDATE manual_sync_jobs SET status = 'succeeded'"))
+    await engine.dispose()
+
+    await asyncio.to_thread(command.downgrade, config, "025_note_processing_jobs")
+    engine = create_async_engine(database_url)
+    try:
+        assert "manual_sync_jobs" not in await _table_names(engine)
     finally:
         await engine.dispose()
 

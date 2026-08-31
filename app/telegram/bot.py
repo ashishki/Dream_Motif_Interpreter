@@ -62,6 +62,9 @@ async def post_init(application: Application) -> None:
 
     try:
         await _validate_runtime_dependencies(application)
+        facade = application.bot_data.get("facade")
+        if isinstance(facade, AssistantFacade):
+            await facade.start_background_workers()
 
         try:
             await asyncio.wait_for(

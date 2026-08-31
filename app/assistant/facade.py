@@ -277,6 +277,15 @@ class AssistantFacade:
         if inspect.isawaitable(result):
             await result
 
+    async def start_background_workers(self) -> None:
+        """Start facade-owned durable recovery helpers after runtime validation."""
+        start = getattr(self._sync_job_enqueuer, "start", None)
+        if not callable(start):
+            return
+        result = start()
+        if inspect.isawaitable(result) and not isinstance(result, asyncio.Task):
+            await result
+
     async def search_dreams(self, query: str) -> SearchResult:
         result = await self._rag_query_service.retrieve(query)
         if isinstance(result, InsufficientEvidence):

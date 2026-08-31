@@ -64,10 +64,11 @@ Compose persists:
 - active Google Docs source configuration in `runtime_state`
 
 There is no database-password fallback: Compose refuses to render until `POSTGRES_PASSWORD` is
-set. PostgreSQL, Redis and the API publish to `127.0.0.1` by default. Treat changing any bind
-address as a separate exposure decision requiring a firewall/reverse proxy and the backend auth
-controls. Use the host's secret manager or a protected environment file; never reuse
-`SECRET_KEY` as the database password.
+set. The required-env guard is centralized on the Postgres service; dependent app DSNs reference
+the same value without duplicating the guard text. PostgreSQL, Redis and the API publish to
+`127.0.0.1` by default. Treat changing any bind address as a separate exposure decision requiring a
+firewall/reverse proxy and the backend auth controls. Use the host's secret manager or a protected
+environment file; never reuse `SECRET_KEY` as the database password.
 
 ## 3. Migrations and durable work
 

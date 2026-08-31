@@ -119,6 +119,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Refuse missing PostgreSQL password
+        run: |
+          unset POSTGRES_PASSWORD
+          if docker compose config --quiet; then
+            echo "docker compose config succeeded without POSTGRES_PASSWORD" >&2
+            exit 1
+          fi
+
       - name: Prepare placeholder Compose environment
         run: cp .env.example .env
 

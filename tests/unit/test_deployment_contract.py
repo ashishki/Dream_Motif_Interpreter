@@ -26,7 +26,9 @@ def test_compose_build_has_a_real_dockerfile_and_runtime_services() -> None:
     assert "service_completed_successfully" in compose
     assert "127.0.0.1:${POSTGRES_PORT:-5432}:5432" in compose
     assert "127.0.0.1:${REDIS_PORT:-6379}:6379" in compose
-    assert "POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env" in compose
+    assert compose.count("POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env") == 1
+    assert compose.count("postgres:${POSTGRES_PASSWORD}@postgres:5432/dream_motif") == 4
+    assert "POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres" not in compose
     assert "POSTGRES_PASSWORD:-postgres" not in compose
 
 
@@ -76,6 +78,8 @@ def test_ci_verifies_compose_and_non_root_container_contract() -> None:
     workflow = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "container-contract:" in workflow
+    assert "Refuse missing PostgreSQL password" in workflow
+    assert "docker compose config succeeded without POSTGRES_PASSWORD" in workflow
     assert "docker compose config --quiet" in workflow
     assert "docker-compose.google-service-account.yml config --quiet" in workflow
     assert "docker build --build-arg BUILD_SHA=" in workflow

@@ -38,7 +38,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/dream_motif
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/dream_motif
       REDIS_URL: redis://redis:6379/0
       RUNTIME_STATE_FILE: /var/lib/dream-motif/runtime_extra_docs.json
     depends_on:
@@ -52,7 +52,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/dream_motif
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/dream_motif
       REDIS_URL: redis://redis:6379/0
       VOICE_MEDIA_DIR: /var/lib/dream-voice
       RUNTIME_STATE_FILE: /var/lib/dream-motif/runtime_extra_docs.json
@@ -83,7 +83,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/dream_motif
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/dream_motif
       REDIS_URL: redis://redis:6379/0
       VOICE_MEDIA_DIR: /var/lib/dream-voice
       RUNTIME_STATE_FILE: /var/lib/dream-motif/runtime_extra_docs.json
@@ -104,7 +104,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/dream_motif
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/dream_motif
       REDIS_URL: redis://redis:6379/0
       RUNTIME_STATE_FILE: /var/lib/dream-motif/runtime_extra_docs.json
     depends_on:

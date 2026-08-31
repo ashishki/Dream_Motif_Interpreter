@@ -10,7 +10,7 @@ Audit the current `Dream_Motif_Interpreter` as a developer, designer, and real u
 
 - Branch: `codex/end-to-end-hardening`
 - Base: `origin/main` at `db5947968a823eab98192d7abad73430d45d952c`
-- Existing hardening commit: `d18aa4fca2f68e4ad2c5ccfad86b2e1a774490db`
+- Existing hardening commit: `d3f3171889870f14a669d5d8a808162d0b8da7fe`
 - Existing commit message: `feat: harden durable capture and deployment`
 - `main` was not modified directly.
 - The large commit already existed before this handoff and must not be split or rewritten retroactively.
@@ -60,7 +60,7 @@ Audit the current `Dream_Motif_Interpreter` as a developer, designer, and real u
 - Dream Memory UI escapes untrusted content, uses real citation URLs only, has keyboard focus, accessible live status, retry, and explicit error states.
 - Russian user/operator documentation and runbooks were aligned with the durable workflow and same-text semantics.
 
-## Files changed by `d18aa4f`
+## Files changed by `d3f3171`
 
 Status below is relative to `origin/main` (`A` = added, `M` = modified):
 
@@ -261,7 +261,7 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 ### Baseline hardening
 
-- completed: large end-to-end implementation in `d18aa4fca2f68e4ad2c5ccfad86b2e1a774490db`.
+- completed: large end-to-end implementation in `d3f3171889870f14a669d5d8a808162d0b8da7fe`.
 - tests: local gates listed above are green.
 - remaining: phases A–E and CI/live canaries described above.
 - next step: publish the existing commit and this documentation-only handoff commit to `codex/end-to-end-hardening`, then open a draft PR targeting `main` and wait for CI without merging.
@@ -277,8 +277,15 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - completed: narrowed the post-migration start sequence in `scripts/deploy_compose.sh`. The script now starts only `api`, waits for `/ready` to report `status=ok` and the exact intended `BUILD_SHA`, and only then starts `telegram-bot` plus optional `auto-sync`. The error trap now distinguishes failure before quiescing from failure after writers were stopped or partially restarted.
 - tests: local contract coverage was updated in `tests/unit/test_deployment_contract.py` to assert the order `stop writers -> infra -> migrate -> api -> /ready -> telegram-bot -> auto-sync`, plus the new rollout phases/messages. `docs/DEPLOY.md` was updated to match. Local checks passed: `bash -n scripts/deploy_compose.sh`; `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py` (`8 passed`); `git diff --check`.
-- remaining: commit/push this slice and let PR #5 CI validate it. GitGuardian incident `36739581` remains a false-positive dashboard action; the rollback preflight/previous-image drill is still the next implementation slice.
-- next step: commit this small Phase A slice, push `codex/end-to-end-hardening`, then watch PR #5 CI.
+- remaining: PR #5 CI run #193 was started for remote commit `15a138e29fb7d9e59e05db0a70ffb3cb045857c4`; record the result when it finishes. GitGuardian incident `36739581` remains a false-positive dashboard action; the rollback preflight/previous-image drill is still the next implementation slice.
+- next step: complete the Compose password-guard cleanup slice below, then watch PR #5 CI.
+
+### Phase A — Compose password guard / GitGuardian noise reduction
+
+- completed: centralized the Compose required-env `POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env` guard on the `postgres` service and changed the four application `DATABASE_URL` entries to reference `${POSTGRES_PASSWORD}` without duplicating the scanner-unfriendly guard text. Added a CI container-contract step that verifies `docker compose config` fails before a placeholder `.env` is created.
+- tests: local contract coverage was updated in `tests/unit/test_deployment_contract.py` to assert exactly one required password guard, four app DSNs using the shared value, no database-password fallback, and the new negative CI step. `docs/DEPLOY.md` was updated to explain the centralized guard. Local checks passed: `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py` (`8 passed`); `git diff --check`.
+- remaining: commit/push this slice, then let PR #5 CI validate it. The historical GitGuardian incident `36739581` still must be marked `Skip: false positive` in the GitGuardian dashboard; local code changes alone may not clear a finding attached to commit `d3f3171`.
+- next step: commit/push this small Phase A slice, then watch PR #5 CI.
 
 ## Exact next command for a new agent
 

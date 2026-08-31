@@ -346,9 +346,9 @@ Each phase must be a separate small commit. After every phase, update this file 
 ### Phase B — terminal transcription failure lease recovery
 
 - completed: added PostgreSQL-backed coverage for a worker crash after the final Whisper failure is recorded as `transcription_failed` but before the user-facing failure reply is staged. A live lease still blocks overlapping workers, and recovery can reclaim the terminal failure after lease expiry without adding another transcription attempt.
-- tests: updated `tests/integration/test_migrations.py::test_voice_terminal_transcription_failure_recovers_after_lease_expiry`. Local checks passed: `.venv/bin/ruff check tests/integration/test_migrations.py tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check tests/integration/test_migrations.py tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q --collect-only tests/integration/test_migrations.py` (`39 tests collected`); `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`28 passed`); `git diff --check`.
-- remaining: this test-only slice still needs PR #5 CI because local PostgreSQL is unavailable.
-- next step: push this test-only commit, wait for PR #5 CI, then continue Phase B with another voice recovery gap or move to Phase C Google Docs canary.
+- tests: updated `tests/integration/test_migrations.py::test_voice_terminal_transcription_failure_recovers_after_lease_expiry`. Local checks passed: `.venv/bin/ruff check tests/integration/test_migrations.py tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check tests/integration/test_migrations.py tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q --collect-only tests/integration/test_migrations.py` (`39 tests collected`); `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`28 passed`); `git diff --check`. PR #5 CI run #231 for remote commit `af9382c4b0da82cfad9435df339b45a300e903a3` completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest.
+- remaining: remote commit `af9382c4b0da82cfad9435df339b45a300e903a3` was pushed. Local PostgreSQL remains unavailable, so future DB behavior still needs CI for new slices.
+- next step: continue Phase B with another voice recovery gap or move to Phase C Google Docs canary. Keep the next slice a separate commit.
 
 ## Exact next command for a new agent
 

@@ -332,9 +332,9 @@ Each phase must be a separate small commit. After every phase, update this file 
 ### Phase B — malformed voice reply recovery
 
 - completed: durable voice delivery now fails closed when an event is `reply_pending` but has no `reply_text`. The worker marks the event `failed` under the same lease/fencing token instead of releasing it back into the immediate recovery loop forever.
-- tests: added `tests/unit/test_transcription_worker.py::test_pending_reply_without_text_is_failed_without_send` and `app.assistant.voice_media.mark_voice_reply_failed`. Local checks passed: `.venv/bin/ruff check app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`28 passed`); `git diff --check`.
-- remaining: this slice still needs PR #5 CI on the remote commit. This is a corrupt-state guard; normal reply staging still guarantees non-empty reply text before delivery.
-- next step: push this commit, wait for PR #5 CI, then continue Phase B with another voice recovery gap or move to Phase C Google Docs canary.
+- tests: added `tests/unit/test_transcription_worker.py::test_pending_reply_without_text_is_failed_without_send` and `app.assistant.voice_media.mark_voice_reply_failed`. Local checks passed: `.venv/bin/ruff check app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`28 passed`); `git diff --check`. PR #5 CI run #223 for remote commit `48fa757e34663ee3026a69379ec5af8b19e8067a` completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest.
+- remaining: remote commit `48fa757e34663ee3026a69379ec5af8b19e8067a` was pushed. This is a corrupt-state guard; normal reply staging still guarantees non-empty reply text before delivery.
+- next step: continue Phase B with another voice recovery gap or move to Phase C Google Docs canary. Keep the next slice a separate commit.
 
 ## Exact next command for a new agent
 

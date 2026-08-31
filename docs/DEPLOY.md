@@ -105,7 +105,30 @@ Schema migrations require a quiesced application even when a specific revision a
 The provided script enforces this order. Do not start application dependencies implicitly through
 Compose while an upgrade is in progress.
 
-## 4. Voice lifecycle and retention
+## 4. Rollback preflight and restore drill
+
+After a rollout backup is created, verify that it can be listed and restored into a disposable
+database before relying on it for production rollback:
+
+```bash
+./scripts/verify_compose_rollback.sh \
+  --manifest /var/backups/dream-motif/dream_motif_YYYYMMDDTHHMMSSZ_<build-sha>.dump.manifest \
+  --restore-drill-db dream_motif_restore_drill
+```
+
+The verifier reads the manifest without sourcing it, checks the backup SHA256, validates the
+archive with `pg_restore --list`, confirms the recorded previous API image still exists and keeps
+the same OCI revision label, restores into a database whose name must end with `_restore_drill`,
+checks the restored Alembic revision when the backup recorded one, and drops the disposable
+database on exit. For a first launch with no previous API image, add
+`--allow-missing-previous-image`; do not use that flag for upgrade rollback drills.
+
+The verifier deliberately refuses the canonical `dream_motif` database and does not run Alembic
+downgrades. If the new release has already served Telegram, Google Docs, or provider traffic, stop
+writers first and reconcile any external sends/new captures before deciding whether to restore the
+database archive.
+
+## 5. Voice lifecycle and retention
 
 `VOICE_MEDIA_DIR` must be writable and persistent for the bot container. The default Compose path
 is `/var/lib/dream-voice`. The database record is created before download acknowledgement, and the
@@ -120,7 +143,7 @@ downloaded path is persisted before background processing begins.
 An operational transcript is not an archive dream. It becomes one only after the user explicitly
 saves it.
 
-## 5. Redis requirement
+## 6. Redis requirement
 
 PostgreSQL remains the durable system of record. Redis holds expiring interaction context such as
 displayed dream references, pending notes, pending dream confirmation and interpretation consent.
@@ -133,7 +156,7 @@ Check connectivity without printing values that can contain private text:
 docker compose exec redis redis-cli ping
 ```
 
-## 6. Google Docs credentials
+## 7. Google Docs credentials
 
 Two implemented paths are supported:
 
@@ -162,7 +185,7 @@ write/fsync/replace, so readers in another process never observe partial JSON. K
 and its `.lock` file on a local filesystem that supports POSIX `flock`; network filesystems with
 unreliable advisory locking are unsupported.
 
-## 7. Rollout verification
+## 8. Rollout verification
 
 Before treating a rollout as healthy:
 
@@ -187,7 +210,7 @@ Before treating a rollout as healthy:
 Redis, Telegram, Google Docs, provider quota, the whole outbox or user-perceived quality; keep the
 runbook smoke tests as separate release gates.
 
-## 8. Direct-process deployment
+## 9. Direct-process deployment
 
 For systemd/VPS operation, use the same quiesced order:
 

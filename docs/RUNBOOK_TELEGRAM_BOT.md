@@ -211,7 +211,16 @@ docker compose stop telegram-bot api
 Supervisors stop accepting work and release/cancel their tasks; database leases expire and are safe
 to reclaim on the next start. For code rollback, deploy a previous compatible image while leaving
 the database at the newer migration head. Do not run destructive Alembic downgrades on the private
-archive without a tested backup/restore plan.
+archive. Before relying on a deployment backup, run:
+
+```bash
+./scripts/verify_compose_rollback.sh \
+  --manifest /var/backups/dream-motif/dream_motif_YYYYMMDDTHHMMSSZ_<build-sha>.dump.manifest \
+  --restore-drill-db dream_motif_restore_drill
+```
+
+The verifier restores only into the disposable `_restore_drill` database and drops it afterward; it
+refuses the canonical `dream_motif` database.
 
 After rollback, verify `/health.build_sha`, Redis, one read-only search and the outbox aggregates
 before resuming new capture.

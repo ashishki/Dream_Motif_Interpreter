@@ -18,6 +18,7 @@ from app.assistant.voice_media import (
     claim_voice_media_event,
     get_or_create_voice_media_event,
     mark_voice_reply_failed,
+    record_voice_transcription_failure,
     release_voice_media_lease,
     store_voice_delivery_progress,
 )
@@ -2266,6 +2267,69 @@ async def test_voice_malformed_reply_failure_exits_recovery_queue(
         )
         is None
     )
+
+
+@pytest.mark.anyio
+async def test_voice_terminal_transcription_failure_recovers_after_lease_expiry(
+    migrated_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(migrated_engine, expire_on_commit=False)
+    event, _created = await get_or_create_voice_media_event(
+        session_factory,
+        chat_id=77,
+        telegram_message_id=404,
+        telegram_file_id="voice-terminal-failure",
+        duration_seconds=5,
+    )
+    claimed = await claim_voice_media_event(
+        session_factory,
+        event.id,
+        lease_owner="worker-a",
+        lease_seconds=60,
+    )
+    assert claimed is not None
+
+    attempts = await record_voice_transcription_failure(
+        session_factory,
+        event.id,
+        max_attempts=1,
+        retry_delay_seconds=30,
+        lease_owner="worker-a",
+    )
+    assert attempts == 1
+    assert (
+        await claim_voice_media_event(
+            session_factory,
+            event.id,
+            lease_owner="worker-b",
+            lease_seconds=60,
+        )
+        is None
+    )
+
+    async with migrated_engine.begin() as connection:
+        await connection.execute(
+            text(
+                """
+                UPDATE voice_media_events
+                SET lease_expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second'
+                WHERE id = :event_id
+                """
+            ),
+            {"event_id": event.id},
+        )
+    recovered = await claim_voice_media_event(
+        session_factory,
+        event.id,
+        lease_owner="worker-b",
+        lease_seconds=60,
+    )
+
+    assert recovered is not None
+    assert recovered.status == "transcription_failed"
+    assert recovered.transcription_attempt_count == 1
+    assert recovered.next_attempt_at is None
+    assert recovered.lease_owner == "worker-b"
 
 
 @pytest.mark.anyio

@@ -63,12 +63,17 @@ def create_app() -> FastAPI:
                 await result
         yield
         enqueuer_close = getattr(enqueuer, "shutdown", None)
-        if enqueuer_close is not None:
-            await enqueuer_close()
-        else:
-            close = getattr(_get_redis_client(), "aclose", None)
-            if close is not None:
-                await close()
+        try:
+            if enqueuer_close is not None:
+                await enqueuer_close(timeout_seconds=1.0)
+            else:
+                close = getattr(_get_redis_client(), "aclose", None)
+                if close is not None:
+                    await close()
+        finally:
+            cache_clear = getattr(_get_job_enqueuer, "cache_clear", None)
+            if callable(cache_clear):
+                cache_clear()
 
     application = FastAPI(title="Dream Motif Interpreter", version="0.1.0", lifespan=lifespan)
     application.include_router(health_router)

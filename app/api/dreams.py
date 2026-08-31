@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hmac
 import json
 import uuid
@@ -402,8 +401,12 @@ class LocalAsyncJobEnqueuer:
             except TimeoutError:
                 logger.warning("Cancelling manual sync supervisor after shutdown timeout")
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+                try:
+                    await asyncio.wait_for(task, timeout=1.0)
+                except TimeoutError:
+                    logger.warning("Manual sync supervisor did not acknowledge cancellation")
+                except asyncio.CancelledError:
+                    pass
             except asyncio.CancelledError:
                 raise
             except Exception:

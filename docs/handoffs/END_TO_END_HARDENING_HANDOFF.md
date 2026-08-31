@@ -339,9 +339,9 @@ Each phase must be a separate small commit. After every phase, update this file 
 ### Phase B — malformed voice reply PostgreSQL coverage
 
 - completed: added PostgreSQL-backed integration coverage that a claimed malformed `reply_pending` event is marked `failed`, clears reply cursor and lease fields, and is no longer claimable by recovery.
-- tests: updated `tests/integration/test_migrations.py::test_voice_malformed_reply_failure_exits_recovery_queue`. Local checks passed: `.venv/bin/ruff check tests/integration/test_migrations.py app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check tests/integration/test_migrations.py app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`28 passed`); `.venv/bin/pytest -q --collect-only tests/integration/test_migrations.py` (`38 tests collected`); `git diff --check`.
-- remaining: this test-only slice still needs PR #5 CI because local PostgreSQL is unavailable.
-- next step: push this test-only commit, wait for PR #5 CI, then continue Phase B with another voice recovery gap or move to Phase C Google Docs canary.
+- tests: updated `tests/integration/test_migrations.py::test_voice_malformed_reply_failure_exits_recovery_queue`. Local checks passed: `.venv/bin/ruff check tests/integration/test_migrations.py app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check tests/integration/test_migrations.py app/assistant/voice_media.py app/workers/transcribe.py tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`28 passed`); `.venv/bin/pytest -q --collect-only tests/integration/test_migrations.py` (`38 tests collected`); `git diff --check`. PR #5 CI run #227 for remote commit `617fb166562ff04b503b021c2ec5c78351e941ef` completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest.
+- remaining: remote commit `617fb166562ff04b503b021c2ec5c78351e941ef` was pushed. Local PostgreSQL remains unavailable, so future DB behavior still needs CI for new slices.
+- next step: continue Phase B with another voice recovery gap or move to Phase C Google Docs canary. Keep the next slice a separate commit.
 
 ## Exact next command for a new agent
 

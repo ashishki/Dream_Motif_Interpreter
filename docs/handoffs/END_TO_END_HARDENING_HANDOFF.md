@@ -237,7 +237,7 @@ Each phase must be a separate small commit. After every phase, update this file 
 ### B. Durable capture/outbox and voice lifecycle — P1
 
 - Run a live crash/restart canary for the durable manual `/sync` queue with an operator-selected disposable Google Doc.
-- Run PostgreSQL voice cleanup races and crash/restart recovery tests.
+- PostgreSQL voice cleanup race tests now pass in PR #5 CI for the stale-path cleanup slice; continue with voice crash/restart recovery coverage or live canary.
 - Verify fencing at every irreversible external send boundary.
 
 ### C. Google Docs identity/sync — P1/P2
@@ -318,9 +318,9 @@ Each phase must be a separate small commit. After every phase, update this file 
 ### Phase B — voice cleanup stale path hygiene
 
 - completed: scheduled voice cleanup now re-checks and locks an eligible row before clearing a missing tracked raw-media path. If immediate post-transcription cleanup already deleted the `.ogg`, the durable event no longer keeps a stale `local_path`; if the row changed, was re-leased, or is skip-locked, the path is preserved for the active worker/reclaimer.
-- tests: updated `tests/unit/test_voice_cleanup.py` to cover missing-file path clearing under the same `FOR UPDATE`/CAS/lease predicate and to preserve DB state when the claim is lost. Local checks passed: `.venv/bin/ruff check app/workers/cleanup.py tests/unit/test_voice_cleanup.py`; `.venv/bin/ruff format --check app/workers/cleanup.py tests/unit/test_voice_cleanup.py`; `.venv/bin/pytest -q tests/unit/test_voice_cleanup.py --tb=short` (`21 passed`); `.venv/bin/pytest -q --collect-only tests/integration/test_voice_cleanup_races.py` (`2 tests collected`); `git diff --check`.
-- remaining: this slice still needs PR #5 CI to run the PostgreSQL-backed cleanup-race tests. Live Telegram/Whisper crash-restart recovery is still not exercised without operator-owned credentials.
-- next step: push this commit, wait for PR #5 CI, then continue Phase B with PostgreSQL voice crash/restart recovery or move to the Phase C Google Docs canary.
+- tests: updated `tests/unit/test_voice_cleanup.py` to cover missing-file path clearing under the same `FOR UPDATE`/CAS/lease predicate and to preserve DB state when the claim is lost. Local checks passed: `.venv/bin/ruff check app/workers/cleanup.py tests/unit/test_voice_cleanup.py`; `.venv/bin/ruff format --check app/workers/cleanup.py tests/unit/test_voice_cleanup.py`; `.venv/bin/pytest -q tests/unit/test_voice_cleanup.py --tb=short` (`21 passed`); `.venv/bin/pytest -q --collect-only tests/integration/test_voice_cleanup_races.py` (`2 tests collected`); `git diff --check`. PR #5 CI run #215 for remote commit `8f70d5f4217d83ac447d0287c0d06efe6e7398a0` completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest.
+- remaining: remote commit `8f70d5f4217d83ac447d0287c0d06efe6e7398a0` was pushed. Live Telegram/Whisper crash-restart recovery is still not exercised without operator-owned credentials.
+- next step: continue Phase B with voice crash/restart recovery coverage, or move to the Phase C Google Docs canary. Keep the next slice a separate commit.
 
 ## Exact next command for a new agent
 

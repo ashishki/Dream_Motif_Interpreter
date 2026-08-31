@@ -1,3 +1,5 @@
+x-app-image: &app-image ${APP_IMAGE_REPOSITORY:-dream-motif-interpreter}:${BUILD_SHA:-unknown}
+
 x-app-build: &app-build
   context: .
   args:
@@ -33,6 +35,7 @@ services:
     restart: unless-stopped
 
   migrate:
+    image: *app-image
     build: *app-build
     command: alembic upgrade head
     env_file:
@@ -47,6 +50,7 @@ services:
     restart: "no"
 
   api:
+    image: *app-image
     build: *app-build
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     env_file:
@@ -77,6 +81,7 @@ services:
       retries: 3
 
   telegram-bot:
+    image: *app-image
     build: *app-build
     command: python3 -m app.telegram
     stop_grace_period: 50s
@@ -98,6 +103,7 @@ services:
     restart: unless-stopped
 
   auto-sync:
+    image: *app-image
     build: *app-build
     command: python -m app.auto_sync
     profiles: ["autosync"]

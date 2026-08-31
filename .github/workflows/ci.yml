@@ -144,6 +144,11 @@ jobs:
           IMAGE_TAG: dream-motif-ci:${{ github.sha }}
         run: docker build --build-arg BUILD_SHA="${{ github.sha }}" --tag "$IMAGE_TAG" .
 
+      - name: Verify image revision label
+        env:
+          IMAGE_TAG: dream-motif-ci:${{ github.sha }}
+        run: test "$(docker image inspect "$IMAGE_TAG" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "${{ github.sha }}"
+
       - name: Verify non-root runtime and writable persistent paths
         env:
           IMAGE_TAG: dream-motif-ci:${{ github.sha }}

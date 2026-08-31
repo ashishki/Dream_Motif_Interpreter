@@ -216,6 +216,7 @@ tests/           unit + integration checks
 | `TELEGRAM_WEBAPP_AUTH_MAX_AGE_SECONDS` | TTL для Telegram WebApp initData auth | `86400` |
 | `SECRET_KEY` | Backend REST auth; use a random value of at least 32 bytes | — |
 | `BUILD_SHA` | Deployed Git commit shown by `GET /health` | `unknown` |
+| `APP_IMAGE_REPOSITORY` | Compose image repository for release-tagged app services | `dream-motif-interpreter` |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Путь к service-account JSON, видимый процессу | `""` |
 | `GOOGLE_SERVICE_ACCOUNT_HOST_FILE` | Host path для opt-in read-only Compose mount | `""` |
 | `GOOGLE_API_TIMEOUT_SECONDS` | Верхняя граница одного сетевого вызова Google API | `60` |

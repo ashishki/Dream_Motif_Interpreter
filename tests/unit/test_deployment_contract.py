@@ -14,8 +14,14 @@ def test_compose_build_has_a_real_dockerfile_and_runtime_services() -> None:
     assert "FROM python:3.11-slim" in dockerfile
     assert "USER app" in dockerfile
     assert "ARG BUILD_SHA=unknown" in dockerfile
+    assert 'LABEL org.opencontainers.image.revision="${BUILD_SHA}"' in dockerfile
     assert "BUILD_SHA=${BUILD_SHA}" in dockerfile
+    assert (
+        "x-app-image: &app-image "
+        "${APP_IMAGE_REPOSITORY:-dream-motif-interpreter}:${BUILD_SHA:-unknown}"
+    ) in compose
     assert "BUILD_SHA: ${BUILD_SHA:-unknown}" in compose
+    assert compose.count("image: *app-image") == 4
     assert "RUNTIME_STATE_FILE: /var/lib/dream-motif/runtime_extra_docs.json" in compose
     assert "runtime_state:/var/lib/dream-motif" in compose
     assert "migrate:" in compose
@@ -55,6 +61,7 @@ def test_example_environment_is_safe_and_complete_enough_to_boot_after_setup() -
     assert "SECRET_KEY=replace-me" in example
     assert "POSTGRES_PASSWORD=replace-me" in example
     assert "API_BIND_ADDRESS=127.0.0.1" in example
+    assert "APP_IMAGE_REPOSITORY=dream-motif-interpreter" in example
     assert "GOOGLE_SERVICE_ACCOUNT_HOST_FILE=" in example
     assert "TELEGRAM_ALLOWED_CHAT_ID=0" in example
     assert "VOICE_TRANSCRIPT_RETENTION_SECONDS=" in example
@@ -83,6 +90,8 @@ def test_ci_verifies_compose_and_non_root_container_contract() -> None:
     assert "docker compose config --quiet" in workflow
     assert "docker-compose.google-service-account.yml config --quiet" in workflow
     assert "docker build --build-arg BUILD_SHA=" in workflow
+    assert "Verify image revision label" in workflow
+    assert 'org.opencontainers.image.revision" }}' in workflow
     assert 'test "$(id -u)" -ne 0' in workflow
     assert "test -w /var/lib/dream-voice" in workflow
     assert "test -w /var/lib/dream-motif" in workflow
@@ -139,3 +148,5 @@ def test_active_deployment_docs_use_the_quiesced_rollout_script() -> None:
     assert "stop `api`, `telegram-bot` and `auto-sync`" in deploy
     assert "run `alembic upgrade head`" in deploy
     assert "only after the API reports `/ready` for the intended `BUILD_SHA`" in deploy
+    assert "Keep previous release" in deploy
+    assert "tags until the rollback drill" in deploy

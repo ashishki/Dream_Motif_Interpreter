@@ -21,6 +21,7 @@ GOOGLE_DOC_ID=...
 SECRET_KEY=<random value of at least 32 bytes>
 ENV=development
 BUILD_SHA=<deployed git commit SHA>
+APP_IMAGE_REPOSITORY=dream-motif-interpreter
 RUNTIME_STATE_FILE=/var/lib/dream-motif/runtime_extra_docs.json
 ```
 
@@ -50,6 +51,10 @@ at least 32 bytes long, and have sufficient character diversity. Generate one wi
 `BUILD_SHA` is the deployed Git commit identifier returned by public `GET /health`. Set it in
 the deployment pipeline so operator smoke tests can verify the running revision. It defaults to
 `unknown` for local development.
+
+`APP_IMAGE_REPOSITORY` is the Compose image repository used for application services. Compose tags
+the shared app image as `APP_IMAGE_REPOSITORY:BUILD_SHA` so an operator can select a previous
+release image during a rollback drill.
 
 `ASSISTANT_MODEL` — Claude model used by the bounded tool-use loop. Defaults to `claude-haiku-4-5-20251001`.
 

@@ -221,7 +221,7 @@ listed above plus `A docs/handoffs/END_TO_END_HARDENING_HANDOFF.md`.
 1. Local Docker is unavailable, so Compose/container runtime checks and the non-root container smoke must run in GitHub Actions.
 2. Local PostgreSQL/pgvector is unavailable on the expected test port. The full migration upgrade/downgrade, deferred-trigger, vector-query, and cleanup-race integration suite must run in CI.
 3. Manual `/sync` execution is still process-local. Graceful shutdown produces an honest failed/retryable status and autosync can recover data, but a hard kill between Redis state write and task execution is not a fully durable queue. A DB/Redis durable sync queue is follow-up work, not something to hide behind UI wording.
-4. Failed rollout keeps or returns application writers to a stopped state once quiescing has begun, and the bot/auto-sync are not restarted until the new API passes exact-`BUILD_SHA` readiness. Automatic restoration of a previous image/schema is intentionally not attempted. A tested backup/restore and previous-image procedure remains required before production deployment.
+4. Failed rollout keeps or returns application writers to a stopped state once quiescing has begun, and the bot/auto-sync are not restarted until the new API passes exact-`BUILD_SHA` readiness. Application images are tagged by `APP_IMAGE_REPOSITORY:BUILD_SHA`, but automatic restoration of a previous image/schema is intentionally not attempted. A tested backup/restore drill remains required before production deployment.
 5. No live Telegram, Google Docs, OpenAI/Whisper, or production database mutation was performed; those require operator-owned credentials and an explicit canary window.
 
 ## Remaining work by independent phase
@@ -277,15 +277,22 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - completed: narrowed the post-migration start sequence in `scripts/deploy_compose.sh`. The script now starts only `api`, waits for `/ready` to report `status=ok` and the exact intended `BUILD_SHA`, and only then starts `telegram-bot` plus optional `auto-sync`. The error trap now distinguishes failure before quiescing from failure after writers were stopped or partially restarted.
 - tests: local contract coverage was updated in `tests/unit/test_deployment_contract.py` to assert the order `stop writers -> infra -> migrate -> api -> /ready -> telegram-bot -> auto-sync`, plus the new rollout phases/messages. `docs/DEPLOY.md` was updated to match. Local checks passed: `bash -n scripts/deploy_compose.sh`; `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py` (`8 passed`); `git diff --check`.
-- remaining: PR #5 CI run #193 was started for remote commit `15a138e29fb7d9e59e05db0a70ffb3cb045857c4`; record the result when it finishes. GitGuardian incident `36739581` remains a false-positive dashboard action; the rollback preflight/previous-image drill is still the next implementation slice.
+- remaining: PR #5 CI run #193 completed successfully for remote commit `15a138e29fb7d9e59e05db0a70ffb3cb045857c4`. GitGuardian incident `36739581` remains a false-positive dashboard action; the rollback preflight/previous-image drill is still the next implementation slice.
 - next step: complete the Compose password-guard cleanup slice below, then watch PR #5 CI.
 
 ### Phase A — Compose password guard / GitGuardian noise reduction
 
 - completed: centralized the Compose required-env `POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env` guard on the `postgres` service and changed the four application `DATABASE_URL` entries to reference `${POSTGRES_PASSWORD}` without duplicating the scanner-unfriendly guard text. Added a CI container-contract step that verifies `docker compose config` fails before a placeholder `.env` is created.
 - tests: local contract coverage was updated in `tests/unit/test_deployment_contract.py` to assert exactly one required password guard, four app DSNs using the shared value, no database-password fallback, and the new negative CI step. `docs/DEPLOY.md` was updated to explain the centralized guard. Local checks passed: `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py` (`8 passed`); `git diff --check`.
-- remaining: commit/push this slice, then let PR #5 CI validate it. The historical GitGuardian incident `36739581` still must be marked `Skip: false positive` in the GitGuardian dashboard; local code changes alone may not clear a finding attached to commit `d3f3171`.
+- remaining: remote commit `9daf1873a027edb250495122b9532fb26e090770` was pushed and PR #5 CI run #195 is in progress. The historical GitGuardian incident `36739581` still must be marked `Skip: false positive` in the GitGuardian dashboard; local code changes alone may not clear a finding attached to commit `d3f3171`.
 - next step: commit/push this small Phase A slice, then watch PR #5 CI.
+
+### Phase A — immutable app image identity
+
+- completed: added an OCI revision label to the production Docker image and a shared Compose app-image tag `${APP_IMAGE_REPOSITORY:-dream-motif-interpreter}:${BUILD_SHA:-unknown}` for `migrate`, `api`, `telegram-bot`, and `auto-sync`. Documented `APP_IMAGE_REPOSITORY` and the requirement to retain previous release tags until rollback drill passes.
+- tests: contract coverage in `tests/unit/test_deployment_contract.py` now asserts the OCI label, shared app-image anchor, four service image references, `.env.example` default, CI image-label inspection, and rollback-tag note in `docs/DEPLOY.md`. Local checks passed: `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`; `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`; `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py` (`8 passed`); `git diff --check`.
+- remaining: run focused checks, commit/push this slice, and let PR #5 CI validate it. The next rollback slice must add a verified pre-migration `pg_dump`/manifest plus a non-production restore drill; this image-tag slice alone is not a complete rollback procedure.
+- next step: run `uv run --extra dev ruff check tests/unit/test_deployment_contract.py`, `uv run --extra dev ruff format --check tests/unit/test_deployment_contract.py`, `uv run --extra dev pytest -q tests/unit/test_deployment_contract.py`, `git diff --check`, then commit/push as a small Phase A slice.
 
 ## Exact next command for a new agent
 

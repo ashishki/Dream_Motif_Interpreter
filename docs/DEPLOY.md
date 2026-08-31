@@ -50,7 +50,10 @@ Commit the intended release before rollout; do not use an arbitrary SHA to label
 build.
 
 The API is explicitly bound to `0.0.0.0` inside its container. `BUILD_SHA` is baked into the
-image and returned by `/health`; rebuild whenever it changes. Start optional auto-sync only when
+image, recorded as the image's OCI revision label, and returned by `/health`; rebuild whenever it
+changes. Compose tags all application services as
+`${APP_IMAGE_REPOSITORY:-dream-motif-interpreter}:${BUILD_SHA:-unknown}`. Keep previous release
+tags until the rollback drill for that release has passed. Start optional auto-sync only when
 `AUTO_SYNC_ENABLED=true`:
 
 ```bash

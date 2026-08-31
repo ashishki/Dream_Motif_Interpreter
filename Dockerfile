@@ -2,6 +2,8 @@ FROM python:3.11-slim
 
 ARG BUILD_SHA=unknown
 
+LABEL org.opencontainers.image.revision="${BUILD_SHA}"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \

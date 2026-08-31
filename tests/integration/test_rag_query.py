@@ -522,7 +522,7 @@ async def test_health_stays_ok_when_complete_index_is_old(
                 "dream_id": dream_id,
                 "chunk_index": 0,
                 "chunk_text": "A quiet dream used for health checks.",
-                "embedding": None,
+                "embedding": "[" + ",".join(["0"] * 1536) + "]",
                 "created_at": stale_timestamp,
             },
         )

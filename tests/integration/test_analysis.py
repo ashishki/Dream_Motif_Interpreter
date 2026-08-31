@@ -236,8 +236,7 @@ async def test_grounded_themes_have_fragments(migrated_session: AsyncSession) ->
     assert stored_themes
     assert all(theme.fragments is not None for theme in stored_themes)
     assert all(isinstance(theme.fragments, list) and theme.fragments for theme in stored_themes)
-    assert stored_themes[0].fragments[0]["verified"] is True
-    assert stored_themes[1].fragments[0]["verified"] is False
+    assert {theme.fragments[0]["verified"] for theme in stored_themes} == {True, False}
 
 
 @pytest.mark.asyncio

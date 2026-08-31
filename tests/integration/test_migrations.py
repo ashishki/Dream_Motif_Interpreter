@@ -10,7 +10,7 @@ import pytest_asyncio
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, text
-from sqlalchemy.exc import DatabaseError, IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.assistant.voice_media import (
@@ -910,7 +910,7 @@ async def test_note_processing_migration_backfills_index_only_and_downgrades() -
     finally:
         await engine.dispose()
 
-    with pytest.raises(DatabaseError, match="durable note work is unfinished"):
+    with pytest.raises(DBAPIError, match="durable note work is unfinished"):
         await asyncio.to_thread(command.downgrade, config, "024_restore_graph_controls")
 
     engine = create_async_engine(database_url)
@@ -1252,7 +1252,7 @@ async def test_voice_durability_downgrade_blocks_unfinished_work() -> None:
         ).scalar_one()
     await engine.dispose()
 
-    with pytest.raises(DatabaseError, match="durable voice work is unfinished"):
+    with pytest.raises(DBAPIError, match="durable voice work is unfinished"):
         await asyncio.to_thread(
             command.downgrade,
             config,
@@ -1279,7 +1279,7 @@ async def test_voice_durability_downgrade_blocks_unfinished_work() -> None:
         )
     await engine.dispose()
 
-    with pytest.raises(DatabaseError, match="durable voice work is unfinished"):
+    with pytest.raises(DBAPIError, match="durable voice work is unfinished"):
         await asyncio.to_thread(
             command.downgrade,
             config,

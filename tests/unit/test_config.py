@@ -370,6 +370,7 @@ def test_config_accepts_strong_secret_key_outside_tests(
     _set_required_env(monkeypatch)
     monkeypatch.setenv("ENV", "production")
     monkeypatch.setenv("SECRET_KEY", "fC1wR9-Qk7vL2xP8sN4mT6yH3aB5dE0z")
+    monkeypatch.delenv("BUILD_SHA", raising=False)
 
     settings = Settings(_env_file=None)
 

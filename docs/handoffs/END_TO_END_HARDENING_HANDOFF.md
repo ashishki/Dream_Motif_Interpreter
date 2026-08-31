@@ -266,6 +266,13 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: phases A–E and CI/live canaries described above.
 - next step: publish the existing commit and this documentation-only handoff commit to `codex/end-to-end-hardening`, then open a draft PR targeting `main` and wait for CI without merging.
 
+### Phase A — CI repair 1
+
+- completed: draft PR #5 opened; install, lock, Ruff, and non-root container jobs passed. Corrected six PostgreSQL-CI mismatches without weakening production invariants: order-independent grounded-theme assertion, correct generic DBAPI exception type for deliberate downgrade guards, unique-safe draft timeline fixture, non-null vector evidence for complete-index health, and BUILD_SHA isolation in the configuration test.
+- tests: `ruff check` passed; 52 focused local tests passed; 51 affected PostgreSQL integration tests collect cleanly. CI run #189 established that dependency installation, frozen locks, formatting, lint, Compose rendering, image build, non-root runtime, and persistent-path permissions pass.
+- remaining: publish this phase commit, rerun the complete PostgreSQL/pgvector CI job, then record its result. The production rollback/restore drill remains separate Phase A work.
+- next step: run the full CI suite for the new phase commit; if green, begin the rollback preflight/documentation slice as another small Phase A commit.
+
 ## Exact next command for a new agent
 
 ```bash

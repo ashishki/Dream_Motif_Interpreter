@@ -325,9 +325,9 @@ Each phase must be a separate small commit. After every phase, update this file 
 ### Phase B — voice delivery final-cursor recovery
 
 - completed: added test-only coverage for the crash window after the last Telegram reply chunk cursor is durably advanced but before the row is marked `delivered`. Recovery must mark the row delivered without re-sending already acknowledged chunks.
-- tests: updated `tests/unit/test_transcription_worker.py`. Local checks passed: `.venv/bin/ruff check tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`27 passed`); `git diff --check`.
-- remaining: this test-only slice still needs PR #5 CI on the remote commit. Real Telegram Bot API delivery idempotency cannot be proven locally because Telegram send itself has no idempotency key.
-- next step: push this test-only commit, wait for PR #5 CI, then continue Phase B with the next voice crash/restart seam or move to Phase C Google Docs canary.
+- tests: updated `tests/unit/test_transcription_worker.py`. Local checks passed: `.venv/bin/ruff check tests/unit/test_transcription_worker.py`; `.venv/bin/ruff format --check tests/unit/test_transcription_worker.py`; `.venv/bin/pytest -q tests/unit/test_transcription_worker.py --tb=short` (`27 passed`); `git diff --check`. PR #5 CI run #219 for remote commit `675f7a379ac9df5560d0ab7a49fe2dcb19151d36` completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest.
+- remaining: remote commit `675f7a379ac9df5560d0ab7a49fe2dcb19151d36` was pushed. Real Telegram Bot API delivery idempotency cannot be proven locally because Telegram send itself has no idempotency key.
+- next step: continue Phase B with the next voice crash/restart seam or move to Phase C Google Docs canary. Keep the next slice a separate commit.
 
 ## Exact next command for a new agent
 

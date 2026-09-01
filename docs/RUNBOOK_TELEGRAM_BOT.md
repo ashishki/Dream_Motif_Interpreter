@@ -64,9 +64,27 @@ Run deterministic checks before the private live canary:
 ```
 
 The full pytest suite needs disposable PostgreSQL/pgvector. It does not need real Telegram,
-Google Docs or model credentials; those remain one bounded canary below.
+Google Docs or model credentials; those remain bounded canaries below.
 
-## 4. One end-to-end private canary
+## 4. Disposable Google Docs canary
+
+Before the private Telegram canary, verify Google Docs writes against an operator-selected
+disposable document. The script mutates that document and refuses the configured primary
+`GOOGLE_DOC_ID` unless `--allow-primary` is passed for an intentional drill.
+
+```bash
+GOOGLE_CANARY_DOC_ID="https://docs.google.com/document/d/.../edit" \
+  uv run --extra dev python scripts/gdocs_canary.py
+```
+
+The script fetches Drive metadata through the bounded Google HTTP transport, appends one canary
+dream with a named-range idempotency key, repeats the same key with different body text to prove
+the duplicate is blocked, inserts one note under the canary heading, repeats the same note key to
+prove named-range adoption, and switches the archive source using a temporary runtime state file.
+Pass `--runtime-state-file /path/to/runtime-state.json` only when deliberately testing the shared
+bot/API/auto-sync state file.
+
+## 5. One end-to-end private canary
 
 Use a distinctive disposable phrase and remove only the test data through the normal operator
 workflow afterward.
@@ -97,7 +115,7 @@ workflow afterward.
 This canary covers capture, negative intent, compound text splitting, durable jobs, exact
 retrieval, reply routing, restart state, voice and motif review in one pass.
 
-## 5. Dream processing diagnostics
+## 6. Dream processing diagnostics
 
 Aggregate state without selecting dream text:
 
@@ -151,7 +169,7 @@ The acknowledgement is complete once the note plus jobs commit. It is normal to 
 briefly afterward; it is not correct to report Google Docs as updated until the `gdocs` job and its
 receipt succeed.
 
-## 6. Redis degraded state
+## 7. Redis degraded state
 
 Redis stores expiring context that can contain pending dream/note text. Check connectivity only:
 
@@ -167,7 +185,7 @@ degraded log/flag is permitted, but restart-safe `да`, `к этому`, displa
 pending notes are not guaranteed. Restore Redis, restart the bot, and ask the user to repeat the
 full request—not a short confirmation—if its TTL/context was lost.
 
-## 7. Common incidents
+## 8. Common incidents
 
 ### Bot starts but receives nothing
 
@@ -207,7 +225,7 @@ Do not copy `last_error` to a public issue without checking it contains no priva
 - verify `TypeHandler(Update, chat_guard)` remains group `-1000`
 - run the unauthorized replay test before restart
 
-## 8. Shutdown and rollback
+## 9. Shutdown and rollback
 
 ```bash
 docker compose stop telegram-bot api

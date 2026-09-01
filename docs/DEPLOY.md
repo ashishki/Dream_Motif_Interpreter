@@ -199,16 +199,19 @@ Before treating a rollout as healthy:
 2. `/health.status` is `ok` (or an understood indexing backlog) and `health.build_sha` equals the
    intended Git commit; `unknown` is not acceptable in production.
 3. Redis returns `PONG`.
-4. A synthetic/private smoke dream creates one archive row and four stage jobs, reaches terminal
+4. `scripts/gdocs_canary.py` passes against an operator-selected disposable Google Doc, proving
+   named-range dream/note idempotency and runtime source switching without touching the primary
+   archive.
+5. A synthetic/private smoke dream creates one archive row and four stage jobs, reaches terminal
    stage success, appears once in Google Docs and is searchable.
-5. Replaying the same Telegram update/message ID creates neither a duplicate dream nor a duplicate
+6. Replaying the same Telegram update/message ID creates neither a duplicate dream nor a duplicate
    document append. Sending the same words as a new Telegram message creates a separate legitimate
    archive entry.
-6. A note acknowledgement first reports queued background work; its `index` and `gdocs` jobs then
+7. A note acknowledgement first reports queued background work; its `index` and `gdocs` jobs then
    reach success independently, without a duplicate insertion on replay.
-7. A voice smoke reaches `delivered`, and a forced Telegram send failure remains recoverable from
+8. A voice smoke reaches `delivered`, and a forced Telegram send failure remains recoverable from
    its durable chunk cursor.
-8. `voice_media` and `runtime_state` are writable by the non-root container user.
+9. `voice_media` and `runtime_state` are writable by the non-root container user.
 
 `GET /health` checks database/index health and exposes deployment identity. It does not prove
 Redis, Telegram, Google Docs, provider quota, the whole outbox or user-perceived quality; keep the

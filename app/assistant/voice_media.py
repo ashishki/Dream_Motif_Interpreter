@@ -363,8 +363,9 @@ async def store_voice_reply_pending(
     lease_owner: str | None = None,
 ) -> None:
     """Durably stage a Telegram reply before attempting network delivery."""
+    reply_text = reply_text.strip()
     if not reply_text:
-        raise ValueError("Voice reply text must not be empty")
+        raise ValueError("Voice reply text must not be blank")
     now = datetime.now(tz=timezone.utc)
     async with session_factory() as session:
         event = await _owned_event(session, event_id, lease_owner=lease_owner)

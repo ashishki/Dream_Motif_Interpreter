@@ -28,6 +28,7 @@ from app.workers.transcribe import (
     run_claimed_voice_event,
     run_voice_retention_cycle,
     schedule_voice_task,
+    stage_and_deliver_voice_reply,
     stop_voice_maintenance_supervisor,
     transcribe_and_reply,
     voice_maintenance_supervisor,
@@ -567,6 +568,29 @@ async def test_pending_reply_without_text_is_failed_without_send() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pending_reply_with_blank_text_is_failed_without_send() -> None:
+    event = _state(status="reply_pending", reply=" \n ")
+    owner = "worker-a"
+    session_factory = MagicMock()
+    with (
+        patch("app.workers.transcribe.get_voice_media_event", new=AsyncMock(return_value=event)),
+        patch("app.workers.transcribe._send_telegram_message", new=AsyncMock()) as send,
+        patch("app.workers.transcribe.mark_voice_reply_failed", new=AsyncMock()) as mark_failed,
+    ):
+        delivered = await deliver_pending_voice_reply(
+            event_id=event.id,
+            chat_id=42,
+            telegram_bot_token="TOKEN",
+            session_factory=session_factory,
+            lease_owner=owner,
+        )
+
+    assert delivered is False
+    send.assert_not_awaited()
+    mark_failed.assert_awaited_once_with(session_factory, event.id, lease_owner=owner)
+
+
+@pytest.mark.asyncio
 async def test_leased_send_failure_schedules_durable_backoff() -> None:
     event = _state(status="reply_pending", reply="durable reply")
     owner = "worker-a"
@@ -653,6 +677,43 @@ async def test_lease_loss_cancels_inflight_send_without_advancing_cursor() -> No
     assert cancelled.is_set()
     progress.assert_not_awaited()
     mark.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stage_blank_reply_uses_processing_failure_before_delivery() -> None:
+    event_id = uuid.uuid4()
+    session_factory = MagicMock()
+    with (
+        patch("app.workers.transcribe.store_voice_reply_pending", new=AsyncMock()) as store,
+        patch("app.workers.transcribe.delete_local_voice_file") as delete_file,
+        patch(
+            "app.workers.transcribe.deliver_pending_voice_reply",
+            new=AsyncMock(return_value=True),
+        ) as deliver,
+    ):
+        delivered = await stage_and_deliver_voice_reply(
+            event_id=event_id,
+            chat_id=42,
+            telegram_bot_token="TOKEN",
+            session_factory=session_factory,
+            reply_text=" \n ",
+            local_path="/tmp/dream_voice/voice.ogg",
+            media_dir="/tmp/dream_voice",
+            lease_owner="worker-a",
+        )
+
+    assert delivered is True
+    store.assert_awaited_once_with(
+        session_factory,
+        event_id,
+        _PROCESSING_FAILED_MESSAGE,
+        lease_owner="worker-a",
+    )
+    delete_file.assert_called_once_with(
+        "/tmp/dream_voice/voice.ogg",
+        media_dir="/tmp/dream_voice",
+    )
+    deliver.assert_awaited_once()
 
 
 @pytest.mark.asyncio

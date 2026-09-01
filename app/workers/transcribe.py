@@ -595,6 +595,10 @@ async def stage_and_deliver_voice_reply(
     """Persist a reply first, remove raw media, then attempt delivery."""
     _raise_if_voice_lease_lost(lease_lost, event_id=event_id)
     owner_kwargs = {"lease_owner": lease_owner} if lease_owner is not None else {}
+    reply_text = reply_text.strip()
+    if not reply_text:
+        LOGGER.error("Voice reply builder returned blank text event_id=%s", event_id)
+        reply_text = _PROCESSING_FAILED_MESSAGE
     await store_voice_reply_pending(
         session_factory,
         event_id,
@@ -628,7 +632,8 @@ async def deliver_pending_voice_reply(
     state = await get_voice_media_event(session_factory, event_id, **owner_kwargs)
     if state is None or state.status == "delivered":
         return state is not None
-    if not state.reply_text:
+    reply_text = state.reply_text.strip() if state.reply_text is not None else ""
+    if not reply_text:
         LOGGER.error("Voice reply is pending without text event_id=%s", event_id)
         try:
             await mark_voice_reply_failed(session_factory, event_id, **owner_kwargs)
@@ -641,7 +646,7 @@ async def deliver_pending_voice_reply(
                 "Voice reply disappeared before malformed reply failure event_id=%s", event_id
             )
         return False
-    chunks = _split_telegram_text(state.reply_text)
+    chunks = _split_telegram_text(reply_text)
     start_index = min(max(state.reply_chunks_delivered, 0), len(chunks))
     try:
         for index in range(start_index, len(chunks)):

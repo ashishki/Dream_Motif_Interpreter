@@ -1,6 +1,6 @@
 # End-to-End Hardening Handoff
 
-Updated: 2026-08-31
+Updated: 2026-09-01
 
 ## Source goal
 
@@ -368,13 +368,20 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - completed: added `scripts/gdocs_canary.py`, a bounded live canary for an operator-selected disposable Google Doc. It refuses the configured primary `GOOGLE_DOC_ID` by default, fetches metadata through the bounded Google transport, verifies dream named-range duplicate blocking, verifies note named-range adoption without duplicate text, and exercises runtime source switching through a temporary runtime state file unless an explicit file is passed. `docs/RUNBOOK_TELEGRAM_BOT.md` and `docs/DEPLOY.md` now include the canary as a pre-Telegram release gate.
 - tests: added `tests/unit/test_gdocs_canary_script.py` covering the happy path, primary-doc refusal, and duplicate dream detection without live Google credentials. Local checks passed: `uv run --extra dev ruff check scripts/gdocs_canary.py tests/unit/test_gdocs_canary_script.py`; `uv run --extra dev ruff format --check scripts/gdocs_canary.py tests/unit/test_gdocs_canary_script.py`; `uv run --extra dev pytest -q tests/unit/test_gdocs_canary_script.py --tb=short` (`3 passed`); `uv run --extra dev python -m compileall -q scripts/gdocs_canary.py tests/unit/test_gdocs_canary_script.py`; `uv run --extra dev python scripts/gdocs_canary.py --help`; `git diff --check`.
-- remaining: publish this slice to `codex/end-to-end-hardening`, then watch CI. The actual live canary still requires operator-owned Google credentials and a disposable document ID.
-- next step: publish this commit, sync local history, check PR #5 CI, then either run the documented live canary with real operator credentials or continue Phase D replay/evaluation with privacy-safe fixtures.
+- remaining: remote commit `6353fe18ed1d40e5c190f01d9cfd00fd869c61c8` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #239 completed successfully across install, Ruff lint, Ruff format, container contract, Pytest, public retrieval fixture, and retrieval eval. The actual live canary still requires operator-owned Google credentials and a disposable document ID.
+- next step: either run the documented live canary with real operator credentials or continue Phase D replay/evaluation with privacy-safe fixtures.
+
+### Phase D — public eval report write mode
+
+- completed: `scripts/eval_public_fixture.py` now has an explicit `--output` mode for creating or refreshing reviewed public-eval evidence artifacts without shell redirection. The write is parent-directory creating and atomic within the target directory. `--check` remains read-only and rejects `--output` so CI drift checks cannot accidentally rewrite evidence. The tracked public retrieval report was refreshed only for the evaluator source SHA; corpus, cases, metrics, gates, and traces stayed unchanged. `evals/privacy_safe_retrieval_v1/DATA_CARD.md` now documents both check and output commands.
+- tests: updated `tests/unit/test_public_fixture_eval.py` to cover direct artifact writes, CLI `--output`, and stale tracked-report rejection. Local checks passed: `uv run --extra dev ruff check scripts/eval_public_fixture.py tests/unit/test_public_fixture_eval.py`; `uv run --extra dev ruff format --check scripts/eval_public_fixture.py tests/unit/test_public_fixture_eval.py`; `uv run --extra dev pytest -q tests/unit/test_public_fixture_eval.py --tb=short` (`9 passed`); `uv run --extra dev python scripts/eval_public_fixture.py --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json`; `uv run --extra dev python -m compileall -q scripts/eval_public_fixture.py tests/unit/test_public_fixture_eval.py`; `git diff --check`.
+- remaining: publish this slice to `codex/end-to-end-hardening`, then watch CI. This still does not claim live hybrid retrieval, private-corpus quality, provider behavior, or production operation.
+- next step: publish this commit, sync local history, check PR #5 CI for the new commit, then continue Phase D by adding privacy-safe replay cases from the most expensive operator workflows or by running the full PostgreSQL/pgvector suite in CI.
 
 ## Exact next command for a new agent
 
 ```bash
-git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,390p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
+git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,430p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
 ```
 
 Then start only the first incomplete phase shown in `Phase log`, commit it separately, update this handoff, and do not merge or push directly to `main` without explicit user approval.

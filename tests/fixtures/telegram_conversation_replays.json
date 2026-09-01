@@ -142,5 +142,19 @@
       }
     },
     "reply_contains": "Хорошо, не сохраняю."
+  },
+  {
+    "id": "unbound_confirmation_reply_does_not_save_after_restart",
+    "update": {
+      "update_id": 1009,
+      "message": {
+        "message_id": 509,
+        "date": 1788048008,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "да"
+      }
+    },
+    "reply_contains": "Не вижу ожидающего подтверждения"
   }
 ]

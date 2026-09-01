@@ -370,6 +370,33 @@ async def test_real_ptb_routing_rejects_persisted_pending_dream_after_restart(
 
 
 @pytest.mark.asyncio
+async def test_real_ptb_routing_rejects_unbound_confirmation_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("unbound_confirmation_reply_does_not_save_after_restart")
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram-replay")
+    clear_pending_dream_draft(42)
+    application, facade = _build_application(monkeypatch)
+    application.bot_data["operational_state_store"] = state_store
+    update = Update.de_json(case["update"], application.bot)
+    send_message = AsyncMock(return_value=_sent_message(application))
+    chat_handler = AsyncMock(return_value=ChatResult("fallback", []))
+
+    with (
+        patch.object(type(application.bot), "send_message", new=send_message),
+        patch("app.telegram.handlers.handle_chat_with_metadata", new=chat_handler),
+    ):
+        await application.process_update(update)
+
+    facade.create_dream.assert_not_awaited()
+    chat_handler.assert_not_awaited()
+    assert load_pending_dream_draft(42) is None
+    assert await state_store.load_pending_dream(42) is None
+    assert send_message.await_count == 1
+    assert case["reply_contains"] in send_message.await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
 async def test_real_ptb_guard_blocks_unauthorized_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

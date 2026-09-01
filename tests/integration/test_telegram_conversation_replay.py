@@ -14,11 +14,14 @@ from app.assistant.facade import AssistantFacade, CreatedDreamItem
 from app.assistant.session import (
     DisplayedDreamRef,
     DisplayedDreamSet,
+    PendingBatchDreamNote,
     PendingDreamDraft,
     RedisOperationalStateStore,
     clear_displayed_dream_set,
+    clear_pending_batch_dream_note,
     clear_pending_dream_draft,
     load_displayed_dream_message,
+    load_pending_batch_dream_note,
     load_pending_dream_draft,
 )
 from app.shared.config import get_settings
@@ -59,6 +62,18 @@ class _FakeRedis:
 def _case(case_id: str) -> dict:
     cases = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
     return next(case for case in cases if case["id"] == case_id)
+
+
+def _displayed_refs(payload: list[dict]) -> list[DisplayedDreamRef]:
+    return [
+        DisplayedDreamRef(
+            index=ref["index"],
+            dream_id=ref["dream_id"],
+            date=ref["date"],
+            title=ref["title"],
+        )
+        for ref in payload
+    ]
 
 
 def _build_application(monkeypatch: pytest.MonkeyPatch) -> tuple[object, AsyncMock]:
@@ -407,15 +422,7 @@ async def test_real_ptb_routing_reply_note_uses_persisted_displayed_message(
     case = _case("reply_note_uses_persisted_displayed_message_after_restart")
     displayed_message = case["displayed_message"]
     state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram-replay")
-    refs = [
-        DisplayedDreamRef(
-            index=ref["index"],
-            dream_id=ref["dream_id"],
-            date=ref["date"],
-            title=ref["title"],
-        )
-        for ref in displayed_message["refs"]
-    ]
+    refs = _displayed_refs(displayed_message["refs"])
     await state_store.save_displayed_message(
         42,
         displayed_message["message_id"],
@@ -443,6 +450,86 @@ async def test_real_ptb_routing_reply_note_uses_persisted_displayed_message(
     )
     assert load_displayed_dream_message(42, displayed_message["message_id"]) is not None
     assert await state_store.load_displayed_message(42, displayed_message["message_id"]) is not None
+    assert send_message.await_count == 1
+    assert case["reply_contains"] in send_message.await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_real_ptb_routing_confirms_persisted_batch_note_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("persisted_batch_note_confirmation_saves_after_restart")
+    pending = case["pending_batch_note"]
+    refs = _displayed_refs(pending["refs"])
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram-replay")
+    await state_store.save_pending_batch_note(
+        42,
+        PendingBatchDreamNote(
+            note_text=pending["note_text"],
+            refs=refs,
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_pending_batch_dream_note(42)
+    application, facade = _build_application(monkeypatch)
+    application.bot_data["operational_state_store"] = state_store
+    facade.add_dream_note.return_value = (True, "Заметка добавлена под нужным сном.")
+    update = Update.de_json(case["update"], application.bot)
+    send_message = AsyncMock(return_value=_sent_message(application))
+    chat_handler = AsyncMock(return_value=ChatResult("fallback", []))
+
+    with (
+        patch.object(type(application.bot), "send_message", new=send_message),
+        patch("app.telegram.handlers.handle_chat_with_metadata", new=chat_handler),
+    ):
+        await application.process_update(update)
+
+    chat_handler.assert_not_awaited()
+    assert facade.add_dream_note.await_count == len(refs)
+    for index, add_call in enumerate(facade.add_dream_note.await_args_list):
+        assert add_call.args == (pending["note_text"],)
+        assert add_call.kwargs == {
+            "dream_id": uuid.UUID(refs[index].dream_id),
+            "chat_id": 42,
+        }
+    assert load_pending_batch_dream_note(42) is None
+    assert await state_store.load_pending_batch_note(42) is None
+    assert send_message.await_count == 1
+    assert case["reply_contains"] in send_message.await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_real_ptb_routing_rejects_persisted_batch_note_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("persisted_batch_note_rejection_clears_after_restart")
+    pending = case["pending_batch_note"]
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram-replay")
+    await state_store.save_pending_batch_note(
+        42,
+        PendingBatchDreamNote(
+            note_text=pending["note_text"],
+            refs=_displayed_refs(pending["refs"]),
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_pending_batch_dream_note(42)
+    application, facade = _build_application(monkeypatch)
+    application.bot_data["operational_state_store"] = state_store
+    update = Update.de_json(case["update"], application.bot)
+    send_message = AsyncMock(return_value=_sent_message(application))
+    chat_handler = AsyncMock(return_value=ChatResult("fallback", []))
+
+    with (
+        patch.object(type(application.bot), "send_message", new=send_message),
+        patch("app.telegram.handlers.handle_chat_with_metadata", new=chat_handler),
+    ):
+        await application.process_update(update)
+
+    chat_handler.assert_not_awaited()
+    facade.add_dream_note.assert_not_awaited()
+    assert load_pending_batch_dream_note(42) is None
+    assert await state_store.load_pending_batch_note(42) is None
     assert send_message.await_count == 1
     assert case["reply_contains"] in send_message.await_args.kwargs["text"]
 

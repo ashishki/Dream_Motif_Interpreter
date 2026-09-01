@@ -420,6 +420,13 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: remote commit `6b1f769bcdd55185f52c20158188ba132389dd5f` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #261 completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest. This proves replay routing and Redis-backed message identity only; it does not prove live Redis availability or durable note database writes beyond the facade boundary.
 - next step: continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
 
+### Phase D — persisted batch-note confirmation replay
+
+- completed: added privacy-safe PTB replay fixtures for the restart window where a pending multi-dream note exists only in `RedisOperationalStateStore` and the user replies `да` or `нет` after process-local state is gone. The positive replay proves the bot applies the note to each stored dream UUID in order, clears Redis and process-local pending state after all saves succeed, and does not fall back to assistant chat. The negative replay proves cancellation clears the same pending state without calling `facade.add_dream_note`.
+- tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`12 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
+- remaining: publish this local slice to `codex/end-to-end-hardening` through the GitHub connector and watch PR #5 CI. This proves replay routing and Redis-backed pending-note identity only; it does not prove live Redis availability or durable note database writes beyond the facade boundary.
+- next step: publish this commit, then continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
+
 ## Exact next command for a new agent
 
 ```bash

@@ -195,5 +195,67 @@
     "dream_id": "66666666-6666-4666-8666-666666666666",
     "note_text": "красная дверь важна",
     "reply_contains": "Заметка добавлена под нужным сном."
+  },
+  {
+    "id": "persisted_batch_note_confirmation_saves_after_restart",
+    "pending_batch_note": {
+      "note_text": "повторяющийся водный мотив",
+      "refs": [
+        {
+          "index": 1,
+          "dream_id": "77777777-7777-4777-8777-777777777777",
+          "date": "2026-09-01",
+          "title": "Озеро"
+        },
+        {
+          "index": 2,
+          "dream_id": "88888888-8888-4888-8888-888888888888",
+          "date": "2026-09-02",
+          "title": "Река"
+        }
+      ]
+    },
+    "update": {
+      "update_id": 1011,
+      "message": {
+        "message_id": 511,
+        "date": 1788048010,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "да"
+      }
+    },
+    "reply_contains": "Готово. Заметка для всех выбранных снов (2) надёжно сохранена."
+  },
+  {
+    "id": "persisted_batch_note_rejection_clears_after_restart",
+    "pending_batch_note": {
+      "note_text": "не добавлять этот общий мотив",
+      "refs": [
+        {
+          "index": 1,
+          "dream_id": "99999999-9999-4999-8999-999999999999",
+          "date": "2026-09-03",
+          "title": "Лестница"
+        },
+        {
+          "index": 2,
+          "dream_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "date": "2026-09-04",
+          "title": "Компас"
+        }
+      ]
+    },
+    "update": {
+      "update_id": 1012,
+      "message": {
+        "message_id": 512,
+        "date": 1788048011,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "нет"
+      }
+    },
+    "reply_contains": "Хорошо, не добавляю заметку."
   }
 ]

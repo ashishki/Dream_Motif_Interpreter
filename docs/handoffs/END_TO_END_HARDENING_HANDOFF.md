@@ -403,8 +403,8 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - completed: added the privacy-safe negative half of the Redis-backed pending dream restart replay. The new PTB fixture stores a pending dream only in `RedisOperationalStateStore`, clears process-local state, processes a real `нет` update through `Application.process_update`, and proves the bot clears both persisted and local pending state without calling `facade.create_dream`.
 - tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`8 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
-- remaining: publish this local slice to `codex/end-to-end-hardening` through the GitHub connector and watch PR #5 CI. This proves restart-safe rejection routing and operational-state cleanup only; it does not prove live Redis availability.
-- next step: publish this commit, then continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
+- remaining: remote commit `3da76c41f5670a4379a3a31a433a558eb1ef62be` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #253 completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest. This proves restart-safe rejection routing and operational-state cleanup only; it does not prove live Redis availability.
+- next step: continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
 
 ## Exact next command for a new agent
 

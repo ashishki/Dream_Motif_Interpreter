@@ -336,6 +336,40 @@ async def test_real_ptb_routing_confirms_persisted_pending_dream_after_restart(
 
 
 @pytest.mark.asyncio
+async def test_real_ptb_routing_rejects_persisted_pending_dream_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("persisted_pending_dream_rejection_clears_after_restart")
+    pending = case["pending_dream"]
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram-replay")
+    await state_store.save_pending_dream(
+        42,
+        PendingDreamDraft(
+            raw_text=pending["raw_text"],
+            title=pending["title"],
+            dream_date=pending["dream_date"],
+            source_message_id=pending["source_message_id"],
+            source_kind=pending["source_kind"],
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_pending_dream_draft(42)
+    application, facade = _build_application(monkeypatch)
+    application.bot_data["operational_state_store"] = state_store
+    update = Update.de_json(case["update"], application.bot)
+    send_message = AsyncMock(return_value=_sent_message(application))
+
+    with patch.object(type(application.bot), "send_message", new=send_message):
+        await application.process_update(update)
+
+    facade.create_dream.assert_not_awaited()
+    assert load_pending_dream_draft(42) is None
+    assert await state_store.load_pending_dream(42) is None
+    assert send_message.await_count == 1
+    assert case["reply_contains"] in send_message.await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
 async def test_real_ptb_guard_blocks_unauthorized_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

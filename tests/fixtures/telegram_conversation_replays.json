@@ -121,5 +121,26 @@
     },
     "source_event_key": "telegram:42:message:705",
     "reply_contains": "✅ Сон сохранён"
+  },
+  {
+    "id": "persisted_pending_dream_rejection_clears_after_restart",
+    "pending_dream": {
+      "raw_text": "Мне приснилось, что я вошёл в библиотеку под дождём.",
+      "title": null,
+      "dream_date": null,
+      "source_message_id": 706,
+      "source_kind": "text"
+    },
+    "update": {
+      "update_id": 1008,
+      "message": {
+        "message_id": 508,
+        "date": 1788048007,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "нет"
+      }
+    },
+    "reply_contains": "Хорошо, не сохраняю."
   }
 ]

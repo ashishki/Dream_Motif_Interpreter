@@ -99,5 +99,27 @@
     "captured_text": "Мне приснилось, что я нашёл синий ключ.",
     "source_event_keys": ["telegram:42:message:505", "telegram:42:message:506"],
     "reply_contains": "✅ Сон сохранён"
+  },
+  {
+    "id": "persisted_pending_dream_confirmation_saves_after_restart",
+    "pending_dream": {
+      "raw_text": "Мне приснилось, что я открыл тихую комнату с зелёной лампой.",
+      "title": null,
+      "dream_date": null,
+      "source_message_id": 705,
+      "source_kind": "text"
+    },
+    "update": {
+      "update_id": 1007,
+      "message": {
+        "message_id": 507,
+        "date": 1788048006,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "да"
+      }
+    },
+    "source_event_key": "telegram:42:message:705",
+    "reply_contains": "✅ Сон сохранён"
   }
 ]

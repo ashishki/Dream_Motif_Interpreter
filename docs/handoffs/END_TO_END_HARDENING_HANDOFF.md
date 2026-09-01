@@ -392,10 +392,17 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: remote commit `c0ec6c3ae332d506e426befc932a07a5d7ec3398` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #245 completed successfully across install, Ruff lint, Ruff format, container contract, Pytest, public retrieval fixture, and retrieval eval. This is a routing/source-identity replay only; duplicate suppression itself remains enforced deeper in durable capture by `source_event_key`.
 - next step: continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
 
+### Phase D — persisted pending dream confirmation replay
+
+- completed: added a privacy-safe PTB replay fixture for the restart window where a pending dream confirmation exists only in Redis-backed operational state and the user replies `да` after the bot process cache is gone. The integration replay now exercises `Application.process_update`, reloads the pending draft through `RedisOperationalStateStore`, archives the original dream text, preserves the original source message id in `source_event_key`, and clears both process-local and Redis pending state after a successful save.
+- tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`7 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
+- remaining: publish this slice to `codex/end-to-end-hardening`, then watch CI. This proves restart-safe Telegram routing and operational-state cleanup only; it does not prove live Redis availability or durable archive database writes beyond the facade boundary.
+- next step: publish this commit, sync local history, check PR #5 CI for the new commit, then continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
+
 ## Exact next command for a new agent
 
 ```bash
-git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,490p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
+git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,520p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
 ```
 
 Then start only the first incomplete phase shown in `Phase log`, commit it separately, update this handoff, and do not merge or push directly to `main` without explicit user approval.

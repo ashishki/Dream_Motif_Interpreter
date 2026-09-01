@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -10,6 +11,12 @@ from telegram import Message, Update, User
 
 from app.assistant.chat import ChatResult
 from app.assistant.facade import AssistantFacade, CreatedDreamItem
+from app.assistant.session import (
+    PendingDreamDraft,
+    RedisOperationalStateStore,
+    clear_pending_dream_draft,
+    load_pending_dream_draft,
+)
 from app.shared.config import get_settings
 from app.telegram.bot import build_application
 
@@ -25,6 +32,24 @@ PROXY_ENV_KEYS = (
     "https_proxy",
     "http_proxy",
 )
+
+
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    async def set(self, key: str, value: str, *, ex: int | None = None) -> None:
+        del ex
+        self.values[key] = value
+
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    async def delete(self, key: str) -> None:
+        self.values.pop(key, None)
+
+    async def ping(self) -> bool:
+        return True
 
 
 def _case(case_id: str) -> dict:
@@ -255,6 +280,59 @@ async def test_real_ptb_routing_keeps_same_text_messages_distinct(
         case["reply_contains"] in send_call.kwargs["text"]
         for send_call in send_message.await_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_real_ptb_routing_confirms_persisted_pending_dream_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("persisted_pending_dream_confirmation_saves_after_restart")
+    pending = case["pending_dream"]
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram-replay")
+    await state_store.save_pending_dream(
+        42,
+        PendingDreamDraft(
+            raw_text=pending["raw_text"],
+            title=pending["title"],
+            dream_date=pending["dream_date"],
+            source_message_id=pending["source_message_id"],
+            source_kind=pending["source_kind"],
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_pending_dream_draft(42)
+    application, facade = _build_application(monkeypatch)
+    application.bot_data["operational_state_store"] = state_store
+    facade.create_dream.return_value = CreatedDreamItem(
+        id=uuid.UUID("55555555-5555-4555-8555-555555555555"),
+        date="2026-09-01",
+        title="Зелёная лампа",
+        word_count=9,
+        source_doc_id="telegram:42",
+        created_at="2026-09-01T12:03:00+00:00",
+        created=True,
+        written_to_google_doc=False,
+        semantic_index_status="pending",
+        processing_status="pending",
+        google_doc_write_status="pending",
+    )
+    update = Update.de_json(case["update"], application.bot)
+    send_message = AsyncMock(return_value=_sent_message(application))
+
+    with patch.object(type(application.bot), "send_message", new=send_message):
+        await application.process_update(update)
+
+    facade.create_dream.assert_awaited_once_with(
+        pending["raw_text"],
+        title=pending["title"],
+        dream_date=None,
+        chat_id=42,
+        source_event_key=case["source_event_key"],
+    )
+    assert load_pending_dream_draft(42) is None
+    assert await state_store.load_pending_dream(42) is None
+    assert send_message.await_count == 1
+    assert case["reply_contains"] in send_message.await_args.kwargs["text"]
 
 
 @pytest.mark.asyncio

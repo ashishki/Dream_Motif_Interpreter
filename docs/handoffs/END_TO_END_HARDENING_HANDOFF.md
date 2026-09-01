@@ -350,10 +350,17 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: remote commit `af9382c4b0da82cfad9435df339b45a300e903a3` was pushed. Local PostgreSQL remains unavailable, so future DB behavior still needs CI for new slices.
 - next step: continue Phase B with another voice recovery gap or move to Phase C Google Docs canary. Keep the next slice a separate commit.
 
+### Phase B — blank voice transcript guard
+
+- completed: Whisper responses that strip to an empty transcript now fail as transcription errors instead of being stored as an empty transcript and routed into assistant/chat processing. This also guards test/mocked transcription paths before any empty transcript can be persisted.
+- tests: updated `tests/unit/test_transcription_worker.py` with worker-level retry coverage and transport-level blank response coverage. Local checks passed: `uv run --extra dev ruff check app/workers/transcribe.py tests/unit/test_transcription_worker.py tests/unit/test_telegram_voice.py`; `uv run --extra dev ruff format --check app/workers/transcribe.py tests/unit/test_transcription_worker.py tests/unit/test_telegram_voice.py`; `uv run --extra dev pytest -q tests/unit/test_transcription_worker.py tests/unit/test_telegram_voice.py --tb=short` (`41 passed`); `uv run --extra dev python -m compileall -q app/workers/transcribe.py tests/unit/test_transcription_worker.py tests/unit/test_telegram_voice.py`; `git diff --check`.
+- remaining: CI/PostgreSQL/live Telegram and Whisper canaries are still pending for future slices; this slice is local unit coverage only.
+- next step: continue Phase B with another small voice crash/restart recovery gap, or move to Phase C Google Docs canary if operator credentials/disposable document are available. Keep the next slice a separate commit.
+
 ## Exact next command for a new agent
 
 ```bash
-git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,360p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
+git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,390p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
 ```
 
 Then start only the first incomplete phase shown in `Phase log`, commit it separately, update this handoff, and do not merge or push directly to `main` without explicit user approval.

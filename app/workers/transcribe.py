@@ -440,6 +440,9 @@ async def transcribe_and_reply(
                 event_id=event_id,
                 operation="transcription",
             )
+            transcript = transcript.strip()
+            if not transcript:
+                raise RuntimeError("Voice transcription returned empty text")
         except VoiceLeaseLost:
             raise
         except Exception:
@@ -860,7 +863,10 @@ async def _transcribe_file(local_path: str) -> str:
                     model=_WHISPER_MODEL,
                     file=audio_file,
                 )
-        return response.text.strip()
+        transcript = response.text.strip()
+        if not transcript:
+            raise RuntimeError("Whisper returned empty transcript")
+        return transcript
 
     return await asyncio.wait_for(_request(), timeout=_WHISPER_TIMEOUT_SECONDS)
 

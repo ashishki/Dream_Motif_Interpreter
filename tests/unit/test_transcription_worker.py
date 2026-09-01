@@ -252,6 +252,41 @@ async def test_transient_whisper_failure_retries_before_staging_reply() -> None:
 
 
 @pytest.mark.asyncio
+async def test_blank_whisper_result_is_retryable_without_empty_chat() -> None:
+    event = _state()
+    owner = "worker-a"
+    with (
+        patch("app.workers.transcribe.get_voice_media_event", new=AsyncMock(return_value=event)),
+        patch("app.workers.transcribe._transcribe_file", new=AsyncMock(return_value="   ")),
+        patch(
+            "app.workers.transcribe.record_voice_transcription_failure",
+            new=AsyncMock(return_value=1),
+        ) as record_failure,
+        patch("app.workers.transcribe.store_voice_transcript", new=AsyncMock()) as store,
+        patch("app.workers.transcribe.handle_chat_with_metadata", new=AsyncMock()) as chat,
+        patch("app.workers.transcribe.stage_and_deliver_voice_reply", new=AsyncMock()) as stage,
+        patch("app.workers.transcribe.asyncio.sleep", new=AsyncMock()) as sleep,
+        patch("app.workers.transcribe.update_voice_media_event_status", new=AsyncMock()),
+    ):
+        await transcribe_and_reply(
+            event_id=event.id,
+            local_path=event.local_path,
+            chat_id=42,
+            telegram_bot_token="TOKEN",
+            session_factory=MagicMock(),
+            facade=_facade(),
+            lease_owner=owner,
+        )
+
+    record_failure.assert_awaited_once()
+    assert record_failure.await_args.kwargs["lease_owner"] == owner
+    store.assert_not_awaited()
+    chat.assert_not_awaited()
+    stage.assert_not_awaited()
+    sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_leased_transcription_failure_defers_to_live_supervisor() -> None:
     event = _state()
     owner = "worker-a"
@@ -644,6 +679,28 @@ async def test_whisper_transport_is_single_attempt_bounded_and_closed(tmp_path) 
         timeout=_WHISPER_TIMEOUT_SECONDS,
         max_retries=0,
     )
+    transport.__aexit__.assert_awaited_once()
+    assert create.await_args.kwargs["file"].closed is True
+
+
+@pytest.mark.asyncio
+async def test_whisper_transport_rejects_blank_transcript(tmp_path) -> None:
+    audio_path = tmp_path / "voice.ogg"
+    audio_path.write_bytes(b"voice")
+    create = AsyncMock(return_value=SimpleNamespace(text=" \n "))
+    client = SimpleNamespace(audio=SimpleNamespace(transcriptions=SimpleNamespace(create=create)))
+    transport = MagicMock()
+    transport.__aenter__ = AsyncMock(return_value=client)
+    transport.__aexit__ = AsyncMock(return_value=None)
+    constructor = MagicMock(return_value=transport)
+
+    with (
+        patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}),
+        patch("openai.AsyncOpenAI", constructor),
+    ):
+        with pytest.raises(RuntimeError, match="empty transcript"):
+            await _transcribe_file(str(audio_path))
+
     transport.__aexit__.assert_awaited_once()
     assert create.await_args.kwargs["file"].closed is True
 

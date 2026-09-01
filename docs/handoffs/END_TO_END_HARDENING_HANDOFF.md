@@ -375,13 +375,20 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - completed: `scripts/eval_public_fixture.py` now has an explicit `--output` mode for creating or refreshing reviewed public-eval evidence artifacts without shell redirection. The write is parent-directory creating and atomic within the target directory. `--check` remains read-only and rejects `--output` so CI drift checks cannot accidentally rewrite evidence. The tracked public retrieval report was refreshed only for the evaluator source SHA; corpus, cases, metrics, gates, and traces stayed unchanged. `evals/privacy_safe_retrieval_v1/DATA_CARD.md` now documents both check and output commands.
 - tests: updated `tests/unit/test_public_fixture_eval.py` to cover direct artifact writes, CLI `--output`, and stale tracked-report rejection. Local checks passed: `uv run --extra dev ruff check scripts/eval_public_fixture.py tests/unit/test_public_fixture_eval.py`; `uv run --extra dev ruff format --check scripts/eval_public_fixture.py tests/unit/test_public_fixture_eval.py`; `uv run --extra dev pytest -q tests/unit/test_public_fixture_eval.py --tb=short` (`9 passed`); `uv run --extra dev python scripts/eval_public_fixture.py --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json`; `uv run --extra dev python -m compileall -q scripts/eval_public_fixture.py tests/unit/test_public_fixture_eval.py`; `git diff --check`.
-- remaining: publish this slice to `codex/end-to-end-hardening`, then watch CI. This still does not claim live hybrid retrieval, private-corpus quality, provider behavior, or production operation.
-- next step: publish this commit, sync local history, check PR #5 CI for the new commit, then continue Phase D by adding privacy-safe replay cases from the most expensive operator workflows or by running the full PostgreSQL/pgvector suite in CI.
+- remaining: remote commit `ebd19473df4f43e852e6920df41be354e147cd3e` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #241 completed successfully across install, Ruff lint, Ruff format, container contract, Pytest, public retrieval fixture, and retrieval eval. This still does not claim live hybrid retrieval, private-corpus quality, provider behavior, or production operation.
+- next step: continue Phase D by adding privacy-safe replay cases from the most expensive operator workflows or by running the full PostgreSQL/pgvector suite in CI.
+
+### Phase D — voice transcript save replay fixture
+
+- completed: added a privacy-safe PTB replay fixture for the operator workflow where the user replies to a transcribed voice message with an explicit save command. The integration replay now proves the transcript text is what gets archived and that the stable source event key belongs to the original voice message id, not the follow-up command message. The test patches durable transcript lookup and Telegram send boundaries, so it does not require live Telegram, Whisper, Redis, or PostgreSQL.
+- tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`5 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
+- remaining: publish this slice to `codex/end-to-end-hardening`, then watch CI. This replay proves routing/source identity only; it does not prove live Whisper transcription quality or Telegram delivery.
+- next step: publish this commit, sync local history, check PR #5 CI for the new commit, then continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
 
 ## Exact next command for a new agent
 
 ```bash
-git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,430p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
+git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,460p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
 ```
 
 Then start only the first incomplete phase shown in `Phase log`, commit it separately, update this handoff, and do not merge or push directly to `main` without explicit user approval.

@@ -42,5 +42,34 @@
     },
     "captured_text": "Мне приснилось, что я иду по мосту.",
     "reply_contains": "Вопрос заметил"
+  },
+  {
+    "id": "reply_to_transcribed_voice_saves_archive_text",
+    "update": {
+      "update_id": 1004,
+      "message": {
+        "message_id": 504,
+        "date": 1788048003,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "Сохрани этот сон",
+        "reply_to_message": {
+          "message_id": 704,
+          "date": 1788047990,
+          "chat": {"id": 42, "type": "private"},
+          "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+          "voice": {
+            "file_id": "synthetic-voice-file",
+            "file_unique_id": "synthetic-voice-unique",
+            "duration": 12,
+            "mime_type": "audio/ogg",
+            "file_size": 4096
+          }
+        }
+      }
+    },
+    "captured_text": "Мне приснилась стеклянная лестница и бумажный компас.",
+    "source_event_key": "telegram:42:message:704",
+    "reply_contains": "✅ Сон сохранён"
   }
 ]

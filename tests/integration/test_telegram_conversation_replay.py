@@ -147,6 +147,57 @@ async def test_real_ptb_routing_splits_compound_capture_from_question(
 
 
 @pytest.mark.asyncio
+async def test_real_ptb_routing_saves_transcribed_voice_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("reply_to_transcribed_voice_saves_archive_text")
+    application, facade = _build_application(monkeypatch)
+    session_factory = object()
+    application.bot_data["session_factory"] = session_factory
+    dream_id = uuid.UUID("22222222-2222-4222-8222-222222222222")
+    facade.create_dream.return_value = CreatedDreamItem(
+        id=dream_id,
+        date="2026-09-01",
+        title="Стеклянная лестница",
+        word_count=6,
+        source_doc_id="telegram:42",
+        created_at="2026-09-01T12:00:00+00:00",
+        created=True,
+        written_to_google_doc=False,
+        semantic_index_status="pending",
+        processing_status="pending",
+        google_doc_write_status="pending",
+    )
+    update = Update.de_json(case["update"], application.bot)
+    send_message = AsyncMock(return_value=_sent_message(application))
+    send_action = AsyncMock(return_value=True)
+    transcript_lookup = AsyncMock(return_value=("transcribed", case["captured_text"]))
+
+    with (
+        patch.object(type(application.bot), "send_message", new=send_message),
+        patch.object(type(application.bot), "send_chat_action", new=send_action),
+        patch(
+            "app.telegram.handlers.get_voice_transcript_for_message",
+            new=transcript_lookup,
+        ),
+    ):
+        await application.process_update(update)
+
+    transcript_lookup.assert_awaited_once_with(
+        session_factory,
+        chat_id=42,
+        telegram_message_id=704,
+    )
+    facade.create_dream.assert_awaited_once_with(
+        case["captured_text"],
+        chat_id=42,
+        source_event_key=case["source_event_key"],
+    )
+    assert send_message.await_count == 1
+    assert case["reply_contains"] in send_message.await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
 async def test_real_ptb_guard_blocks_unauthorized_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

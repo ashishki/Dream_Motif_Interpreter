@@ -410,8 +410,8 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - completed: added a privacy-safe PTB replay fixture for a bare `да` after restart when neither process-local nor Redis-backed pending confirmation state exists. The integration replay proves the handler returns `UNKNOWN_CONFIRMATION_REPLY`, leaves pending state empty, and does not call either `facade.create_dream` or assistant fallback chat.
 - tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`9 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
-- remaining: publish this local slice to `codex/end-to-end-hardening` through the GitHub connector and watch PR #5 CI. This is a routing replay only; it does not prove live Redis availability.
-- next step: publish this commit, then continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
+- remaining: remote commit `78a6ef41c9e9eef7a6a93c96eb1ceedc18e80c68` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #257 completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest. This is a routing replay only; it does not prove live Redis availability.
+- next step: continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
 
 ## Exact next command for a new agent
 

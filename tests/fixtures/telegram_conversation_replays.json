@@ -71,5 +71,33 @@
     "captured_text": "Мне приснилась стеклянная лестница и бумажный компас.",
     "source_event_key": "telegram:42:message:704",
     "reply_contains": "✅ Сон сохранён"
+  },
+  {
+    "id": "same_text_distinct_messages_keep_distinct_source_events",
+    "updates": [
+      {
+        "update_id": 1005,
+        "message": {
+          "message_id": 505,
+          "date": 1788048004,
+          "chat": {"id": 42, "type": "private"},
+          "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+          "text": "Мне приснилось, что я нашёл синий ключ."
+        }
+      },
+      {
+        "update_id": 1006,
+        "message": {
+          "message_id": 506,
+          "date": 1788048005,
+          "chat": {"id": 42, "type": "private"},
+          "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+          "text": "Мне приснилось, что я нашёл синий ключ."
+        }
+      }
+    ],
+    "captured_text": "Мне приснилось, что я нашёл синий ключ.",
+    "source_event_keys": ["telegram:42:message:505", "telegram:42:message:506"],
+    "reply_contains": "✅ Сон сохранён"
   }
 ]

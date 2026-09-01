@@ -382,13 +382,20 @@ Each phase must be a separate small commit. After every phase, update this file 
 
 - completed: added a privacy-safe PTB replay fixture for the operator workflow where the user replies to a transcribed voice message with an explicit save command. The integration replay now proves the transcript text is what gets archived and that the stable source event key belongs to the original voice message id, not the follow-up command message. The test patches durable transcript lookup and Telegram send boundaries, so it does not require live Telegram, Whisper, Redis, or PostgreSQL.
 - tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`5 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
-- remaining: publish this slice to `codex/end-to-end-hardening`, then watch CI. This replay proves routing/source identity only; it does not prove live Whisper transcription quality or Telegram delivery.
+- remaining: remote commit `180682961e0c41dc6a1331c3b8c323ef73abb95c` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #243 was still in progress when the next Phase D replay slice began. This replay proves routing/source identity only; it does not prove live Whisper transcription quality or Telegram delivery.
+- next step: watch PR #5 CI run #243, then continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
+
+### Phase D — same-text distinct-message replay fixture
+
+- completed: added a privacy-safe PTB replay fixture with two different Telegram message IDs carrying the exact same dream text. The integration replay now proves the handler forwards the same raw text twice but with distinct source event keys, preserving the boundary between a duplicate replay of one message and a legitimate new same-text message.
+- tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`6 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
+- remaining: publish this slice to `codex/end-to-end-hardening`, then watch CI. This is a routing/source-identity replay only; duplicate suppression itself remains enforced deeper in durable capture by `source_event_key`.
 - next step: publish this commit, sync local history, check PR #5 CI for the new commit, then continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
 
 ## Exact next command for a new agent
 
 ```bash
-git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,460p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
+git fetch origin && git switch codex/end-to-end-hardening && git pull --ff-only origin codex/end-to-end-hardening && sed -n '1,490p' docs/handoffs/END_TO_END_HARDENING_HANDOFF.md
 ```
 
 Then start only the first incomplete phase shown in `Phase log`, commit it separately, update this handoff, and do not merge or push directly to `main` without explicit user approval.

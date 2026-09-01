@@ -198,6 +198,66 @@ async def test_real_ptb_routing_saves_transcribed_voice_reply(
 
 
 @pytest.mark.asyncio
+async def test_real_ptb_routing_keeps_same_text_messages_distinct(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("same_text_distinct_messages_keep_distinct_source_events")
+    application, facade = _build_application(monkeypatch)
+    facade.create_dream.side_effect = [
+        CreatedDreamItem(
+            id=uuid.UUID("33333333-3333-4333-8333-333333333333"),
+            date="2026-09-01",
+            title="Синий ключ",
+            word_count=6,
+            source_doc_id="telegram:42",
+            created_at="2026-09-01T12:01:00+00:00",
+            created=True,
+            written_to_google_doc=False,
+            semantic_index_status="pending",
+            processing_status="pending",
+            google_doc_write_status="pending",
+        ),
+        CreatedDreamItem(
+            id=uuid.UUID("44444444-4444-4444-8444-444444444444"),
+            date="2026-09-01",
+            title="Синий ключ",
+            word_count=6,
+            source_doc_id="telegram:42",
+            created_at="2026-09-01T12:02:00+00:00",
+            created=True,
+            written_to_google_doc=False,
+            semantic_index_status="pending",
+            processing_status="pending",
+            google_doc_write_status="pending",
+        ),
+    ]
+    send_message = AsyncMock(
+        side_effect=[_sent_message(application, 921), _sent_message(application, 922)]
+    )
+    send_action = AsyncMock(return_value=True)
+
+    with (
+        patch.object(type(application.bot), "send_message", new=send_message),
+        patch.object(type(application.bot), "send_chat_action", new=send_action),
+    ):
+        for update_payload in case["updates"]:
+            await application.process_update(Update.de_json(update_payload, application.bot))
+
+    assert facade.create_dream.await_count == 2
+    for index, create_call in enumerate(facade.create_dream.await_args_list):
+        assert create_call.args == (case["captured_text"],)
+        assert create_call.kwargs == {
+            "chat_id": 42,
+            "source_event_key": case["source_event_keys"][index],
+        }
+    assert send_message.await_count == 2
+    assert all(
+        case["reply_contains"] in send_call.kwargs["text"]
+        for send_call in send_message.await_args_list
+    )
+
+
+@pytest.mark.asyncio
 async def test_real_ptb_guard_blocks_unauthorized_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -413,6 +413,13 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: remote commit `78a6ef41c9e9eef7a6a93c96eb1ceedc18e80c68` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #257 completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest. This is a routing replay only; it does not prove live Redis availability.
 - next step: continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
 
+### Phase D — persisted displayed-message note replay
+
+- completed: added a privacy-safe PTB replay fixture for replying with a direct note to a previously displayed dream card after restart, when the message-to-dream mapping exists only in `RedisOperationalStateStore`. The integration replay clears process-local displayed-message state, processes a real `reply_to_message` update through `Application.process_update`, rehydrates the displayed-message mapping from Redis, and routes the note to the exact dream UUID without falling back to assistant chat.
+- tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`10 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
+- remaining: publish this local slice to `codex/end-to-end-hardening` through the GitHub connector and watch PR #5 CI. This proves replay routing and Redis-backed message identity only; it does not prove live Redis availability or durable note database writes beyond the facade boundary.
+- next step: publish this commit, then continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
+
 ## Exact next command for a new agent
 
 ```bash

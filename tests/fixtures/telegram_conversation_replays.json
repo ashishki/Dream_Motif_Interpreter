@@ -156,5 +156,44 @@
       }
     },
     "reply_contains": "Не вижу ожидающего подтверждения"
+  },
+  {
+    "id": "reply_note_uses_persisted_displayed_message_after_restart",
+    "displayed_message": {
+      "message_id": 910,
+      "refs": [
+        {
+          "index": 1,
+          "dream_id": "66666666-6666-4666-8666-666666666666",
+          "date": "2026-09-01",
+          "title": "Красная дверь"
+        }
+      ]
+    },
+    "update": {
+      "update_id": 1010,
+      "message": {
+        "message_id": 510,
+        "date": 1788048009,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "Добавь заметку к этому сну: красная дверь важна",
+        "reply_to_message": {
+          "message_id": 910,
+          "date": 1788047999,
+          "chat": {"id": 42, "type": "private"},
+          "from": {
+            "id": 123456,
+            "is_bot": true,
+            "first_name": "Replay",
+            "username": "replay_bot"
+          },
+          "text": "01.09.26 - Красная дверь"
+        }
+      }
+    },
+    "dream_id": "66666666-6666-4666-8666-666666666666",
+    "note_text": "красная дверь важна",
+    "reply_contains": "Заметка добавлена под нужным сном."
   }
 ]

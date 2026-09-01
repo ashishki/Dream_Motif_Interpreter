@@ -12,9 +12,13 @@ from telegram import Message, Update, User
 from app.assistant.chat import ChatResult
 from app.assistant.facade import AssistantFacade, CreatedDreamItem
 from app.assistant.session import (
+    DisplayedDreamRef,
+    DisplayedDreamSet,
     PendingDreamDraft,
     RedisOperationalStateStore,
+    clear_displayed_dream_set,
     clear_pending_dream_draft,
+    load_displayed_dream_message,
     load_pending_dream_draft,
 )
 from app.shared.config import get_settings
@@ -392,6 +396,53 @@ async def test_real_ptb_routing_rejects_unbound_confirmation_after_restart(
     chat_handler.assert_not_awaited()
     assert load_pending_dream_draft(42) is None
     assert await state_store.load_pending_dream(42) is None
+    assert send_message.await_count == 1
+    assert case["reply_contains"] in send_message.await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_real_ptb_routing_reply_note_uses_persisted_displayed_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("reply_note_uses_persisted_displayed_message_after_restart")
+    displayed_message = case["displayed_message"]
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram-replay")
+    refs = [
+        DisplayedDreamRef(
+            index=ref["index"],
+            dream_id=ref["dream_id"],
+            date=ref["date"],
+            title=ref["title"],
+        )
+        for ref in displayed_message["refs"]
+    ]
+    await state_store.save_displayed_message(
+        42,
+        displayed_message["message_id"],
+        DisplayedDreamSet(refs=refs, created_at=datetime.now(timezone.utc)),
+    )
+    clear_displayed_dream_set(42)
+    application, facade = _build_application(monkeypatch)
+    application.bot_data["operational_state_store"] = state_store
+    facade.add_dream_note.return_value = (True, case["reply_contains"])
+    update = Update.de_json(case["update"], application.bot)
+    send_message = AsyncMock(return_value=_sent_message(application))
+    chat_handler = AsyncMock(return_value=ChatResult("fallback", []))
+
+    with (
+        patch.object(type(application.bot), "send_message", new=send_message),
+        patch("app.telegram.handlers.handle_chat_with_metadata", new=chat_handler),
+    ):
+        await application.process_update(update)
+
+    chat_handler.assert_not_awaited()
+    facade.add_dream_note.assert_awaited_once_with(
+        case["note_text"],
+        dream_id=uuid.UUID(case["dream_id"]),
+        chat_id=42,
+    )
+    assert load_displayed_dream_message(42, displayed_message["message_id"]) is not None
+    assert await state_store.load_displayed_message(42, displayed_message["message_id"]) is not None
     assert send_message.await_count == 1
     assert case["reply_contains"] in send_message.await_args.kwargs["text"]
 

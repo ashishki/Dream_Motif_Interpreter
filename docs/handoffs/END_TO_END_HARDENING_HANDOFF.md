@@ -434,6 +434,13 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: remote commit `fd5ff713613297912d79822864159a751c0edf12` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #269 completed successfully across install, Ruff lint, Ruff format, container contract, full Pytest, public retrieval fixture, and retrieval eval. This proves restart-safe interpretation confirmation routing against an in-memory Redis double only; it does not claim live Redis, model-provider quality, or production operation. The next uncovered restart-sensitive operator-state replay is the pending single-note target flow.
 - next step: continue Phase D with the pending single-note target replay or run the full PostgreSQL/pgvector suite in CI. Keep the next slice separate.
 
+### Phase D — persisted single-note target replay
+
+- completed: added privacy-safe PTB replay fixtures for the restart window where a pending one-dream note exists only in `RedisOperationalStateStore` and the user then targets one displayed dream by replying `К этому` to its bot message. The positive replay proves `Application.process_update` rehydrates both the pending note and displayed-message target mapping from Redis, applies the note to the exact dream UUID, clears Redis and process-local pending note state, and does not fall back to assistant chat. The negative replay proves `нет` clears the same pending note state without calling `facade.add_dream_note`.
+- tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`16 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
+- remaining: publish this slice to `codex/end-to-end-hardening` and wait for PR #5 CI. This proves restart-safe single-note routing and Redis-backed target identity against an in-memory Redis double only; it does not claim live Redis availability or durable note database writes beyond the facade boundary.
+- next step: continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI. Keep the next slice separate.
+
 ## Exact next command for a new agent
 
 ```bash

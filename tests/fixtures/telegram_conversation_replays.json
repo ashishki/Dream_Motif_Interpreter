@@ -295,5 +295,63 @@
       }
     },
     "reply_contains": "Хорошо, не запускаю интерпретацию."
+  },
+  {
+    "id": "persisted_single_note_target_saves_after_restart",
+    "pending_single_note": {
+      "note_text": "красная дверь повторяется"
+    },
+    "displayed_message": {
+      "message_id": 911,
+      "refs": [
+        {
+          "index": 1,
+          "dream_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          "date": "2026-09-02",
+          "title": "Красная дверь"
+        }
+      ]
+    },
+    "update": {
+      "update_id": 1015,
+      "message": {
+        "message_id": 515,
+        "date": 1788048014,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "К этому",
+        "reply_to_message": {
+          "message_id": 911,
+          "date": 1788048009,
+          "chat": {"id": 42, "type": "private"},
+          "from": {
+            "id": 123456,
+            "is_bot": true,
+            "first_name": "Replay",
+            "username": "replay_bot"
+          },
+          "text": "02.09.26 - Красная дверь"
+        }
+      }
+    },
+    "dream_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "reply_contains": "Заметка добавлена под нужным сном."
+  },
+  {
+    "id": "persisted_single_note_rejection_clears_after_restart",
+    "pending_single_note": {
+      "note_text": "не добавлять эту деталь"
+    },
+    "update": {
+      "update_id": 1016,
+      "message": {
+        "message_id": 516,
+        "date": 1788048015,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "нет"
+      }
+    },
+    "reply_contains": "Хорошо, не добавляю заметку."
   }
 ]

@@ -257,5 +257,43 @@
       }
     },
     "reply_contains": "Хорошо, не добавляю заметку."
+  },
+  {
+    "id": "persisted_interpretation_confirmation_runs_after_restart",
+    "pending_interpretation": {
+      "dream_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "prompt": "Бережно разобрать образ стеклянного моста",
+      "source_message_id": 713
+    },
+    "update": {
+      "update_id": 1013,
+      "message": {
+        "message_id": 513,
+        "date": 1788048012,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "да"
+      }
+    },
+    "reply_contains": "Осторожная гипотеза о переходе."
+  },
+  {
+    "id": "persisted_interpretation_rejection_clears_after_restart",
+    "pending_interpretation": {
+      "dream_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "prompt": "Разобрать образ закрытой библиотеки",
+      "source_message_id": 714
+    },
+    "update": {
+      "update_id": 1014,
+      "message": {
+        "message_id": 514,
+        "date": 1788048013,
+        "chat": {"id": 42, "type": "private"},
+        "from": {"id": 42, "is_bot": false, "first_name": "Test"},
+        "text": "нет"
+      }
+    },
+    "reply_contains": "Хорошо, не запускаю интерпретацию."
   }
 ]

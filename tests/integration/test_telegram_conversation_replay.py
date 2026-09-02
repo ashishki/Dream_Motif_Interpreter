@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -16,13 +17,16 @@ from app.assistant.session import (
     DisplayedDreamSet,
     PendingBatchDreamNote,
     PendingDreamDraft,
+    PendingInterpretationRequest,
     RedisOperationalStateStore,
     clear_displayed_dream_set,
     clear_pending_batch_dream_note,
     clear_pending_dream_draft,
+    clear_pending_interpretation_request,
     load_displayed_dream_message,
     load_pending_batch_dream_note,
     load_pending_dream_draft,
+    load_pending_interpretation_request,
 )
 from app.shared.config import get_settings
 from app.telegram.bot import build_application
@@ -530,6 +534,84 @@ async def test_real_ptb_routing_rejects_persisted_batch_note_after_restart(
     facade.add_dream_note.assert_not_awaited()
     assert load_pending_batch_dream_note(42) is None
     assert await state_store.load_pending_batch_note(42) is None
+    assert send_message.await_count == 1
+    assert case["reply_contains"] in send_message.await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_real_ptb_routing_confirms_persisted_interpretation_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("persisted_interpretation_confirmation_runs_after_restart")
+    pending = case["pending_interpretation"]
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram-replay")
+    await state_store.save_pending_interpretation(
+        42,
+        PendingInterpretationRequest(
+            dream_id=pending["dream_id"],
+            prompt=pending["prompt"],
+            source_message_id=pending["source_message_id"],
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_pending_interpretation_request(42)
+    application, facade = _build_application(monkeypatch)
+    application.bot_data["operational_state_store"] = state_store
+    facade.interpret_dream_with_prompt.return_value = SimpleNamespace(text=case["reply_contains"])
+    update = Update.de_json(case["update"], application.bot)
+    send_message = AsyncMock(return_value=_sent_message(application))
+    chat_handler = AsyncMock(return_value=ChatResult("fallback", []))
+
+    with (
+        patch.object(type(application.bot), "send_message", new=send_message),
+        patch("app.telegram.handlers.handle_chat_with_metadata", new=chat_handler),
+    ):
+        await application.process_update(update)
+
+    chat_handler.assert_not_awaited()
+    facade.interpret_dream_with_prompt.assert_awaited_once_with(
+        dream_id=uuid.UUID(pending["dream_id"]),
+        prompt=pending["prompt"],
+    )
+    assert load_pending_interpretation_request(42) is None
+    assert await state_store.load_pending_interpretation(42) is None
+    assert send_message.await_count == 1
+    assert case["reply_contains"] in send_message.await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_real_ptb_routing_rejects_persisted_interpretation_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case("persisted_interpretation_rejection_clears_after_restart")
+    pending = case["pending_interpretation"]
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram-replay")
+    await state_store.save_pending_interpretation(
+        42,
+        PendingInterpretationRequest(
+            dream_id=pending["dream_id"],
+            prompt=pending["prompt"],
+            source_message_id=pending["source_message_id"],
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_pending_interpretation_request(42)
+    application, facade = _build_application(monkeypatch)
+    application.bot_data["operational_state_store"] = state_store
+    update = Update.de_json(case["update"], application.bot)
+    send_message = AsyncMock(return_value=_sent_message(application))
+    chat_handler = AsyncMock(return_value=ChatResult("fallback", []))
+
+    with (
+        patch.object(type(application.bot), "send_message", new=send_message),
+        patch("app.telegram.handlers.handle_chat_with_metadata", new=chat_handler),
+    ):
+        await application.process_update(update)
+
+    chat_handler.assert_not_awaited()
+    facade.interpret_dream_with_prompt.assert_not_awaited()
+    assert load_pending_interpretation_request(42) is None
+    assert await state_store.load_pending_interpretation(42) is None
     assert send_message.await_count == 1
     assert case["reply_contains"] in send_message.await_args.kwargs["text"]
 

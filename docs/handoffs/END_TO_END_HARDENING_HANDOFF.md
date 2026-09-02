@@ -427,6 +427,13 @@ Each phase must be a separate small commit. After every phase, update this file 
 - remaining: remote commit `393b8c7c73170a12384196423a968f6b9dc3503f` was published through the GitHub connector because the local HTTPS remote had no git credentials. PR #5 CI run #265 completed successfully across install, Ruff lint, Ruff format, container contract, and Pytest. This proves replay routing and Redis-backed pending-note identity only; it does not prove live Redis availability or durable note database writes beyond the facade boundary.
 - next step: continue Phase D with another privacy-safe replay case or run the full PostgreSQL/pgvector suite in CI.
 
+### Phase D — persisted interpretation confirmation replay
+
+- completed: added privacy-safe PTB replay fixtures for the restart window where a pending interpretation request exists only in `RedisOperationalStateStore` and the user replies `да` or `нет` after process-local state is gone. The positive replay proves `Application.process_update` rehydrates the exact dream UUID and reviewed prompt, runs the interpretation once, clears Redis and process-local pending state, and does not fall back to assistant chat. The negative replay proves cancellation clears the same state without starting interpretation.
+- tests: updated `tests/fixtures/telegram_conversation_replays.json` and `tests/integration/test_telegram_conversation_replay.py`. Local checks passed: `uv run --extra dev pytest -q tests/integration/test_telegram_conversation_replay.py --tb=short` (`14 passed`); `uv run --extra dev ruff check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev ruff format --check tests/integration/test_telegram_conversation_replay.py`; `uv run --extra dev python -m json.tool tests/fixtures/telegram_conversation_replays.json`; `uv run --extra dev python -m compileall -q tests/integration/test_telegram_conversation_replay.py`; `git diff --check`.
+- remaining: this proves restart-safe interpretation confirmation routing against an in-memory Redis double only; it does not claim live Redis, model-provider quality, or production operation. The next uncovered restart-sensitive operator-state replay is the pending single-note target flow.
+- next step: after PR #5 CI is green for this slice, continue Phase D with the pending single-note target replay or run the full PostgreSQL/pgvector suite in CI. Keep the next slice separate.
+
 ## Exact next command for a new agent
 
 ```bash

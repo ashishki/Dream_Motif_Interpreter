@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections import defaultdict
 from collections.abc import Iterable
 from typing import Any
 
@@ -24,11 +25,15 @@ def build_dream_memory_snapshot(
     dreams: Iterable[DreamEntry],
     motifs: Iterable[MotifInduction],
     privacy_controls: DreamGraphPrivacyControls | None = None,
+    include_dream_labels: bool = False,
 ) -> DreamGraphSnapshot:
     dream_items = list(dreams)
     motif_items = list(motifs)
     source_dreams = tuple(dream_to_source_ref(dream) for dream in dream_items)
-    dream_nodes = tuple(dream_to_graph_node(dream) for dream in dream_items)
+    dream_nodes = tuple(
+        dream_to_graph_node(dream, include_human_label=include_dream_labels)
+        for dream in dream_items
+    )
     dream_node_ids = {node.id for node in dream_nodes}
     motif_nodes = tuple(motif_to_graph_node(motif) for motif in motif_items)
     motif_edges = tuple(
@@ -36,11 +41,12 @@ def build_dream_memory_snapshot(
         for motif in motif_items
         if (edge := motif_to_dream_edge(motif)).target_node_id in dream_node_ids
     )
+    repeat_edges = motif_repeat_edges(motif_items)
 
     return DreamGraphSnapshot(
         source_dreams=source_dreams,
         nodes=dream_nodes + motif_nodes,
-        edges=motif_edges,
+        edges=motif_edges + repeat_edges,
         privacy_controls=privacy_controls or DreamGraphPrivacyControls(),
     )
 
@@ -54,11 +60,20 @@ def dream_to_source_ref(dream: DreamEntry) -> SourceDreamExportRef:
     )
 
 
-def dream_to_graph_node(dream: DreamEntry) -> GraphNode:
+def dream_to_graph_node(
+    dream: DreamEntry,
+    *,
+    include_human_label: bool = False,
+) -> GraphNode:
+    label = f"dream:{dream.id}"
+    if include_human_label:
+        title = dream.title.strip() or "Без названия"
+        dream_date = getattr(dream, "date", None)
+        label = f"{dream_date.strftime('%d.%m.%y')} — {title}" if dream_date else title
     return GraphNode(
         id=dream_node_id(dream.id),
         node_type=GraphNodeType.DREAM,
-        label=f"dream:{dream.id}",
+        label=label,
         confirmation_status=GraphConfirmationStatus.CONFIRMED,
     )
 
@@ -80,6 +95,63 @@ def motif_to_dream_edge(motif: MotifInduction) -> GraphEdge:
         target_node_id=dream_node_id(motif.dream_id),
         confirmation_status=_motif_confirmation_status(motif.status),
         suggestion=motif_suggestion_provenance(motif),
+    )
+
+
+def motif_repeat_edges(motifs: Iterable[MotifInduction]) -> tuple[GraphEdge, ...]:
+    """Connect recurring reviewed suggestions while preserving per-dream motif nodes."""
+
+    groups: dict[str, list[MotifInduction]] = defaultdict(list)
+    for motif in motifs:
+        if motif.status == "rejected":
+            continue
+        normalized_label = " ".join(motif.label.casefold().split())
+        if normalized_label:
+            groups[normalized_label].append(motif)
+
+    edges: list[GraphEdge] = []
+    for group in groups.values():
+        ordered = sorted(group, key=lambda motif: str(motif.id))
+        for source, target in zip(ordered, ordered[1:], strict=False):
+            if source.dream_id == target.dream_id:
+                continue
+            status = (
+                GraphConfirmationStatus.CONFIRMED
+                if source.status == target.status == "confirmed"
+                else GraphConfirmationStatus.UNREVIEWED
+            )
+            edges.append(
+                GraphEdge(
+                    id=f"edge:motif_repeat:{source.id}:{target.id}",
+                    edge_type=GraphEdgeType.REPEATS_WITH,
+                    source_node_id=motif_node_id(source.id),
+                    target_node_id=motif_node_id(target.id),
+                    confirmation_status=status,
+                    suggestion=_repeat_suggestion_provenance(source, target),
+                )
+            )
+    return tuple(edges)
+
+
+def _repeat_suggestion_provenance(
+    source: MotifInduction,
+    target: MotifInduction,
+) -> ModelSuggestionProvenance | None:
+    fragments = motif_suggestion_provenance(source)
+    target_fragments = motif_suggestion_provenance(target)
+    refs = tuple(
+        ref
+        for suggestion in (fragments, target_fragments)
+        if suggestion is not None
+        for ref in suggestion.source_fragments
+    )
+    if not refs:
+        return None
+    return ModelSuggestionProvenance(
+        model_name="motif-repeat-link",
+        model_version="exact-label-v1",
+        confidence="user-confirmed" if source.status == target.status == "confirmed" else "review",
+        source_fragments=refs,
     )
 
 

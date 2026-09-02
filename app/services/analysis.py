@@ -47,6 +47,15 @@ class AnalysisService:
                 )
             categories = list(categories_result.scalars().all())
             assignments = await self._theme_extractor.extract(dream_entry, categories)
+            # Provider output is not trusted to respect the database identity.
+            # Keep one assignment per category so malformed duplicate output
+            # cannot make every durable replay fail the same unique constraint.
+            assignments_by_category: dict[uuid.UUID, ThemeAssignment] = {}
+            for assignment in assignments:
+                current = assignments_by_category.get(assignment.category_id)
+                if current is None or assignment.salience > current.salience:
+                    assignments_by_category[assignment.category_id] = assignment
+            assignments = list(assignments_by_category.values())
             grounded_themes = await self._grounder.ground(dream_entry, assignments)
             grounded_by_category = {
                 grounded_theme.category_id: grounded_theme for grounded_theme in grounded_themes
@@ -98,6 +107,16 @@ class AnalysisService:
                             deprecated=False,
                         )
                     )
+                    continue
+
+                if (
+                    existing_theme.salience == grounded_theme.salience
+                    and existing_theme.match_type == assignment.match_type
+                    and list(existing_theme.fragments or []) == list(grounded_theme.fragments or [])
+                ):
+                    # A worker may crash after this service commits but before
+                    # the outbox checkpoint advances.  Replaying identical
+                    # analysis must not create a synthetic history version.
                     continue
 
                 session.add(

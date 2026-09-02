@@ -7,12 +7,14 @@ Session history is operational state — it is separate from the dream archive.
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
+from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -22,12 +24,14 @@ LOGGER = logging.getLogger(__name__)
 
 MAX_HISTORY_MESSAGES = 20
 HISTORY_TTL_DAYS = 7
+HISTORY_TTL_SECONDS = HISTORY_TTL_DAYS * 24 * 60 * 60
 PENDING_DREAM_TTL_MINUTES = 30
 MAX_PENDING_DREAM_DRAFTS = 10_000
 PENDING_INTERPRETATION_TTL_MINUTES = 30
 MAX_PENDING_INTERPRETATION_REQUESTS = 10_000
 RECENT_DREAM_SET_TTL_MINUTES = 120
 MAX_RECENT_DREAM_SETS = 10_000
+OPERATIONAL_STATE_KEY_PREFIX = "dream_motif:telegram_state"
 
 
 @dataclass(slots=True)
@@ -82,6 +86,337 @@ class PendingSingleDreamNote:
     created_at: datetime
 
 
+class RedisOperationalStateStore:
+    """Short-lived Telegram workflow state that survives bot restarts.
+
+    Conversation history belongs in PostgreSQL, while reply targets and pending
+    confirmations are deliberately short-lived.  Redis gives those references a
+    TTL and avoids turning them into archive data.  Every operation is best
+    effort: a Redis outage must not make dream capture unavailable.
+    """
+
+    def __init__(
+        self, redis_client: Any, *, key_prefix: str = OPERATIONAL_STATE_KEY_PREFIX
+    ) -> None:
+        self._redis = redis_client
+        self._key_prefix = key_prefix.rstrip(":")
+
+    @classmethod
+    def from_url(cls, redis_url: str) -> RedisOperationalStateStore:
+        from redis import asyncio as aioredis
+
+        return cls(aioredis.from_url(redis_url, decode_responses=True))
+
+    async def save_displayed_set(self, chat_id: int, displayed: DisplayedDreamSet) -> None:
+        await self._set(
+            self._key(chat_id, "displayed", "latest"),
+            _displayed_set_payload(displayed),
+            ttl_seconds=RECENT_DREAM_SET_TTL_MINUTES * 60,
+        )
+
+    async def load_displayed_set(self, chat_id: int) -> DisplayedDreamSet | None:
+        payload = await self._get(self._key(chat_id, "displayed", "latest"))
+        return _displayed_set_from_payload(payload)
+
+    async def check_available(self) -> bool:
+        try:
+            return bool(await self._redis.ping())
+        except Exception:
+            LOGGER.error(
+                "Telegram operational state Redis is unavailable; restart-safe "
+                "confirmations are degraded",
+                exc_info=True,
+            )
+            return False
+
+    async def aclose(self) -> None:
+        """Close the owned Redis transport during Telegram application shutdown."""
+        close = getattr(self._redis, "aclose", None)
+        if close is None:
+            close = getattr(self._redis, "close", None)
+        if not callable(close):
+            return
+        result = close()
+        if inspect.isawaitable(result):
+            await result
+
+    async def save_pending_dream(
+        self,
+        chat_id: int,
+        draft: PendingDreamDraft,
+    ) -> None:
+        await self._set(
+            self._key(chat_id, "pending_dream"),
+            {
+                "raw_text": draft.raw_text,
+                "title": draft.title,
+                "dream_date": draft.dream_date,
+                "source_message_id": draft.source_message_id,
+                "source_kind": draft.source_kind,
+                "created_at": draft.created_at.isoformat(),
+            },
+            ttl_seconds=PENDING_DREAM_TTL_MINUTES * 60,
+        )
+
+    async def load_pending_dream(self, chat_id: int) -> PendingDreamDraft | None:
+        payload = await self._get(self._key(chat_id, "pending_dream"))
+        if not isinstance(payload, dict):
+            return None
+        try:
+            draft = PendingDreamDraft(
+                raw_text=str(payload["raw_text"]).strip(),
+                title=str(payload["title"]) if payload.get("title") is not None else None,
+                dream_date=(
+                    str(payload["dream_date"]) if payload.get("dream_date") is not None else None
+                ),
+                source_message_id=(
+                    int(payload["source_message_id"])
+                    if payload.get("source_message_id") is not None
+                    else None
+                ),
+                source_kind=str(payload["source_kind"]),
+                created_at=_parse_utc_datetime(payload["created_at"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+        if draft.source_kind not in {"text", "voice_transcript"}:
+            return None
+        if datetime.now(tz=timezone.utc) - draft.created_at > timedelta(
+            minutes=PENDING_DREAM_TTL_MINUTES
+        ):
+            return None
+        return draft
+
+    async def delete_pending_dream(self, chat_id: int) -> None:
+        await self._delete(self._key(chat_id, "pending_dream"))
+
+    async def save_pending_interpretation(
+        self,
+        chat_id: int,
+        request: PendingInterpretationRequest,
+    ) -> None:
+        await self._set(
+            self._key(chat_id, "pending_interpretation"),
+            {
+                "dream_id": request.dream_id,
+                "prompt": request.prompt,
+                "source_message_id": request.source_message_id,
+                "created_at": request.created_at.isoformat(),
+            },
+            ttl_seconds=PENDING_INTERPRETATION_TTL_MINUTES * 60,
+        )
+
+    async def load_pending_interpretation(
+        self,
+        chat_id: int,
+    ) -> PendingInterpretationRequest | None:
+        payload = await self._get(self._key(chat_id, "pending_interpretation"))
+        if not isinstance(payload, dict):
+            return None
+        try:
+            request = PendingInterpretationRequest(
+                dream_id=str(payload["dream_id"]),
+                prompt=str(payload["prompt"]).strip(),
+                source_message_id=(
+                    int(payload["source_message_id"])
+                    if payload.get("source_message_id") is not None
+                    else None
+                ),
+                created_at=_parse_utc_datetime(payload["created_at"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+        if datetime.now(tz=timezone.utc) - request.created_at > timedelta(
+            minutes=PENDING_INTERPRETATION_TTL_MINUTES
+        ):
+            return None
+        return request
+
+    async def delete_pending_interpretation(self, chat_id: int) -> None:
+        await self._delete(self._key(chat_id, "pending_interpretation"))
+
+    async def save_displayed_message(
+        self,
+        chat_id: int,
+        message_id: int,
+        displayed: DisplayedDreamSet,
+    ) -> None:
+        await self._set(
+            self._key(chat_id, "displayed_message", str(message_id)),
+            _displayed_set_payload(displayed),
+            ttl_seconds=RECENT_DREAM_SET_TTL_MINUTES * 60,
+        )
+
+    async def load_displayed_message(
+        self,
+        chat_id: int,
+        message_id: int,
+    ) -> DisplayedDreamSet | None:
+        payload = await self._get(self._key(chat_id, "displayed_message", str(message_id)))
+        return _displayed_set_from_payload(payload)
+
+    async def save_pending_batch_note(
+        self,
+        chat_id: int,
+        pending: PendingBatchDreamNote,
+    ) -> None:
+        await self._set(
+            self._key(chat_id, "pending_batch_note"),
+            {
+                "note_text": pending.note_text,
+                "refs": [_displayed_ref_payload(ref) for ref in pending.refs],
+                "created_at": pending.created_at.isoformat(),
+            },
+            ttl_seconds=PENDING_INTERPRETATION_TTL_MINUTES * 60,
+        )
+
+    async def load_pending_batch_note(self, chat_id: int) -> PendingBatchDreamNote | None:
+        payload = await self._get(self._key(chat_id, "pending_batch_note"))
+        if not isinstance(payload, dict):
+            return None
+        try:
+            refs = [_displayed_ref_from_payload(item) for item in payload.get("refs", [])]
+            pending = PendingBatchDreamNote(
+                note_text=str(payload["note_text"]).strip(),
+                refs=[ref for ref in refs if ref is not None],
+                created_at=_parse_utc_datetime(payload["created_at"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+        if datetime.now(tz=timezone.utc) - pending.created_at > timedelta(
+            minutes=PENDING_INTERPRETATION_TTL_MINUTES
+        ):
+            return None
+        return pending
+
+    async def delete_pending_batch_note(self, chat_id: int) -> None:
+        await self._delete(self._key(chat_id, "pending_batch_note"))
+
+    async def save_pending_single_note(
+        self,
+        chat_id: int,
+        pending: PendingSingleDreamNote,
+    ) -> None:
+        await self._set(
+            self._key(chat_id, "pending_single_note"),
+            {
+                "note_text": pending.note_text,
+                "created_at": pending.created_at.isoformat(),
+            },
+            ttl_seconds=PENDING_INTERPRETATION_TTL_MINUTES * 60,
+        )
+
+    async def load_pending_single_note(self, chat_id: int) -> PendingSingleDreamNote | None:
+        payload = await self._get(self._key(chat_id, "pending_single_note"))
+        if not isinstance(payload, dict):
+            return None
+        try:
+            pending = PendingSingleDreamNote(
+                note_text=str(payload["note_text"]).strip(),
+                created_at=_parse_utc_datetime(payload["created_at"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+        if datetime.now(tz=timezone.utc) - pending.created_at > timedelta(
+            minutes=PENDING_INTERPRETATION_TTL_MINUTES
+        ):
+            return None
+        return pending
+
+    async def delete_pending_single_note(self, chat_id: int) -> None:
+        await self._delete(self._key(chat_id, "pending_single_note"))
+
+    def _key(self, chat_id: int, *parts: str) -> str:
+        return ":".join((self._key_prefix, str(chat_id), *parts))
+
+    async def _set(self, key: str, payload: dict[str, Any], *, ttl_seconds: int) -> None:
+        try:
+            await self._redis.set(
+                key,
+                json.dumps(payload, ensure_ascii=False),
+                ex=ttl_seconds,
+            )
+        except Exception:
+            LOGGER.warning("Could not persist Telegram operational state", exc_info=True)
+
+    async def _get(self, key: str) -> dict[str, Any] | None:
+        try:
+            raw = await self._redis.get(key)
+        except Exception:
+            LOGGER.warning("Could not load Telegram operational state", exc_info=True)
+            return None
+        if raw is None:
+            return None
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        try:
+            payload = json.loads(str(raw))
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    async def _delete(self, key: str) -> None:
+        try:
+            await self._redis.delete(key)
+        except Exception:
+            LOGGER.warning("Could not clear Telegram operational state", exc_info=True)
+
+
+def _displayed_ref_payload(ref: DisplayedDreamRef) -> dict[str, Any]:
+    return {
+        "index": ref.index,
+        "dream_id": ref.dream_id,
+        "date": ref.date,
+        "title": ref.title,
+    }
+
+
+def _displayed_ref_from_payload(payload: Any) -> DisplayedDreamRef | None:
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return DisplayedDreamRef(
+            index=int(payload["index"]),
+            dream_id=str(payload["dream_id"]),
+            date=str(payload.get("date", "")),
+            title=str(payload.get("title", "")),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _displayed_set_payload(displayed: DisplayedDreamSet) -> dict[str, Any]:
+    return {
+        "refs": [_displayed_ref_payload(ref) for ref in displayed.refs],
+        "created_at": displayed.created_at.isoformat(),
+    }
+
+
+def _displayed_set_from_payload(payload: Any) -> DisplayedDreamSet | None:
+    if not isinstance(payload, dict):
+        return None
+    try:
+        refs = [_displayed_ref_from_payload(item) for item in payload.get("refs", [])]
+        displayed = DisplayedDreamSet(
+            refs=[ref for ref in refs if ref is not None],
+            created_at=_parse_utc_datetime(payload["created_at"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    if datetime.now(tz=timezone.utc) - displayed.created_at > timedelta(
+        minutes=RECENT_DREAM_SET_TTL_MINUTES
+    ):
+        return None
+    return displayed
+
+
+def _parse_utc_datetime(value: Any) -> datetime:
+    parsed = datetime.fromisoformat(str(value))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 _pending_dream_drafts: dict[int, PendingDreamDraft] = {}
 _pending_interpretation_requests: dict[int, PendingInterpretationRequest] = {}
 _recent_dream_sets: dict[int, RecentDreamSet] = {}
@@ -107,15 +442,28 @@ async def load_history(
         if updated is not None:
             if updated.tzinfo is None:
                 updated = updated.replace(tzinfo=timezone.utc)
-            if datetime.now(tz=timezone.utc) - updated > timedelta(days=HISTORY_TTL_DAYS):
-                LOGGER.info("Session history expired for chat_id=%s — resetting", chat_id)
+            cutoff = datetime.now(tz=timezone.utc) - timedelta(seconds=HISTORY_TTL_SECONDS)
+            if updated < cutoff:
+                # Delete with the observed timestamp in the predicate.  A concurrent
+                # save may refresh this chat between the read and delete; in that
+                # case the new history must survive instead of being removed by a
+                # stale reader.
+                await session.execute(
+                    delete(BotSession).where(
+                        BotSession.chat_id == chat_id,
+                        BotSession.updated_at == updated,
+                        BotSession.updated_at < cutoff,
+                    )
+                )
+                await session.commit()
+                LOGGER.info("Expired session history removed")
                 return []
         try:
             parsed = json.loads(row.history_json)
             if isinstance(parsed, list):
                 return parsed
         except (json.JSONDecodeError, TypeError):
-            LOGGER.warning("Invalid session JSON for chat_id=%s — resetting", chat_id)
+            LOGGER.warning("Invalid session JSON encountered; resetting session history")
         return []
 
 

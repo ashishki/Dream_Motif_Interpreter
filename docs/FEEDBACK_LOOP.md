@@ -60,7 +60,7 @@ is:
 
 ### Acknowledgment
 
-When a rating is captured via either path, the assistant sends: "Thanks, noted." No further action is taken in that conversation turn.
+When a rating is captured via either path, the assistant sends: "Спасибо, записал." No further action is taken in that conversation turn.
 
 ### Comment capture
 
@@ -82,7 +82,20 @@ assistant_feedback
 
 Migration: `011_add_feedback`
 
-The `context` JSONB field captures enough information to identify which response was rated (e.g., message ID, response summary, tool calls made). It does not store raw dream text or PII beyond what is necessary to identify the response.
+The `context` JSONB field is a privacy-safe replay capsule. It stores the Telegram message ID,
+request/response SHA-256 hashes, request/response size summaries, tool names, referenced dream IDs,
+route, model, and build SHA. It does **not** store the request text, response text, or raw dream text.
+
+For human triage, use one of these stable issue categories in the optional comment:
+
+- `wrong_dream` — the assistant selected the wrong archive entry;
+- `weak_evidence` — the answer or interpretation is not supported by the shown text;
+- `transcription` — the voice transcript is wrong or incomplete;
+- `not_saved` — capture or Google Docs delivery is missing;
+- `duplicate` — one user action created a duplicate.
+
+The capsule identifies the code/model path that produced the problem. A reviewer should create a
+sanitized synthetic replay fixture instead of copying a private dream into the test suite.
 
 ---
 

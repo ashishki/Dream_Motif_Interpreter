@@ -67,6 +67,9 @@ class DreamPrivacyActionReceipt:
         "dream_hidden",
         "node_hidden",
         "edge_hidden",
+        "dream_restored",
+        "node_restored",
+        "edge_restored",
         "node_rejected",
         "edge_rejected",
     ]
@@ -270,6 +273,51 @@ def build_hide_receipt(
                 ref_type=ref_type,
                 supports=action,
                 checksum_sha256=_hash_text(f"{subject_type}:{subject_id}"),
+            ),
+        ),
+        generated_at=generated_at or datetime.now(timezone.utc),
+        entropy_core_level="receipt_compatible",
+    )
+
+
+def build_restore_receipt(
+    *,
+    subject_id: str,
+    subject_type: Literal["dream", "graph_node", "graph_edge"],
+    privacy_controls: DreamGraphPrivacyControls,
+    generated_at: datetime | None = None,
+) -> DreamPrivacyActionReceipt:
+    action: Literal["dream_restored", "node_restored", "edge_restored"]
+    ref_type: Literal["source_dream", "graph_node", "graph_edge"]
+    if subject_type == "dream":
+        action = "dream_restored"
+        ref_type = "source_dream"
+    elif subject_type == "graph_node":
+        action = "node_restored"
+        ref_type = "graph_node"
+    else:
+        action = "edge_restored"
+        ref_type = "graph_edge"
+
+    return DreamPrivacyActionReceipt(
+        type="privacy_control_receipt",
+        schema_version=PROOF_RECEIPT_SCHEMA_VERSION,
+        product_id=PRODUCT_ID,
+        action=action,
+        subject_id=subject_id,
+        verifier_status="passed",
+        evidence_refs=(
+            DreamProofEvidenceRef(
+                ref_id=f"privacy_control:{subject_type}:{subject_id}:restore",
+                ref_type="privacy_control",
+                supports=action,
+                checksum_sha256=_hash_json(_privacy_controls_payload(privacy_controls)),
+            ),
+            DreamProofEvidenceRef(
+                ref_id=f"{subject_type}:{subject_id}",
+                ref_type=ref_type,
+                supports=action,
+                checksum_sha256=_hash_text(f"{subject_type}:{subject_id}:restore"),
             ),
         ),
         generated_at=generated_at or datetime.now(timezone.utc),

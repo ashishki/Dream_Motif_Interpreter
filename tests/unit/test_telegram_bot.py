@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -14,6 +15,10 @@ from app.assistant.chat import ChatResult, DreamReference
 from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.session import (
     DisplayedDreamRef,
+    DisplayedDreamSet,
+    PendingDreamDraft,
+    PendingInterpretationRequest,
+    RedisOperationalStateStore,
     clear_displayed_dream_set,
     clear_pending_batch_dream_note,
     clear_pending_dream_draft,
@@ -24,11 +29,14 @@ from app.assistant.session import (
     load_pending_single_dream_note,
     save_displayed_dream_message,
     save_displayed_dream_set,
+    save_pending_batch_dream_note,
     save_pending_interpretation_request,
     save_pending_dream_draft,
+    save_pending_single_dream_note,
 )
-from app.telegram.bot import handle_message_reaction
+from app.telegram.bot import handle_message_reaction, post_init, post_stop
 from app.telegram.handlers import (
+    ADD_NOTE_CALLBACK_PREFIX,
     FEEDBACK_PROMPT,
     FULL_DREAM_CALLBACK_PREFIX,
     MINI_APP_OPEN_BUTTON,
@@ -44,8 +52,214 @@ from app.telegram.handlers import (
     chat_guard,
     dream_full_text_callback_handler,
     dream_memory_map_command_handler,
+    help_command_handler,
+    start_command_handler,
     text_message_handler,
 )
+
+
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+        self.closed = False
+
+    async def set(self, key: str, value: str, *, ex: int | None = None) -> None:
+        del ex
+        self.values[key] = value
+
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    async def delete(self, key: str) -> None:
+        self.values.pop(key, None)
+
+    async def ping(self) -> bool:
+        return True
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class _UnavailableRedis(_FakeRedis):
+    async def ping(self) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+async def test_post_init_fails_closed_when_redis_is_unavailable_in_production() -> None:
+    application = SimpleNamespace(
+        bot_data={
+            "allowed_chat_id": 42,
+            "operational_state_store": RedisOperationalStateStore(_UnavailableRedis()),
+        }
+    )
+
+    with (
+        patch(
+            "app.telegram.bot.get_settings",
+            return_value=SimpleNamespace(ENV="production"),
+        ),
+        pytest.raises(RuntimeError, match="Redis operational state is required"),
+    ):
+        await post_init(application)
+
+
+@pytest.mark.asyncio
+async def test_post_init_starts_voice_supervisor_when_initial_resume_fails() -> None:
+    facade = MagicMock(spec=AssistantFacade)
+    application = SimpleNamespace(
+        bot_data={
+            "allowed_chat_id": 42,
+            "operational_state_store": RedisOperationalStateStore(_FakeRedis()),
+            "session_factory": MagicMock(),
+            "facade": facade,
+            "bot_token": "TOKEN",
+        }
+    )
+
+    with (
+        patch(
+            "app.telegram.bot.get_settings",
+            return_value=SimpleNamespace(
+                ENV="test",
+                VOICE_RETENTION_SECONDS=3600,
+                VOICE_TRANSCRIPT_RETENTION_SECONDS=604800,
+                VOICE_MEDIA_DIR="/tmp/dream_voice",
+            ),
+        ),
+        patch(
+            "app.workers.transcribe.run_voice_retention_cycle",
+            new=AsyncMock(return_value=(0, 0, 0)),
+        ) as retention,
+        patch(
+            "app.workers.transcribe.resume_pending_voice_jobs",
+            new=AsyncMock(side_effect=RuntimeError("temporary database outage")),
+        ),
+        patch("app.workers.transcribe.start_voice_maintenance_supervisor") as start_voice,
+        patch("app.telegram.bot.start_dream_processing_supervisor"),
+    ):
+        await post_init(application)
+
+    start_voice.assert_called_once_with(application)
+    facade.start_background_workers.assert_awaited_once_with()
+    retention.assert_awaited_once_with(application)
+
+
+@pytest.mark.asyncio
+async def test_post_init_validates_database_before_spawning_supervisors() -> None:
+    redis = _FakeRedis()
+    session = AsyncMock()
+    session.execute.side_effect = RuntimeError("database unavailable")
+    session_factory = MagicMock()
+    session_factory.return_value.__aenter__.return_value = session
+    facade = MagicMock(spec=AssistantFacade)
+    application = SimpleNamespace(
+        bot_data={
+            "operational_state_store": RedisOperationalStateStore(redis),
+            "session_factory": session_factory,
+            "facade": facade,
+            "bot_token": "TOKEN",
+        }
+    )
+
+    with (
+        patch("app.telegram.bot.get_settings", return_value=SimpleNamespace(ENV="test")),
+        patch("app.workers.transcribe.start_voice_maintenance_supervisor") as start_voice,
+        patch("app.telegram.bot.start_dream_processing_supervisor") as start_dream,
+        pytest.raises(RuntimeError, match="Database dependency check failed"),
+    ):
+        await post_init(application)
+
+    start_voice.assert_not_called()
+    start_dream.assert_not_called()
+    facade.start_background_workers.assert_not_awaited()
+    facade.shutdown.assert_awaited_once_with()
+    assert redis.closed is True
+
+
+@pytest.mark.asyncio
+async def test_partial_start_is_rolled_back_and_resources_are_closed() -> None:
+    redis = _FakeRedis()
+    facade = MagicMock(spec=AssistantFacade)
+    application = SimpleNamespace(
+        bot_data={
+            "operational_state_store": RedisOperationalStateStore(redis),
+            "session_factory": MagicMock(),
+            "facade": facade,
+            "bot_token": "TOKEN",
+        }
+    )
+
+    with (
+        patch("app.telegram.bot.get_settings", return_value=SimpleNamespace(ENV="test")),
+        patch(
+            "app.workers.transcribe.run_voice_retention_cycle",
+            new=AsyncMock(return_value=(0, 0, 0)),
+        ),
+        patch(
+            "app.workers.transcribe.resume_pending_voice_jobs",
+            new=AsyncMock(return_value=0),
+        ),
+        patch("app.workers.transcribe.start_voice_maintenance_supervisor") as start_voice,
+        patch(
+            "app.telegram.bot.start_dream_processing_supervisor",
+            side_effect=RuntimeError("dream supervisor failed"),
+        ),
+        patch(
+            "app.workers.transcribe.stop_voice_maintenance_supervisor",
+            new=AsyncMock(),
+        ) as stop_voice,
+        patch(
+            "app.telegram.bot.stop_dream_processing_supervisor",
+            new=AsyncMock(),
+        ) as stop_dream,
+        pytest.raises(RuntimeError, match="dream supervisor failed"),
+    ):
+        await post_init(application)
+
+    start_voice.assert_called_once_with(application)
+    stop_voice.assert_awaited_once_with(application)
+    stop_dream.assert_awaited_once_with(application)
+    facade.shutdown.assert_awaited_once_with()
+    assert redis.closed is True
+
+
+@pytest.mark.asyncio
+async def test_post_stop_signals_supervisors_in_parallel_then_closes_resources() -> None:
+    redis = _FakeRedis()
+    facade = MagicMock(spec=AssistantFacade)
+    application = SimpleNamespace(
+        bot_data={
+            "operational_state_store": RedisOperationalStateStore(redis),
+            "facade": facade,
+        }
+    )
+    dream_started = asyncio.Event()
+    voice_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def stop_dream(_application: object) -> None:
+        dream_started.set()
+        await release.wait()
+
+    async def stop_voice(_application: object) -> None:
+        voice_started.set()
+        await release.wait()
+
+    with (
+        patch("app.telegram.bot.stop_dream_processing_supervisor", new=stop_dream),
+        patch("app.workers.transcribe.stop_voice_maintenance_supervisor", new=stop_voice),
+    ):
+        shutdown = asyncio.create_task(post_stop(application))
+        await asyncio.wait_for(dream_started.wait(), timeout=0.2)
+        await asyncio.wait_for(voice_started.wait(), timeout=0.2)
+        facade.shutdown.assert_not_awaited()
+        assert redis.closed is False
+        release.set()
+        await asyncio.wait_for(shutdown, timeout=0.2)
+
+    facade.shutdown.assert_awaited_once_with()
+    assert redis.closed is True
 
 
 @pytest.mark.asyncio
@@ -63,6 +277,23 @@ async def test_chat_guard_allows_authorized_chat_id() -> None:
     context = SimpleNamespace(bot_data={"allowed_chat_id": 111})
 
     await chat_guard(update, context)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("handler", "expected"),
+    [
+        (start_command_handler, "Мне приснилось"),
+        (help_command_handler, "Найди сны про воду"),
+    ],
+)
+async def test_start_and_help_explain_the_primary_workflow(handler, expected: str) -> None:
+    update, message = _make_text_message_update("/command", chat_id=42)
+
+    await handler(update, SimpleNamespace(bot_data={}))
+
+    message.reply_text.assert_awaited_once()
+    assert expected in message.reply_text.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -177,6 +408,7 @@ def _clear_pending_drafts() -> None:
 @pytest.mark.asyncio
 async def test_text_message_handler_routes_to_handle_chat() -> None:
     update, message = _make_text_message_update("what are my recent dreams?", chat_id=42)
+    message.message_id = 91
     facade = AsyncMock(spec=AssistantFacade)
     context = _make_text_context(facade, 42)
 
@@ -191,6 +423,8 @@ async def test_text_message_handler_routes_to_handle_chat() -> None:
         facade,
         session_factory=None,
         chat_id=42,
+        operational_state_store=None,
+        source_event_key="telegram:42:message:91",
     )
     message.reply_text.assert_awaited_once_with("Here are your dreams.")
 
@@ -439,7 +673,120 @@ async def test_text_message_handler_confirms_batch_note_for_numbered_search_resu
     assert {call.args[0] for call in facade.add_dream_note.await_args_list} == {
         "проявление негативных эмоций по отношению к матери"
     }
-    confirm_message.reply_text.assert_awaited_once_with("Готово. Добавил заметку к 3 снам.")
+    confirm_message.reply_text.assert_awaited_once_with(
+        "Готово. Заметка для всех выбранных снов (3) надёжно сохранена.\n"
+        "Заметка добавлена под нужным сном."
+    )
+
+
+@pytest.mark.asyncio
+async def test_batch_note_selection_and_confirmation_survive_restarts() -> None:
+    dream_ids = [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+    ]
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram")
+    await state_store.save_displayed_set(
+        42,
+        DisplayedDreamSet(
+            refs=[
+                DisplayedDreamRef(1, dream_ids[0], "2026-08-29", "Озеро"),
+                DisplayedDreamRef(2, dream_ids[1], "2026-08-30", "Река"),
+            ],
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_displayed_dream_set(42)
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    context = _make_text_context(facade, 42)
+    context.bot_data["operational_state_store"] = state_store
+
+    note_update, _note_message = _make_text_message_update(
+        "Добавь заметку ко всем найденным: повторяющийся водный мотив",
+        chat_id=42,
+    )
+    await text_message_handler(note_update, context)
+    clear_pending_batch_dream_note(42)
+
+    confirm_update, confirm_message = _make_text_message_update("да", chat_id=42)
+    await text_message_handler(confirm_update, context)
+
+    assert [
+        str(call.kwargs["dream_id"]) for call in facade.add_dream_note.await_args_list
+    ] == dream_ids
+    confirm_message.reply_text.assert_awaited_once_with(
+        "Готово. Заметка для всех выбранных снов (2) надёжно сохранена.\n"
+        "Заметка добавлена под нужным сном."
+    )
+
+
+@pytest.mark.asyncio
+async def test_partial_batch_failure_retains_state_and_retry_is_safe() -> None:
+    refs = [
+        DisplayedDreamRef(1, "11111111-1111-4111-8111-111111111111", "2026-08-29", "Озеро"),
+        DisplayedDreamRef(2, "22222222-2222-4222-8222-222222222222", "2026-08-30", "Река"),
+    ]
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram")
+    pending = save_pending_batch_dream_note(42, note_text="водный мотив", refs=refs)
+    await state_store.save_pending_batch_note(42, pending)
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(
+        side_effect=[
+            (True, "queued"),
+            (False, "database unavailable"),
+        ]
+    )
+    context = _make_text_context(facade, 42)
+    context.bot_data["operational_state_store"] = state_store
+
+    first_update, first_message = _make_text_message_update("да", chat_id=42)
+    await text_message_handler(first_update, context)
+
+    assert load_pending_batch_dream_note(42) is not None
+    assert await state_store.load_pending_batch_note(42) is not None
+    first_reply = first_message.reply_text.await_args.args[0]
+    assert "Надёжно сохранено 1 из 2" in first_reply
+    assert "не продублируются" in first_reply
+
+    # Simulate a process restart. The durable first note is replay-safe and the
+    # Redis intent restores the complete batch for a second attempt.
+    clear_pending_batch_dream_note(42)
+    facade.add_dream_note.reset_mock()
+    facade.add_dream_note.side_effect = [(True, "already exists"), (True, "queued")]
+    retry_update, retry_message = _make_text_message_update("да", chat_id=42)
+    await text_message_handler(retry_update, context)
+
+    assert facade.add_dream_note.await_count == 2
+    assert load_pending_batch_dream_note(42) is None
+    assert await state_store.load_pending_batch_note(42) is None
+    assert "надёжно сохранена" in retry_message.reply_text.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_batch_note_confirmation_preserves_mixed_durable_job_statuses() -> None:
+    refs = [
+        DisplayedDreamRef(1, "11111111-1111-4111-8111-111111111111", "2026-08-29", "Озеро"),
+        DisplayedDreamRef(2, "22222222-2222-4222-8222-222222222222", "2026-08-30", "Река"),
+    ]
+    save_pending_batch_dream_note(42, note_text="водный мотив", refs=refs)
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(
+        side_effect=[
+            (True, "Заметка сохранена; обработка стоит в очереди."),
+            (True, "Заметка уже сохранена; доставка в Google Docs требует явного повтора."),
+        ]
+    )
+    context = _make_text_context(facade, 42)
+
+    update, message = _make_text_message_update("да", chat_id=42)
+    await text_message_handler(update, context)
+
+    reply = message.reply_text.await_args.args[0]
+    assert "1. «Озеро»: Заметка сохранена; обработка стоит в очереди." in reply
+    assert "2. «Река»: Заметка уже сохранена" in reply
+    assert "требует явного повтора" in reply
+    assert load_pending_batch_dream_note(42) is None
 
 
 @pytest.mark.asyncio
@@ -666,7 +1013,7 @@ async def test_text_message_handler_acks_feedback_when_commit_fails() -> None:
 
     await text_message_handler(update, context)
 
-    message.reply_text.assert_awaited_once_with("Thanks, noted.")
+    message.reply_text.assert_awaited_once_with("Спасибо, записал.")
 
 
 def test_split_telegram_text_keeps_long_responses_under_limit() -> None:
@@ -682,6 +1029,7 @@ def test_split_telegram_text_keeps_long_responses_under_limit() -> None:
 @pytest.mark.asyncio
 async def test_text_message_handler_saves_short_natural_dream_without_confirmation() -> None:
     update, message = _make_text_message_update("сегодня мне приснилось рыба", chat_id=42)
+    message.message_id = 92
     created = SimpleNamespace(
         created=True,
         written_to_google_doc=True,
@@ -695,10 +1043,83 @@ async def test_text_message_handler_saves_short_natural_dream_without_confirmati
         await text_message_handler(update, context)
 
     mock_chat.assert_not_awaited()
-    facade.create_dream.assert_awaited_once_with("сегодня мне приснилось рыба", chat_id=42)
+    facade.create_dream.assert_awaited_once_with(
+        "сегодня мне приснилось рыба",
+        chat_id=42,
+        source_event_key="telegram:42:message:92",
+    )
     context.bot.send_chat_action.assert_awaited()
-    message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ")
+    message.reply_text.assert_awaited_once()
+    confirmation = message.reply_text.await_args.args[0]
+    assert "✅ Сон сохранён" in confirmation
+    assert "Архив: сохранено" in confirmation
+    assert "Google Docs: добавлено" in confirmation
     assert load_pending_dream_draft(42) is None
+
+
+@pytest.mark.asyncio
+async def test_natural_dream_with_meta_question_saves_only_dream_and_surfaces_question() -> None:
+    dream_id = uuid.UUID("11111111-1111-4111-8111-111111111111")
+    update, message = _make_text_message_update(
+        "Мне приснилось, что я иду по мосту. Что это значит?",
+        chat_id=42,
+    )
+    message.reply_text.return_value = SimpleNamespace(message_id=901)
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream = AsyncMock(
+        return_value=SimpleNamespace(
+            id=dream_id,
+            created=True,
+            date="2026-08-30",
+            title="Мост",
+            written_to_google_doc=False,
+            semantic_index_status="pending",
+            processing_status="pending",
+            google_doc_write_status="pending",
+        )
+    )
+    context = _make_text_context(facade, 42)
+
+    await text_message_handler(update, context)
+
+    facade.create_dream.assert_awaited_once_with(
+        "Мне приснилось, что я иду по мосту.",
+        chat_id=42,
+    )
+    assert message.reply_text.await_count == 2
+    card_call = message.reply_text.await_args_list[0]
+    assert "30.08.26 · «Мост»" in card_call.args[0]
+    assert "Обработка: в очереди" in card_call.args[0]
+    assert "Google Docs: ожидает" in card_call.args[0]
+    buttons = card_call.kwargs["reply_markup"].inline_keyboard[0]
+    assert [button.callback_data for button in buttons] == [
+        f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}",
+        f"{ADD_NOTE_CALLBACK_PREFIX}{dream_id}",
+    ]
+    assert "Вопрос заметил" in message.reply_text.await_args_list[1].args[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    [
+        "В терапии я сказал: мне приснился мост.",
+        "Мне приснился мост, но не сохраняй этот сон.",
+    ],
+)
+async def test_natural_capture_requires_opening_at_start_and_respects_negation(text: str) -> None:
+    update, _message = _make_text_message_update(text, chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    context = _make_text_context(facade, 42)
+
+    with patch(
+        "app.telegram.handlers.handle_chat_with_metadata",
+        new=AsyncMock(return_value=ChatResult("Понял.", [])),
+    ) as mock_chat:
+        await text_message_handler(update, context)
+
+    facade.create_dream.assert_not_awaited()
+    mock_chat.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -707,6 +1128,7 @@ async def test_text_message_handler_saves_explicit_dream_command_without_chat_lo
         "Можешь записать сон текстом. Сегодня мне приснилось, что я ищу друзей в городе.",
         chat_id=42,
     )
+    message.message_id = 93
     created = SimpleNamespace(
         created=True,
         written_to_google_doc=True,
@@ -723,8 +1145,13 @@ async def test_text_message_handler_saves_explicit_dream_command_without_chat_lo
     facade.create_dream.assert_awaited_once_with(
         "Можешь записать сон текстом. Сегодня мне приснилось, что я ищу друзей в городе.",
         chat_id=42,
+        source_event_key="telegram:42:message:93",
     )
-    message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ")
+    message.reply_text.assert_awaited_once()
+    confirmation = message.reply_text.await_args.args[0]
+    assert "✅ Сон сохранён" in confirmation
+    assert "я ищу друзей в городе" in confirmation
+    assert "Google Docs: добавлено" in confirmation
     assert load_pending_dream_draft(42) is None
 
 
@@ -835,6 +1262,73 @@ async def test_text_message_handler_direct_note_targets_replied_dream_message() 
         chat_id=42,
     )
     message.reply_text.assert_awaited_once_with("Заметка добавлена под нужным сном.")
+
+
+@pytest.mark.asyncio
+async def test_reply_note_uses_redis_target_after_process_restart() -> None:
+    dream_id = "11111111-1111-4111-8111-111111111111"
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram")
+    await state_store.save_displayed_message(
+        42,
+        777,
+        DisplayedDreamSet(
+            refs=[
+                DisplayedDreamRef(
+                    index=1,
+                    dream_id=dream_id,
+                    date="2026-08-02",
+                    title="Сон после рестарта",
+                )
+            ],
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_displayed_dream_set(42)
+    update, message = _make_text_message_update(
+        "Добавь заметку к этому сну: важная деталь",
+        chat_id=42,
+    )
+    message.reply_to_message = SimpleNamespace(message_id=777, text="Карточка сна")
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(return_value=(True, "Заметка добавлена под нужным сном."))
+    context = _make_text_context(facade, 42)
+    context.bot_data["operational_state_store"] = state_store
+
+    await text_message_handler(update, context)
+
+    facade.add_dream_note.assert_awaited_once_with(
+        "важная деталь",
+        dream_id=uuid.UUID(dream_id),
+        chat_id=42,
+    )
+
+
+@pytest.mark.asyncio
+async def test_unknown_replied_message_never_falls_back_to_latest_dream() -> None:
+    update, message = _make_text_message_update(
+        "Добавь заметку к этому сну: важная деталь",
+        chat_id=42,
+    )
+    message.reply_to_message = SimpleNamespace(message_id=999, text="Неизвестное сообщение")
+    save_displayed_dream_set(
+        42,
+        refs=[
+            DisplayedDreamRef(
+                index=1,
+                dream_id="22222222-2222-4222-8222-222222222222",
+                date="2026-08-03",
+                title="Другой последний сон",
+            )
+        ],
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock()
+    context = _make_text_context(facade, 42)
+
+    await text_message_handler(update, context)
+
+    facade.add_dream_note.assert_not_awaited()
+    assert "к какому сну" in message.reply_text.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -1008,6 +1502,41 @@ async def test_text_message_handler_applies_pending_single_note_to_replied_dream
 
 
 @pytest.mark.asyncio
+async def test_pending_single_failure_retains_redis_state_until_safe_retry() -> None:
+    dream_id = "11111111-1111-4111-8111-111111111111"
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram")
+    pending = save_pending_single_dream_note(42, note_text="важная деталь")
+    await state_store.save_pending_single_note(42, pending)
+    save_displayed_dream_message(
+        42,
+        message_id=902,
+        refs=[DisplayedDreamRef(1, dream_id, "2026-08-23", "Сон")],
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.add_dream_note = AsyncMock(return_value=(False, "database unavailable"))
+    context = _make_text_context(facade, 42)
+    context.bot_data["operational_state_store"] = state_store
+
+    first_update, first_message = _make_text_message_update("К этому", chat_id=42)
+    first_message.reply_to_message = SimpleNamespace(message_id=902)
+    await text_message_handler(first_update, context)
+
+    assert load_pending_single_dream_note(42) is not None
+    assert await state_store.load_pending_single_note(42) is not None
+    assert "сохранён для повтора" in first_message.reply_text.await_args.args[0]
+
+    clear_pending_single_dream_note(42)
+    facade.add_dream_note.return_value = (True, "queued")
+    retry_update, retry_message = _make_text_message_update("К этому", chat_id=42)
+    retry_message.reply_to_message = SimpleNamespace(message_id=902)
+    await text_message_handler(retry_update, context)
+
+    assert load_pending_single_dream_note(42) is None
+    assert await state_store.load_pending_single_note(42) is None
+    retry_message.reply_text.assert_awaited_once_with("queued")
+
+
+@pytest.mark.asyncio
 async def test_text_message_handler_bare_context_reference_does_not_create_dream() -> None:
     update, message = _make_text_message_update("К этому", chat_id=42)
     facade = AsyncMock(spec=AssistantFacade)
@@ -1096,13 +1625,120 @@ async def test_text_message_handler_yes_saves_pending_dream() -> None:
         title=None,
         dream_date=None,
         chat_id=42,
+        source_event_key="telegram:42:message:123",
     )
-    confirm_message.reply_text.assert_awaited_once_with("Сон сохранён и добавлен в документ")
+    confirm_message.reply_text.assert_awaited_once()
+    confirmation = confirm_message.reply_text.await_args.args[0]
+    assert "✅ Сон сохранён" in confirmation
+    assert "я иду по мосту над морем" in confirmation
     assert load_pending_dream_draft(42) is None
 
 
 @pytest.mark.asyncio
-async def test_text_message_handler_yes_reports_embedding_limit_for_pending_dream() -> None:
+async def test_pending_dream_confirmation_survives_process_restart() -> None:
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram")
+    await state_store.save_pending_dream(
+        42,
+        PendingDreamDraft(
+            raw_text="мне приснился мост",
+            title=None,
+            dream_date=None,
+            source_message_id=123,
+            source_kind="text",
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_pending_dream_draft(42)
+    update, message = _make_text_message_update("да", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream = AsyncMock(
+        return_value=SimpleNamespace(created=True, written_to_google_doc=True)
+    )
+    context = _make_text_context(facade, 42)
+    context.bot_data["operational_state_store"] = state_store
+
+    await text_message_handler(update, context)
+
+    facade.create_dream.assert_awaited_once_with(
+        "мне приснился мост",
+        title=None,
+        dream_date=None,
+        chat_id=42,
+        source_event_key="telegram:42:message:123",
+    )
+    assert await state_store.load_pending_dream(42) is None
+    assert "Сон сохранён" in message.reply_text.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_direct_save_clears_stale_persisted_confirmation() -> None:
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram")
+    await state_store.save_pending_dream(
+        42,
+        PendingDreamDraft(
+            raw_text="старый черновик сна",
+            title=None,
+            dream_date=None,
+            source_message_id=120,
+            source_kind="text",
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    update, _message = _make_text_message_update(
+        "сегодня мне приснилось, что я иду по новому мосту",
+        chat_id=42,
+    )
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        created=True,
+        written_to_google_doc=False,
+        processing_status="pending",
+        semantic_index_status="pending",
+        google_doc_write_status="pending",
+    )
+    context = _make_text_context(facade, 42)
+    context.bot_data["operational_state_store"] = state_store
+
+    await text_message_handler(update, context)
+    clear_pending_dream_draft(42)  # Simulate the next process reading only Redis.
+
+    assert await state_store.load_pending_dream(42) is None
+
+
+@pytest.mark.asyncio
+async def test_pending_interpretation_confirmation_survives_process_restart() -> None:
+    dream_id = "11111111-1111-4111-8111-111111111111"
+    state_store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram")
+    await state_store.save_pending_interpretation(
+        42,
+        PendingInterpretationRequest(
+            dream_id=dream_id,
+            prompt="Бережно разобрать образ моста",
+            source_message_id=124,
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+    clear_pending_interpretation_request(42)
+    update, message = _make_text_message_update("да", chat_id=42)
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.interpret_dream_with_prompt = AsyncMock(
+        return_value=SimpleNamespace(text="Осторожная гипотеза.")
+    )
+    context = _make_text_context(facade, 42)
+    context.bot_data["operational_state_store"] = state_store
+
+    await text_message_handler(update, context)
+
+    facade.interpret_dream_with_prompt.assert_awaited_once_with(
+        dream_id=uuid.UUID(dream_id),
+        prompt="Бережно разобрать образ моста",
+    )
+    assert await state_store.load_pending_interpretation(42) is None
+    message.reply_text.assert_awaited_once_with("Осторожная гипотеза.")
+
+
+@pytest.mark.asyncio
+async def test_failed_pending_dream_save_preserves_draft_for_retry() -> None:
     confirm_update, confirm_message = _make_text_message_update("да", chat_id=42)
     facade = AsyncMock(spec=AssistantFacade)
     facade.create_dream = AsyncMock(side_effect=DreamRecordingUnavailable("embeddings недоступны"))
@@ -1119,7 +1755,9 @@ async def test_text_message_handler_yes_reports_embedding_limit_for_pending_drea
     await text_message_handler(confirm_update, context)
 
     confirm_message.reply_text.assert_awaited_once_with("embeddings недоступны")
-    assert load_pending_dream_draft(42) is None
+    retained = load_pending_dream_draft(42)
+    assert retained is not None
+    assert retained.raw_text == "сегодня мне приснилось, что я иду по мосту над морем"
 
 
 @pytest.mark.asyncio
@@ -1150,7 +1788,11 @@ def test_format_create_dream_reply_hides_doc_label_on_success() -> None:
         written_to_doc_name="...O1rHIxHs",
     )
 
-    assert _format_create_dream_reply(created) == "Сон сохранён и добавлен в документ"
+    reply = _format_create_dream_reply(created)
+    assert "✅ Сон сохранён" in reply
+    assert "Архив: сохранено" in reply
+    assert "Google Docs: добавлено" in reply
+    assert "...O1rHIxHs" not in reply
 
 
 def test_format_create_dream_reply_does_not_claim_doc_write_on_failure() -> None:
@@ -1160,10 +1802,10 @@ def test_format_create_dream_reply_does_not_claim_doc_write_on_failure() -> None
         written_to_doc_name="Dream Archive",
     )
 
-    assert _format_create_dream_reply(created) == (
-        "Сон сохранён в архиве. "
-        "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
-    )
+    reply = _format_create_dream_reply(created)
+    assert "Архив: сохранено" in reply
+    assert "Google Docs: нужен повтор" in reply
+    assert "повтори запись в Google Doc" in reply
 
 
 def test_format_create_dream_reply_confirms_duplicate_doc_rewrite() -> None:
@@ -1173,7 +1815,10 @@ def test_format_create_dream_reply_confirms_duplicate_doc_rewrite() -> None:
         written_to_doc_name="Dream Archive",
     )
 
-    assert _format_create_dream_reply(created) == "Сон сохранён и добавлен в документ"
+    reply = _format_create_dream_reply(created)
+    assert "уже был в архиве" in reply
+    assert "Архив: без дубля" in reply
+    assert "Google Docs: добавлено" in reply
 
 
 class _ReactionSession:

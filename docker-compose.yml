@@ -1,12 +1,19 @@
+x-app-image: &app-image ${APP_IMAGE_REPOSITORY:-dream-motif-interpreter}:${BUILD_SHA:-unknown}
+
+x-app-build: &app-build
+  context: .
+  args:
+    BUILD_SHA: ${BUILD_SHA:-unknown}
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: dream_motif
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d dream_motif"]
       interval: 10s
@@ -14,28 +21,108 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  telegram-bot:
-    build: .
-    command: python3 -m app.telegram
+  migrate:
+    image: *app-image
+    build: *app-build
+    command: alembic upgrade head
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/dream_motif
+      REDIS_URL: redis://redis:6379/0
+      RUNTIME_STATE_FILE: /var/lib/dream-motif/runtime_extra_docs.json
     depends_on:
       postgres:
         condition: service_healthy
+    restart: "no"
+
+  api:
+    image: *app-image
+    build: *app-build
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/dream_motif
+      REDIS_URL: redis://redis:6379/0
+      VOICE_MEDIA_DIR: /var/lib/dream-voice
+      RUNTIME_STATE_FILE: /var/lib/dream-motif/runtime_extra_docs.json
+    ports:
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
+    volumes:
+      - runtime_state:/var/lib/dream-motif
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  telegram-bot:
+    image: *app-image
+    build: *app-build
+    command: python3 -m app.telegram
+    stop_grace_period: 50s
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/dream_motif
+      REDIS_URL: redis://redis:6379/0
+      VOICE_MEDIA_DIR: /var/lib/dream-voice
+      RUNTIME_STATE_FILE: /var/lib/dream-motif/runtime_extra_docs.json
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    volumes:
+      - voice_media:/var/lib/dream-voice
+      - runtime_state:/var/lib/dream-motif
+    restart: unless-stopped
+
+  auto-sync:
+    image: *app-image
+    build: *app-build
+    command: python -m app.auto_sync
+    profiles: ["autosync"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/dream_motif
+      REDIS_URL: redis://redis:6379/0
+      RUNTIME_STATE_FILE: /var/lib/dream-motif/runtime_extra_docs.json
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - runtime_state:/var/lib/dream-motif
 
 volumes:
   postgres_data:
+  voice_media:
+  runtime_state:

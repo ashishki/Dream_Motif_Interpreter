@@ -1,30 +1,30 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from typing import Any
 
 import structlog
 from opentelemetry import metrics, trace
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.metrics import Meter
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from app.shared.config import get_settings
 
 SERVICE_NAME = "dream-motif-interpreter"
 
 
-class _NoOpSpanExporter(SpanExporter):
-    def export(self, spans: object) -> SpanExportResult:
-        return SpanExportResult.SUCCESS
-
-
 @lru_cache(maxsize=1)
 def _get_provider() -> TracerProvider:
     provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(_NoOpSpanExporter()))
+    if _otlp_enabled():
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     trace.set_tracer_provider(provider)
     return provider
 
@@ -37,9 +37,15 @@ def get_tracer(name: str = SERVICE_NAME) -> trace.Tracer:
 
 @lru_cache(maxsize=1)
 def _get_meter_provider() -> MeterProvider:
-    provider = MeterProvider()
+    readers = [PeriodicExportingMetricReader(OTLPMetricExporter())] if _otlp_enabled() else []
+    provider = MeterProvider(metric_readers=readers)
     metrics.set_meter_provider(provider)
     return provider
+
+
+def _otlp_enabled() -> bool:
+    """Export telemetry only when an OTLP endpoint is explicitly configured."""
+    return bool(os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip())
 
 
 @lru_cache(maxsize=None)

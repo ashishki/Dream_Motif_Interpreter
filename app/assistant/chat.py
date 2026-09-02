@@ -16,6 +16,7 @@ from app.assistant.facade import AssistantFacade
 from app.assistant.facade import _application_today
 from app.assistant.prompts import SYSTEM_PROMPT, build_system_prompt
 from app.assistant.session import (
+    RedisOperationalStateStore,
     load_history,
     load_recent_dream_set,
     save_history,
@@ -90,6 +91,7 @@ async def handle_chat(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     chat_id: int | None = None,
+    source_event_key: str | None = None,
 ) -> str:
     return (
         await handle_chat_with_metadata(
@@ -97,6 +99,7 @@ async def handle_chat(
             facade,
             session_factory=session_factory,
             chat_id=chat_id,
+            source_event_key=source_event_key,
         )
     ).text
 
@@ -107,6 +110,8 @@ async def handle_chat_with_metadata(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     chat_id: int | None = None,
+    operational_state_store: RedisOperationalStateStore | None = None,
+    source_event_key: str | None = None,
 ) -> ChatResult:
     """Process a user text message through the bounded tool-use loop.
 
@@ -275,6 +280,8 @@ async def handle_chat_with_metadata(
                 facade,
                 chat_id=chat_id,
                 request_text=message_text,
+                operational_state_store=operational_state_store,
+                source_event_key=source_event_key,
             )
             tool_pairs.append((block, result))
             found_refs = _remember_search_result_set(chat_id, block.name, block.input, result)

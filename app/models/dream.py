@@ -64,7 +64,19 @@ class DreamEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     title: Mapped[str] = mapped_column(Text(), nullable=False)
     raw_text: Mapped[str] = mapped_column(Text(), nullable=False)
     word_count: Mapped[int] = mapped_column(Integer(), nullable=False)
-    content_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    # Content is searchable metadata, not ingress identity: a person can
+    # legitimately report the same dream text more than once.
+    content_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    source_event_key: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True, unique=True, index=True
+    )
+    # Stable identity of an entry inside an external source.  Telegram-created
+    # rows start without one and receive it on the first Google Docs ingest.
+    # Subsequent body edits can then be detected conservatively instead of
+    # silently creating a second dream with a new content hash.
+    source_entry_key: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True, unique=True, index=True
+    )
     segmentation_confidence: Mapped[str] = mapped_column(String(16), nullable=False)
     parser_profile: Mapped[str] = mapped_column(
         String(64),

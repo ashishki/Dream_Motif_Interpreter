@@ -44,6 +44,15 @@ python scripts/eval_public_fixture.py \
   --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json
 ```
 
+To create or refresh a reviewed evidence artifact after intentionally changing the fixture,
+cases, or evaluator:
+
+```bash
+python scripts/eval_public_fixture.py \
+  --run-date YYYY-MM-DD \
+  --output reports/evidence/<review-id>/dream_motif_public_retrieval_v1.json
+```
+
 The tracked report contains SHA-256 content addresses for both JSONL inputs and the evaluator
 source. CI recomputes the report and fails if the data, evaluator, citations, or expected results
 drift without an explicit evidence update.

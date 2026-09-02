@@ -4,7 +4,7 @@ import uuid
 from typing import Any, Dict, List, Literal
 
 import sqlalchemy as sa
-from sqlalchemy import CheckConstraint, ForeignKey, String, Text
+from sqlalchemy import CheckConstraint, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,6 +25,11 @@ class MotifInduction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "status IN ('draft', 'confirmed', 'rejected')",
             name="ck_motif_inductions_status",
         ),
+        UniqueConstraint(
+            "dream_id",
+            "normalized_label",
+            name="uq_motif_inductions_dream_normalized_label",
+        ),
     )
 
     dream_id: Mapped[uuid.UUID] = mapped_column(
@@ -34,6 +39,7 @@ class MotifInduction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
     )
     label: Mapped[str] = mapped_column(Text(), nullable=False)
+    normalized_label: Mapped[str] = mapped_column(Text(), nullable=False)
     rationale: Mapped[str | None] = mapped_column(Text(), nullable=True)
     confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
     status: Mapped[str] = mapped_column(

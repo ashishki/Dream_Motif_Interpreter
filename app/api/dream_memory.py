@@ -30,6 +30,7 @@ from app.services.proof_receipts import (
     build_hide_receipt,
     build_privacy_export_receipt,
     build_rejection_receipt,
+    build_restore_receipt,
 )
 from app.shared.database import get_session_factory
 from app.shared.tracing import get_tracer
@@ -38,6 +39,11 @@ router = APIRouter()
 DELETION_CONTROL_EFFECT_NOTE = "This records a graph-output deletion control only; source archive deletion is not implemented by this route."
 MINI_APP_STATE_FORMAT = "dream-memory-mini-app-state.v1"
 MINI_APP_HTML_PATH = Path(__file__).resolve().parents[1] / "static" / "dream_memory_map.html"
+MINI_APP_CACHE_HEADERS = {
+    "Cache-Control": "no-store, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
 
 
 class DreamMemoryReceiptResponse(BaseModel):
@@ -84,6 +90,13 @@ class DreamMemoryHideControlResponse(BaseModel):
     receipt: DreamMemoryReceiptResponse
 
 
+class DreamMemoryRestoreControlResponse(BaseModel):
+    subject_type: Literal["dream", "graph_node", "graph_edge"]
+    subject_id: str
+    privacy_controls: dict[str, Any]
+    receipt: DreamMemoryReceiptResponse
+
+
 class DreamMemorySourceFragmentRequest(BaseModel):
     dream_id: str = Field(min_length=1)
     chunk_id: str | None = None
@@ -107,14 +120,18 @@ class DreamMemoryRejectionControlResponse(BaseModel):
 
 @router.get("/dream-memory/mini-app", response_class=FileResponse)
 async def dream_memory_mini_app() -> FileResponse:
-    return FileResponse(MINI_APP_HTML_PATH, media_type="text/html")
+    return FileResponse(
+        MINI_APP_HTML_PATH,
+        media_type="text/html",
+        headers=MINI_APP_CACHE_HEADERS,
+    )
 
 
 @router.get("/dream-memory/state", response_model=DreamMemoryGraphStateResponse)
 async def read_dream_memory_state(
     scope: DreamGraphExportScope = Query(default=DreamGraphExportScope.NORMAL_GRAPH_OUTPUT),
 ) -> DreamMemoryGraphStateResponse:
-    snapshot = await _load_dream_memory_snapshot()
+    snapshot = await _load_dream_memory_snapshot(include_dream_labels=True)
     export_payload = export_dream_graph(snapshot, DreamGraphExportOptions(scope=scope))
     return DreamMemoryGraphStateResponse(
         scope=scope,
@@ -140,7 +157,10 @@ async def export_dream_memory(
     )
 
 
-async def _load_dream_memory_snapshot() -> DreamGraphSnapshot:
+async def _load_dream_memory_snapshot(
+    *,
+    include_dream_labels: bool = False,
+) -> DreamGraphSnapshot:
     tracer = get_tracer(__name__)
     async with get_session_factory()() as session:
         with tracer.start_as_current_span("db.query.dream_memory.load_dreams"):
@@ -166,6 +186,7 @@ async def _load_dream_memory_snapshot() -> DreamGraphSnapshot:
             dreams=list(dream_result.scalars().all()),
             motifs=list(motif_result.scalars().all()),
             privacy_controls=_privacy_controls_from_rows(list(control_result.scalars().all())),
+            include_dream_labels=include_dream_labels,
         )
 
     return snapshot
@@ -222,6 +243,37 @@ async def create_dream_memory_hide_control(
         receipt_payload=receipt_payload,
     )
     return DreamMemoryHideControlResponse(
+        subject_type=payload.subject_type,
+        subject_id=payload.subject_id,
+        privacy_controls=privacy_controls_to_dict(privacy_controls),
+        receipt=receipt_payload,
+    )
+
+
+@router.post(
+    "/dream-memory/privacy/restore",
+    response_model=DreamMemoryRestoreControlResponse,
+)
+async def create_dream_memory_restore_control(
+    payload: DreamMemoryHideControlRequest,
+) -> DreamMemoryRestoreControlResponse:
+    """Append a control that reverses a prior hide without deleting audit history."""
+
+    privacy_controls = DreamGraphPrivacyControls()
+    receipt = build_restore_receipt(
+        subject_id=payload.subject_id,
+        subject_type=payload.subject_type,
+        privacy_controls=privacy_controls,
+    )
+    receipt_payload = _receipt_payload(receipt)
+    await _persist_privacy_control(
+        subject_type=payload.subject_type,
+        subject_id=payload.subject_id,
+        action="restore",
+        privacy_controls=privacy_controls,
+        receipt_payload=receipt_payload,
+    )
+    return DreamMemoryRestoreControlResponse(
         subject_type=payload.subject_type,
         subject_id=payload.subject_id,
         privacy_controls=privacy_controls_to_dict(privacy_controls),
@@ -319,7 +371,7 @@ async def _persist_privacy_control(
     *,
     subject_type: Literal["dream", "graph_node", "graph_edge"],
     subject_id: str,
-    action: Literal["delete", "hide", "reject"],
+    action: Literal["delete", "hide", "restore", "reject"],
     privacy_controls: DreamGraphPrivacyControls,
     receipt_payload: DreamMemoryReceiptResponse,
 ) -> None:
@@ -379,6 +431,13 @@ def _privacy_controls_from_rows(
                 and row.subject_id not in rejected_edge_ids
             ):
                 hidden_edge_ids.add(row.subject_id)
+        elif row.action == "restore":
+            if row.subject_type == "dream":
+                hidden_dream_ids.discard(row.subject_id)
+            elif row.subject_type == "graph_node":
+                hidden_node_ids.discard(row.subject_id)
+            elif row.subject_type == "graph_edge":
+                hidden_edge_ids.discard(row.subject_id)
         elif row.action == "reject":
             for suggestion in _rejected_suggestions_from_payload(row.control_payload):
                 if (

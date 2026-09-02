@@ -74,6 +74,18 @@ The mini app is the visual memory workspace:
 The mini app reads and writes through the existing backend boundary. It should
 not introduce a separate source of truth or a separate motif memory model.
 
+The current MVP opens on a Russian, mobile-first review inbox. Each draft motif
+is shown beside its dream title/date and source-verified excerpts. The user can
+rename, confirm, or exclude it from the map; excluded motifs can be returned to
+the review queue. Research is available only after confirmation and reports
+disabled or failed searches without implying that results were found.
+
+The graph state uses readable dream title/date labels while the privacy export
+keeps opaque dream identifiers. Motifs with the same normalized label across
+different dreams remain separate evidence-bearing nodes and receive an explicit
+`repeats_with` edge. This preserves per-dream provenance instead of silently
+merging distinct observations.
+
 ## 4. Core Screens
 
 ### Dream Entry

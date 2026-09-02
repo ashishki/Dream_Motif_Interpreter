@@ -45,6 +45,19 @@ def _valid_response(overlap_degree: str = "partial") -> str:
     )
 
 
+def _response_with_source(*, source_url: str, source_id: str = "") -> str:
+    parallel = {
+        "domain": "folklore",
+        "label": "guarded threshold",
+        "source_url": source_url,
+        "relevance_note": "The source suggests a blocked passage motif.",
+        "overlap_degree": "partial",
+    }
+    if source_id:
+        parallel["source_id"] = source_id
+    return json.dumps({"parallels": [parallel]})
+
+
 @pytest.mark.asyncio
 async def test_synthesize_returns_parallel_objects_with_required_keys() -> None:
     client = StubLLMClient(_valid_response())
@@ -62,6 +75,7 @@ async def test_synthesize_returns_parallel_objects_with_required_keys() -> None:
     }
     assert "parallels" in client.last_system.lower()
     assert "overlap_degree" in client.last_system.lower()
+    assert '"source_id": "source-1"' in client.last_user
 
 
 @pytest.mark.asyncio
@@ -82,3 +96,85 @@ async def test_overlap_degree_values_are_restricted() -> None:
     bad_synthesizer = ResearchSynthesizer(llm_client=StubLLMClient(_valid_response("speculative")))
     with pytest.raises(ResearchSynthesisError):
         await bad_synthesizer.synthesize("blocked ascent", SOURCES)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "injected_url",
+    [
+        "javascript:alert(document.domain)",
+        "data:text/html,<script>alert(1)</script>",
+        "https://accounts.example.evil/phishing",
+    ],
+)
+async def test_synthesize_rejects_unsafe_or_unretrieved_citation_urls(
+    injected_url: str,
+) -> None:
+    synthesizer = ResearchSynthesizer(
+        llm_client=StubLLMClient(_response_with_source(source_url=injected_url))
+    )
+
+    with pytest.raises(ResearchSynthesisError):
+        await synthesizer.synthesize("blocked ascent", SOURCES)
+
+
+@pytest.mark.asyncio
+async def test_synthesize_preserves_exact_retrieved_https_url_after_normalized_match() -> None:
+    retrieved_url = "https://Example.com:443/threshold#retrieved-section"
+    sources = [{**SOURCES[0], "url": retrieved_url}]
+    response = _response_with_source(
+        source_url="HTTPS://example.com/threshold#model-invented-fragment"
+    )
+    synthesizer = ResearchSynthesizer(llm_client=StubLLMClient(response))
+
+    parallels = await synthesizer.synthesize("blocked ascent", sources)
+
+    assert parallels[0]["source_url"] == retrieved_url
+
+
+@pytest.mark.asyncio
+async def test_synthesize_resolves_source_id_without_trusting_a_model_url() -> None:
+    response = json.dumps(
+        {
+            "parallels": [
+                {
+                    "domain": "folklore",
+                    "label": "guarded threshold",
+                    "source_id": "source-1",
+                    "relevance_note": "The source suggests a blocked passage motif.",
+                    "overlap_degree": "partial",
+                }
+            ]
+        }
+    )
+    synthesizer = ResearchSynthesizer(llm_client=StubLLMClient(response))
+
+    parallels = await synthesizer.synthesize("blocked ascent", SOURCES)
+
+    assert parallels[0]["source_url"] == SOURCES[0]["url"]
+
+
+@pytest.mark.asyncio
+async def test_synthesize_rejects_malicious_url_even_with_a_valid_source_id() -> None:
+    response = _response_with_source(
+        source_id="source-1",
+        source_url="javascript:alert(document.domain)",
+    )
+    synthesizer = ResearchSynthesizer(llm_client=StubLLMClient(response))
+
+    with pytest.raises(ResearchSynthesisError):
+        await synthesizer.synthesize("blocked ascent", SOURCES)
+
+
+@pytest.mark.asyncio
+async def test_synthesize_does_not_allow_a_non_http_url_even_if_retrieved() -> None:
+    unsafe_url = "data:text/html,<script>alert(1)</script>"
+    sources = [{**SOURCES[0], "url": unsafe_url}]
+    synthesizer = ResearchSynthesizer(
+        llm_client=StubLLMClient(_response_with_source(source_url=unsafe_url))
+    )
+
+    with pytest.raises(ResearchSynthesisError):
+        await synthesizer.synthesize("blocked ascent", sources)
+
+    assert '"source_id"' not in synthesizer._client.last_user

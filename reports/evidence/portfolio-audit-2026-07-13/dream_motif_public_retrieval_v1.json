@@ -34,7 +34,7 @@
     },
     "evaluator": {
       "path": "scripts/eval_public_fixture.py",
-      "sha256": "sha256:1a787587621801a8a021d4fcc7b79777d31b70c12d80a587ffe6c7ab2c388295"
+      "sha256": "sha256:4a3682ba14d6cb36638e12b3a001b322944405bf0af195d5ab9e52883e4430c4"
     }
   },
   "metrics": {

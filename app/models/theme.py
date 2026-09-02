@@ -4,7 +4,7 @@ import uuid
 from typing import Any, Dict, List, Literal
 
 import sqlalchemy as sa
-from sqlalchemy import CheckConstraint, Float, ForeignKey, String, Text
+from sqlalchemy import CheckConstraint, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Boolean
@@ -36,6 +36,11 @@ class DreamTheme(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "status IN ('draft', 'confirmed', 'rejected')",
             name="ck_dream_themes_status",
+        ),
+        UniqueConstraint(
+            "dream_id",
+            "category_id",
+            name="uq_dream_themes_dream_category",
         ),
     )
 

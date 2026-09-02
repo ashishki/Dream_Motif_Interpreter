@@ -165,3 +165,26 @@ def test_post_research_returns_result_with_interpretation_note_when_enabled() ->
     service.run.assert_awaited_once_with(motif_id, session, triggered_by="user")
     session.commit.assert_awaited_once()
     session.refresh.assert_awaited_once_with(research_result)
+
+
+def test_post_research_returns_409_for_draft_motif() -> None:
+    motif_id = uuid.uuid4()
+    session = _FakeSession()
+    factory = _FakeSessionFactory(session)
+
+    with patch("app.api.research.get_session_factory", return_value=factory):
+        with patch("app.api.research.get_settings") as mock_get_settings:
+            mock_get_settings.return_value = SimpleNamespace(RESEARCH_AUGMENTATION_ENABLED=True)
+            with patch("app.api.research.ResearchService") as mock_service_cls:
+                mock_service_cls.return_value.run = AsyncMock(
+                    side_effect=ValueError("Research can only be run for confirmed motifs")
+                )
+                with _build_client() as client:
+                    response = client.post(
+                        f"/motifs/{motif_id}/research",
+                        headers=_auth_headers(),
+                    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Motif must be confirmed before research"}
+    session.commit.assert_not_awaited()

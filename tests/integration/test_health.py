@@ -6,7 +6,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.api.health import IndexHealthSnapshot
+from app.api.health import INDEX_HEALTH_SQL, IndexHealthSnapshot
+from app.shared.config import get_settings
+
+
+@pytest.fixture(autouse=True)
+def _set_build_sha(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BUILD_SHA", "test-build-sha")
+    get_settings.cache_clear()
 
 
 def _load_app():
@@ -18,6 +25,11 @@ def _load_app():
     from app.main import app
 
     return app
+
+
+def test_health_query_treats_null_embeddings_as_unindexed() -> None:
+    assert INDEX_HEALTH_SQL.count("chunk.embedding IS NOT NULL") == 2
+    assert "WHERE embedding IS NOT NULL" in INDEX_HEALTH_SQL
 
 
 @pytest.mark.anyio
@@ -44,6 +56,7 @@ async def test_health_returns_ok_with_fresh_index(monkeypatch: pytest.MonkeyPatc
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
+        "build_sha": "test-build-sha",
         "index_last_updated": fresh_timestamp.isoformat(),
         "unindexed_dreams": 0,
         "unindexed_notes": 0,
@@ -76,6 +89,7 @@ async def test_health_returns_ok_with_old_complete_index(
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
+        "build_sha": "test-build-sha",
         "index_last_updated": stale_timestamp.isoformat(),
         "unindexed_dreams": 0,
         "unindexed_notes": 0,
@@ -106,10 +120,37 @@ async def test_health_returns_503_on_index_backlog(monkeypatch: pytest.MonkeyPat
     assert response.status_code == 503
     assert response.json() == {
         "status": "degraded",
+        "build_sha": "test-build-sha",
         "index_last_updated": index_timestamp.isoformat(),
         "unindexed_dreams": 2,
         "unindexed_notes": 1,
     }
+
+
+@pytest.mark.anyio
+async def test_ready_stays_200_while_durable_index_jobs_are_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index_timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+    async def _fake_fetch() -> IndexHealthSnapshot:
+        return IndexHealthSnapshot(
+            index_last_updated=index_timestamp,
+            unindexed_dreams=2,
+            unindexed_notes=1,
+        )
+
+    monkeypatch.setattr("app.api.health._fetch_index_health_snapshot", _fake_fetch)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=_load_app()), base_url="http://testserver"
+    ) as client:
+        response = await client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert response.json()["unindexed_dreams"] == 2
+    assert response.json()["unindexed_notes"] == 1
 
 
 @pytest.mark.anyio
@@ -133,6 +174,7 @@ async def test_health_endpoint_no_auth_required(monkeypatch: pytest.MonkeyPatch)
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.json()["build_sha"] == "test-build-sha"
 
 
 @pytest.mark.anyio
@@ -154,3 +196,22 @@ async def test_health_returns_503_when_index_status_unavailable(
 
     assert response.status_code == 503
     assert response.json()["status"] == "degraded"
+    assert response.json()["build_sha"] == "test-build-sha"
+
+
+@pytest.mark.anyio
+async def test_ready_returns_503_when_database_status_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_fetch() -> None:
+        return None
+
+    monkeypatch.setattr("app.api.health._fetch_index_health_snapshot", _fake_fetch)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=_load_app()), base_url="http://testserver"
+    ) as client:
+        response = await client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "unready"

@@ -7,6 +7,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DREAM_MEMORY_MAP = REPO_ROOT / "docs" / "DREAM_MEMORY_MAP.md"
 PRODUCT_OVERVIEW = REPO_ROOT / "docs" / "PRODUCT_OVERVIEW.md"
 README = REPO_ROOT / "README.md"
+MINI_APP = REPO_ROOT / "app" / "static" / "dream_memory_map.html"
 
 
 def _read(path: Path) -> str:
@@ -75,3 +76,13 @@ def test_dream_memory_map_splits_bot_and_mini_app_responsibilities() -> None:
         "privacy, export, deletion, and hidden-item controls",
     ]:
         assert expected in mini_app_section
+
+
+def test_mini_app_only_creates_http_or_https_research_links() -> None:
+    text = _read(MINI_APP)
+
+    assert "function safeHttpUrl(value)" in text
+    assert 'parsed.protocol === "http:" || parsed.protocol === "https:"' in text
+    assert "const sourceUrl = safeHttpUrl(parallel.source_url);" in text
+    assert "link.href = sourceUrl" in text
+    assert "link.href = parallel.source_url" not in text

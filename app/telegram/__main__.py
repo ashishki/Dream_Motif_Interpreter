@@ -10,26 +10,35 @@ Run with:
 
 from __future__ import annotations
 
+import logging
+
 from app.assistant.facade import AssistantFacade
 from app.retrieval.query import RagQueryService
 from app.shared.config import get_settings
 from app.shared.database import get_session_factory
 from app.telegram.bot import main
 
+LOGGER = logging.getLogger(__name__)
+
 
 def _build_sync_enqueuer(session_factory):
+    settings = get_settings()
     try:
         from redis import asyncio as aioredis
 
         from app.api.dreams import LocalAsyncJobEnqueuer
 
-        settings = get_settings()
         redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         return LocalAsyncJobEnqueuer(
             redis_client=redis_client,
             session_factory=session_factory,
         )
-    except Exception:
+    except Exception as exc:
+        LOGGER.exception("Telegram sync enqueuer is unavailable")
+        if settings.ENV.casefold() in {"production", "staging"}:
+            raise RuntimeError(
+                "Redis-backed sync is required outside local/test environments"
+            ) from exc
         return None
 
 

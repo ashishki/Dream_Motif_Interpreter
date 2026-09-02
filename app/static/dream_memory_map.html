@@ -1,488 +1,419 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dream Memory Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Мотивы снов</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f7f8fb;
-      --panel: #ffffff;
-      --ink: #18202c;
-      --muted: #647184;
-      --line: #d9dee7;
-      --accent: #0f7b6c;
-      --warn: #a24b2a;
-      --dream: #276fbf;
-      --motif: #8f4f88;
-      --edge: #7a8698;
+      --bg: #f3f5f7; --panel: #fff; --ink: #19212b; --muted: #667181;
+      --line: #dce1e8; --accent: #167d70; --accent-soft: #e3f3ef;
+      --warn: #a1452e; --warn-soft: #f9e9e4; --dream: #3175bd;
+      --motif: #8e548d; --edge: #8792a2; --shadow: 0 10px 28px rgb(20 31 44 / 12%);
     }
-
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #12151a;
-        --panel: #1a2029;
-        --ink: #eef2f7;
-        --muted: #a6b0bf;
-        --line: #303846;
-        --accent: #4db6a7;
-        --warn: #d57a55;
-        --dream: #73a8e8;
-        --motif: #c58bd2;
-        --edge: #8792a2;
+        --bg: #11161d; --panel: #1a212b; --ink: #edf1f6; --muted: #aab3c0;
+        --line: #313b49; --accent: #55b9aa; --accent-soft: #173c37;
+        --warn: #e28a70; --warn-soft: #472820; --dream: #72a9e8;
+        --motif: #c88fce; --edge: #8390a0;
       }
     }
-
     * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: var(--bg);
-      color: var(--ink);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      letter-spacing: 0;
-    }
-
-    button, select {
-      font: inherit;
-    }
-
-    .app {
-      min-height: 100vh;
-      display: grid;
-      grid-template-rows: auto 1fr;
-    }
-
-    .topbar {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-      align-items: center;
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--line);
-      background: var(--panel);
-      position: sticky;
-      top: 0;
-      z-index: 4;
-    }
-
-    .title {
-      min-width: 0;
-      font-size: 18px;
-      font-weight: 700;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .toolbar {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    select, .icon-button, .action-button {
-      border: 1px solid var(--line);
-      background: var(--panel);
-      color: var(--ink);
-      border-radius: 8px;
-      min-height: 36px;
-    }
-
-    select {
-      padding: 0 10px;
-    }
-
-    .icon-button {
-      width: 38px;
-      display: inline-grid;
-      place-items: center;
-      cursor: pointer;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
-      min-height: 0;
-    }
-
-    .graph-wrap {
-      min-width: 0;
-      min-height: calc(100vh - 65px);
-      position: relative;
-      overflow: hidden;
-    }
-
-    svg {
-      width: 100%;
-      height: 100%;
-      min-height: calc(100vh - 65px);
-      display: block;
-      background: var(--bg);
-    }
-
-    .side {
-      border-left: 1px solid var(--line);
-      background: var(--panel);
-      padding: 14px;
-      overflow: auto;
-    }
-
-    .panel-title {
-      margin: 0 0 8px;
-      font-size: 15px;
-      font-weight: 700;
-    }
-
-    .meta {
-      margin: 0 0 14px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.4;
-    }
-
-    .detail-list {
-      display: grid;
-      gap: 8px;
-      margin: 12px 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .detail-list li {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 9px;
-      min-width: 0;
-      overflow-wrap: anywhere;
-      font-size: 13px;
-    }
-
-    .actions {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin: 14px 0;
-    }
-
-    .action-button {
-      padding: 0 8px;
-      cursor: pointer;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .action-button:disabled {
-      color: var(--muted);
-      cursor: not-allowed;
-      opacity: 0.58;
-    }
-
-    .danger {
-      border-color: color-mix(in srgb, var(--warn), var(--line) 45%);
-      color: var(--warn);
-    }
-
-    .status {
-      position: absolute;
-      left: 16px;
-      bottom: 16px;
-      max-width: min(440px, calc(100% - 32px));
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px 12px;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .node {
-      cursor: pointer;
-    }
-
-    .node circle {
-      stroke: var(--panel);
-      stroke-width: 3;
-    }
-
-    .node text {
-      fill: var(--ink);
-      font-size: 12px;
-      text-anchor: middle;
-      paint-order: stroke;
-      stroke: var(--bg);
-      stroke-width: 4;
-      stroke-linejoin: round;
-    }
-
-    .edge {
-      stroke: var(--edge);
-      stroke-width: 1.7;
-      opacity: 0.82;
-      cursor: pointer;
-    }
-
-    .edge.confirmed {
-      stroke: var(--accent);
-      stroke-width: 2.4;
-    }
-
-    .selected circle {
-      stroke: var(--accent);
-      stroke-width: 4;
-    }
-
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 15px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    button:focus-visible, input:focus-visible, select:focus-visible, .node:focus-visible, .edge:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .app { min-height: 100vh; }
+    .topbar { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px 14px 8px; padding-top: max(12px, env(safe-area-inset-top)); background: color-mix(in srgb, var(--panel) 96%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+    .title { font-size: 19px; font-weight: 750; }
+    .refresh { min-width: 40px; min-height: 40px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--panel); }
+    .tabs { display: flex; gap: 6px; grid-column: 1 / -1; }
+    .tab { flex: 1; min-height: 38px; border: 0; border-radius: 10px; color: var(--muted); background: transparent; font-weight: 650; }
+    .tab.active { color: var(--accent); background: var(--accent-soft); }
+    .view[hidden] { display: none !important; }
+    .review-view { width: min(760px, 100%); margin: 0 auto; padding: 16px 14px 40px; }
+    .intro { display: flex; justify-content: space-between; gap: 14px; align-items: start; margin-bottom: 14px; }
+    .intro h1 { margin: 0 0 4px; font-size: 19px; }
+    .intro p { margin: 0; color: var(--muted); font-size: 13px; }
+    .count { flex: 0 0 auto; min-width: 34px; padding: 6px 10px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); text-align: center; font-weight: 750; }
+    .filters { display: flex; gap: 8px; overflow: auto; margin-bottom: 14px; padding-bottom: 2px; }
+    .filter { flex: 0 0 auto; min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--panel); }
+    .filter.active { border-color: var(--accent); color: var(--accent); }
+    .review-list { display: grid; gap: 12px; }
+    .card { padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: 0 1px 2px rgb(20 31 44 / 4%); }
+    .card-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .dream-name { font-weight: 700; overflow-wrap: anywhere; }
+    .dream-date { color: var(--muted); font-size: 12px; }
+    .badge { align-self: start; padding: 3px 8px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+    .badge.draft { color: #855c00; background: #fff0c2; }
+    .badge.confirmed { color: var(--accent); background: var(--accent-soft); }
+    .badge.rejected { color: var(--warn); background: var(--warn-soft); }
+    .label-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .motif-label { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--bg); font-weight: 650; }
+    .small-button, .primary, .secondary, .exclude, .research-button { min-height: 40px; padding: 0 12px; border-radius: 10px; font-weight: 650; }
+    .small-button, .secondary { border: 1px solid var(--line); color: var(--ink); background: var(--panel); }
+    .primary, .research-button { border: 1px solid var(--accent); color: #fff; background: var(--accent); }
+    .exclude { border: 1px solid color-mix(in srgb, var(--warn), var(--line) 45%); color: var(--warn); background: var(--panel); }
+    .rationale { margin: 10px 0; color: var(--muted); font-size: 13px; }
+    .evidence-title { margin: 12px 0 6px; font-size: 12px; font-weight: 750; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .evidence { margin: 0 0 8px; padding: 10px 12px; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: var(--accent-soft); white-space: pre-wrap; }
+    .no-evidence { color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 10px; font-size: 13px; }
+    .card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+    .research { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .research-note, .inline-status { color: var(--muted); font-size: 13px; }
+    .parallel { padding: 9px 0; border-bottom: 1px solid var(--line); }
+    .parallel:last-child { border-bottom: 0; }
+    .parallel a { color: var(--accent); display: block; margin-top: 4px; }
+    .empty, .loading, .error { padding: 24px 16px; border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); text-align: center; background: var(--panel); }
+    .error { color: var(--warn); }
+    .map-toolbar { display: flex; gap: 8px; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+    .map-toolbar select { min-height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--panel); }
+    .map-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(290px, 360px); min-height: calc(100vh - 151px); }
+    .graph-wrap { min-width: 0; position: relative; overflow: hidden; }
+    svg { width: 100%; height: 100%; min-height: 540px; display: block; background: var(--bg); }
+    .map-status { position: absolute; left: 12px; bottom: 12px; max-width: calc(100% - 24px); padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--panel); font-size: 12px; }
+    .side { padding: 15px; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); }
+    .side h2 { margin: 0 0 6px; font-size: 17px; overflow-wrap: anywhere; }
+    .side p { margin: 0 0 12px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .side-close { display: none; float: right; border: 0; background: transparent; color: var(--muted); font-size: 22px; }
+    .node, .edge { cursor: pointer; }
+    .node circle { stroke: var(--panel); stroke-width: 3; }
+    .node text { fill: var(--ink); font-size: 12px; text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 4; stroke-linejoin: round; }
+    .node.selected circle { stroke: var(--accent); stroke-width: 5; }
+    .node:focus circle { stroke: var(--accent); stroke-width: 5; }
+    .edge { stroke: var(--edge); stroke-width: 1.8; opacity: .82; }
+    .edge.confirmed { stroke: var(--accent); stroke-width: 2.5; }
+    .edge.selected { stroke: var(--warn); stroke-width: 4; opacity: 1; }
+    .edge:focus { stroke: var(--accent); stroke-width: 4; opacity: 1; }
+    .map-actions { display: grid; gap: 8px; margin-top: 16px; }
+    .source-note { padding: 10px; border-radius: 9px; color: var(--muted); background: var(--bg); font-size: 12px; }
     @media (max-width: 780px) {
-      .layout {
-        grid-template-columns: 1fr;
-        grid-template-rows: minmax(420px, 58vh) auto;
-      }
-
-      .graph-wrap, svg {
-        min-height: 420px;
-      }
-
-      .side {
-        border-left: 0;
-        border-top: 1px solid var(--line);
-      }
+      .map-layout { display: block; min-height: calc(100vh - 151px); }
+      svg { min-height: calc(100vh - 151px); }
+      .side { position: fixed; z-index: 30; right: 0; bottom: 0; left: 0; max-height: 62vh; padding-bottom: max(18px, env(safe-area-inset-bottom)); border: 1px solid var(--line); border-radius: 18px 18px 0 0; box-shadow: var(--shadow); transform: translateY(105%); transition: transform .2s ease; }
+      .side.open { transform: translateY(0); }
+      .side-close { display: block; }
+      .label-row { grid-template-columns: 1fr; }
+      .small-button { justify-self: start; }
+      .card-actions > button { flex: 1 1 145px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .side { transition: none; }
     }
   </style>
 </head>
 <body>
   <main class="app">
     <header class="topbar">
-      <div class="title">Dream Memory Map</div>
-      <div class="toolbar">
-        <select id="scope" aria-label="Scope">
-          <option value="normal_graph_output">Normal</option>
-          <option value="confirmed_only">Confirmed</option>
-          <option value="all_with_controls">All</option>
-        </select>
-        <button class="icon-button" id="refresh" type="button" title="Refresh" aria-label="Refresh">R</button>
-      </div>
+      <div class="title">Мотивы снов</div>
+      <button class="refresh" id="refresh" type="button" title="Обновить" aria-label="Обновить">↻</button>
+      <nav class="tabs" aria-label="Разделы">
+        <button class="tab active" id="review-tab" type="button" aria-pressed="true" aria-controls="review-view">На проверку <span id="tab-count"></span></button>
+        <button class="tab" id="map-tab" type="button" aria-pressed="false" aria-controls="map-view">Карта</button>
+      </nav>
     </header>
-    <section class="layout">
-      <div class="graph-wrap">
-        <svg id="graph" role="img" aria-label="Dream graph"></svg>
-        <div class="status" id="status">Loading graph state...</div>
+    <section class="view review-view" id="review-view">
+      <div class="intro">
+        <div><h1>Предложения модели</h1><p>Сверьте мотив с цитатой из сна. Это не интерпретация и не вывод о вас.</p></div>
+        <div class="count" id="draft-count" role="status" aria-live="polite" aria-label="Новых предложений">0</div>
       </div>
-      <aside class="side">
-        <h2 class="panel-title" id="detail-title">Graph</h2>
-        <p class="meta" id="detail-meta">Select a node or edge.</p>
-        <div class="actions">
-          <button class="action-button" id="hide" type="button" disabled>Hide</button>
-          <button class="action-button danger" id="delete" type="button" disabled>Delete</button>
-          <button class="action-button danger" id="reject" type="button" disabled>Reject</button>
+      <div class="filters" aria-label="Фильтр мотивов">
+        <button class="filter active" data-filter="draft" type="button" aria-pressed="true">Новые</button>
+        <button class="filter" data-filter="confirmed" type="button" aria-pressed="false">Подтверждённые</button>
+        <button class="filter" data-filter="rejected" type="button" aria-pressed="false">Исключённые</button>
+        <button class="filter" data-filter="all" type="button" aria-pressed="false">Все</button>
+      </div>
+      <div class="review-list" id="review-list" aria-live="polite"><div class="loading" role="status">Загружаю предложения…</div></div>
+    </section>
+    <section class="view map-view" id="map-view" hidden>
+      <div class="map-toolbar">
+        <select id="scope" aria-label="Что показать на карте">
+          <option value="normal_graph_output">Актуальные</option>
+          <option value="confirmed_only">Только подтверждённые</option>
+          <option value="all_with_controls">Все с историей</option>
+        </select>
+      </div>
+      <div class="map-layout">
+        <div class="graph-wrap">
+          <svg id="graph" role="group" aria-label="Интерактивная карта снов и мотивов"></svg>
+          <div class="map-status" id="map-status" role="status" aria-live="polite">Откройте карту, чтобы загрузить связи.</div>
         </div>
-        <h3 class="panel-title">Privacy Controls</h3>
-        <ul class="detail-list" id="privacy"></ul>
-      </aside>
+        <aside class="side" id="detail-sheet" aria-live="polite">
+          <button class="side-close" id="side-close" type="button" aria-label="Закрыть">×</button>
+          <h2 id="detail-title">Карта</h2>
+          <p id="detail-meta">Выберите сон, мотив или связь.</p>
+          <div class="map-actions">
+            <button class="exclude" id="exclude-map" type="button" disabled>Исключить из карты</button>
+            <button class="secondary" id="restore-map" type="button" disabled>Вернуть на карту</button>
+            <button class="exclude" id="reject-link" type="button" disabled>Отклонить связь</button>
+          </div>
+          <p class="source-note">Исключение меняет только карту памяти. Исходный текст сна остаётся в архиве.</p>
+        </aside>
+      </div>
     </section>
   </main>
   <script>
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-    if (tg) {
-      tg.ready();
-      tg.expand();
-    }
-
-    const state = {
-      payload: null,
-      selected: null
+    if (tg) { tg.ready(); tg.expand(); }
+    const state = { activeView: "review", reviewFilter: "draft", motifs: [], graphPayload: null, selected: null };
+    const els = {
+      reviewTab: document.getElementById("review-tab"), mapTab: document.getElementById("map-tab"),
+      reviewView: document.getElementById("review-view"), mapView: document.getElementById("map-view"),
+      list: document.getElementById("review-list"), draftCount: document.getElementById("draft-count"),
+      tabCount: document.getElementById("tab-count"), graph: document.getElementById("graph"),
+      mapStatus: document.getElementById("map-status"), scope: document.getElementById("scope"),
+      sheet: document.getElementById("detail-sheet"), detailTitle: document.getElementById("detail-title"),
+      detailMeta: document.getElementById("detail-meta"), excludeMap: document.getElementById("exclude-map"),
+      restoreMap: document.getElementById("restore-map"),
+      rejectLink: document.getElementById("reject-link")
     };
-
-    const graphEl = document.getElementById("graph");
-    const statusEl = document.getElementById("status");
-    const scopeEl = document.getElementById("scope");
-    const detailTitleEl = document.getElementById("detail-title");
-    const detailMetaEl = document.getElementById("detail-meta");
-    const privacyEl = document.getElementById("privacy");
-    const buttons = {
-      hide: document.getElementById("hide"),
-      delete: document.getElementById("delete"),
-      reject: document.getElementById("reject")
-    };
-
-    document.getElementById("refresh").addEventListener("click", () => loadState());
-    scopeEl.addEventListener("change", () => loadState());
-    buttons.hide.addEventListener("click", () => submitControl("hide"));
-    buttons.delete.addEventListener("click", () => submitControl("delete"));
-    buttons.reject.addEventListener("click", () => submitControl("reject"));
-
-    loadState();
-
-    async function loadState() {
-      statusEl.textContent = "Loading graph state...";
-      const headers = {};
-      if (tg && tg.initData) {
-        headers["X-Telegram-Init-Data"] = tg.initData;
-      }
-      const response = await fetch(`/dream-memory/state?scope=${encodeURIComponent(scopeEl.value)}`, {
-        headers
+    els.reviewTab.addEventListener("click", () => switchView("review"));
+    els.mapTab.addEventListener("click", () => switchView("map"));
+    document.getElementById("refresh").addEventListener("click", refreshCurrent);
+    document.getElementById("side-close").addEventListener("click", () => els.sheet.classList.remove("open"));
+    els.scope.addEventListener("change", loadState);
+    els.excludeMap.addEventListener("click", () => submitGraphControl("hide"));
+    els.restoreMap.addEventListener("click", () => submitGraphControl("restore"));
+    els.rejectLink.addEventListener("click", () => submitGraphControl("reject"));
+    document.querySelectorAll(".filter").forEach((button) => button.addEventListener("click", () => {
+      state.reviewFilter = button.dataset.filter;
+      document.querySelectorAll(".filter").forEach((item) => {
+        const selected = item === button;
+        item.classList.toggle("active", selected);
+        item.setAttribute("aria-pressed", String(selected));
       });
+      renderReview();
+    }));
+    loadReview();
+
+    function authHeaders(json = false) {
+      const headers = json ? { "Content-Type": "application/json" } : {};
+      if (tg && tg.initData) { headers["X-Telegram-Init-Data"] = tg.initData; }
+      return headers;
+    }
+    async function api(url, options = {}) {
+      const response = await fetch(url, { ...options, headers: { ...authHeaders(Boolean(options.body)), ...(options.headers || {}) } });
+      let body = null;
+      try { body = await response.json(); } catch (_) { body = null; }
       if (!response.ok) {
-        statusEl.textContent = response.status === 401
-          ? "Telegram authorization required."
-          : `State unavailable (${response.status}).`;
-        renderEmpty();
+        const error = new Error(body && body.detail ? body.detail : `HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      return body;
+    }
+    async function loadReview() {
+      els.list.setAttribute("aria-busy", "true");
+      els.list.replaceChildren(message("loading", "Загружаю предложения…"));
+      try {
+        const payload = await api("/motifs/review?status=all&limit=100");
+        state.motifs = payload.items || [];
+        updateCounts(); renderReview();
+      } catch (error) { els.list.replaceChildren(retryMessage(honestError(error, "Не удалось загрузить мотивы."), loadReview)); }
+      finally { els.list.setAttribute("aria-busy", "false"); }
+    }
+    function updateCounts() {
+      const count = state.motifs.filter((motif) => motif.status === "draft").length;
+      els.draftCount.textContent = count; els.tabCount.textContent = count ? `(${count})` : "";
+    }
+    function renderReview() {
+      const motifs = state.motifs.filter((motif) => state.reviewFilter === "all" || motif.status === state.reviewFilter);
+      els.list.replaceChildren();
+      if (!motifs.length) {
+        els.list.appendChild(message("empty", state.reviewFilter === "draft" ? "Новых предложений нет." : "В этом разделе пока пусто."));
         return;
       }
-      state.payload = await response.json();
-      state.selected = null;
-      render();
+      motifs.forEach((motif) => els.list.appendChild(motifCard(motif)));
     }
-
-    function renderEmpty() {
-      graphEl.replaceChildren();
-      detailTitleEl.textContent = "Graph";
-      detailMetaEl.textContent = "No state loaded.";
-      privacyEl.replaceChildren();
-      setActionsEnabled();
+    function motifCard(motif) {
+      const card = document.createElement("article"); card.className = "card"; card.dataset.motifId = motif.id;
+      const head = document.createElement("div"); head.className = "card-head";
+      const dream = document.createElement("div");
+      const dreamName = document.createElement("div"); dreamName.className = "dream-name"; dreamName.textContent = motif.dream_title || "Без названия";
+      const dreamDate = document.createElement("div"); dreamDate.className = "dream-date"; dreamDate.textContent = formatDate(motif.dream_date);
+      dream.append(dreamName, dreamDate);
+      const badge = document.createElement("span"); badge.className = `badge ${motif.status}`; badge.textContent = statusLabel(motif.status);
+      head.append(dream, badge);
+      const labelRow = document.createElement("div"); labelRow.className = "label-row";
+      const input = document.createElement("input"); input.className = "motif-label"; input.value = motif.label; input.maxLength = 160; input.setAttribute("aria-label", "Название мотива");
+      const rename = button("small-button", "Сохранить название", () => updateMotif(motif, { label: input.value }, card));
+      labelRow.append(input, rename); card.append(head, labelRow);
+      if (motif.rationale) {
+        const rationale = document.createElement("p"); rationale.className = "rationale"; rationale.textContent = `Почему предложено: ${motif.rationale}`; card.appendChild(rationale);
+      }
+      const evidenceTitle = document.createElement("div"); evidenceTitle.className = "evidence-title"; evidenceTitle.textContent = "Цитата из сна"; card.appendChild(evidenceTitle);
+      if (motif.fragments && motif.fragments.length) {
+        motif.fragments.forEach((fragment) => {
+          const quote = document.createElement("blockquote"); quote.className = "evidence"; quote.textContent = `«${fragment.text}»`; card.appendChild(quote);
+        });
+      } else { card.appendChild(message("no-evidence", "Нет проверяемой цитаты. Не подтверждайте предложение без опоры на текст сна.")); }
+      const actions = document.createElement("div"); actions.className = "card-actions";
+      if (motif.status === "draft") {
+        actions.append(
+          button("primary", "Подтвердить", () => updateMotif(motif, { status: "confirmed", label: input.value }, card), !(motif.fragments || []).length),
+          button("exclude", "Исключить из карты", () => updateMotif(motif, { status: "rejected" }, card))
+        );
+      } else if (motif.status === "confirmed") {
+        actions.append(
+          button("research-button", "Найти параллели", () => researchMotif(motif, card)),
+          button("exclude", "Исключить из карты", () => updateMotif(motif, { status: "rejected" }, card))
+        );
+      } else { actions.append(button("secondary", "Вернуть на проверку", () => updateMotif(motif, { status: "draft" }, card))); }
+      card.appendChild(actions);
+      const inline = document.createElement("div"); inline.className = "inline-status"; inline.setAttribute("aria-live", "polite"); card.appendChild(inline);
+      return card;
     }
-
-    function render() {
-      const graph = state.payload.graph;
-      const width = graphEl.clientWidth || 720;
-      const height = graphEl.clientHeight || 520;
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const radius = Math.max(120, Math.min(width, height) * 0.34);
+    async function updateMotif(motif, patch, card) {
+      const status = card.querySelector(".inline-status"); const buttons = card.querySelectorAll("button");
+      buttons.forEach((item) => { item.disabled = true; }); status.textContent = "Сохраняю…";
+      try {
+        const updated = await api(`/dreams/${motif.dream_id}/motifs/${motif.id}`, { method: "PATCH", body: JSON.stringify(patch) });
+        state.motifs = state.motifs.map((item) => item.id === motif.id ? { ...item, ...updated, can_research: updated.status === "confirmed" } : item);
+        updateCounts(); renderReview();
+      } catch (error) {
+        buttons.forEach((item) => { item.disabled = false; }); status.textContent = honestError(error, "Не удалось сохранить решение.");
+      }
+    }
+    async function researchMotif(motif, card) {
+      if (motif.status !== "confirmed") { return; }
+      let area = card.querySelector(".research");
+      if (!area) { area = document.createElement("div"); area.className = "research"; card.appendChild(area); }
+      area.replaceChildren(message("research-note", "Ищу внешние параллели…"));
+      try {
+        const result = await api(`/motifs/${motif.id}/research`, { method: "POST" }); area.replaceChildren();
+        if (!result.parallels || !result.parallels.length) { area.appendChild(message("research-note", "Поддержанных параллелей не найдено.")); return; }
+        area.appendChild(message("research-note", "Внешние предположения — не выводы о сне:"));
+        result.parallels.forEach((parallel) => {
+          const item = document.createElement("div"); item.className = "parallel";
+          const title = document.createElement("strong"); title.textContent = parallel.label || "Параллель";
+          const note = document.createElement("div"); note.textContent = `${parallel.relevance_note || ""}${parallel.overlap_degree ? ` · совпадение: ${overlapLabel(parallel.overlap_degree)}` : ""}`;
+          item.append(title, note);
+          const sourceUrl = safeHttpUrl(parallel.source_url);
+          if (sourceUrl) {
+            const link = document.createElement("a"); link.href = sourceUrl; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = "Открыть источник"; item.appendChild(link);
+          }
+          area.appendChild(item);
+        });
+      } catch (error) {
+        area.replaceChildren(message("error", error.status === 503 ? "Поиск параллелей сейчас выключен. Попробуйте позже." : "Поиск не завершился. Попробуйте позже."));
+      }
+    }
+    function switchView(view) {
+      state.activeView = view; els.reviewView.hidden = view !== "review"; els.mapView.hidden = view !== "map";
+      els.reviewTab.classList.toggle("active", view === "review"); els.mapTab.classList.toggle("active", view === "map");
+      els.reviewTab.setAttribute("aria-pressed", String(view === "review"));
+      els.mapTab.setAttribute("aria-pressed", String(view === "map"));
+      if (view === "map") { loadState(); }
+    }
+    function refreshCurrent() { return state.activeView === "review" ? loadReview() : loadState(); }
+    async function loadState() {
+      els.mapStatus.textContent = "Загружаю карту…";
+      try {
+        const response = await fetch(`/dream-memory/state?scope=${encodeURIComponent(els.scope.value)}`, { headers: authHeaders() });
+        if (!response.ok) { const error = new Error(`HTTP ${response.status}`); error.status = response.status; throw error; }
+        state.graphPayload = await response.json(); state.selected = null; renderGraph();
+      } catch (error) { state.graphPayload = null; els.graph.replaceChildren(); els.mapStatus.textContent = honestError(error, "Карта сейчас недоступна."); }
+    }
+    function renderGraph() {
+      const graph = state.graphPayload.graph; const width = els.graph.clientWidth || 720; const height = els.graph.clientHeight || 560;
+      const radius = Math.max(115, Math.min(width, height) * .34);
       const nodes = graph.nodes.map((node, index) => {
-        const angle = (Math.PI * 2 * index) / Math.max(graph.nodes.length, 1) - Math.PI / 2;
-        return {
-          ...node,
-          x: centerX + Math.cos(angle) * radius,
-          y: centerY + Math.sin(angle) * radius
-        };
+        const angle = Math.PI * 2 * index / Math.max(graph.nodes.length, 1) - Math.PI / 2;
+        return { ...node, x: width / 2 + Math.cos(angle) * radius, y: height / 2 + Math.sin(angle) * radius };
       });
       const byId = new Map(nodes.map((node) => [node.id, node]));
       const edges = graph.edges.filter((edge) => byId.has(edge.source_node_id) && byId.has(edge.target_node_id));
-      graphEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
-      graphEl.replaceChildren();
-
-      for (const edge of edges) {
-        const source = byId.get(edge.source_node_id);
-        const target = byId.get(edge.target_node_id);
-        const line = svg("line", {
-          x1: source.x,
-          y1: source.y,
-          x2: target.x,
-          y2: target.y,
-          class: `edge ${edge.confirmation_status === "confirmed" ? "confirmed" : ""}`
-        });
-        line.addEventListener("click", () => selectItem({ kind: "edge", item: edge }));
-        graphEl.appendChild(line);
-      }
-
-      for (const node of nodes) {
-        const group = svg("g", { class: "node" });
-        group.appendChild(svg("circle", {
-          cx: node.x,
-          cy: node.y,
-          r: node.type === "Dream" ? 22 : 18,
-          fill: node.type === "Dream" ? "var(--dream)" : "var(--motif)"
-        }));
-        group.appendChild(svg("text", {
-          x: node.x,
-          y: node.y + 36
-        }, label(node.label, 24)));
-        group.addEventListener("click", () => selectItem({ kind: "node", item: node }));
-        graphEl.appendChild(group);
-      }
-
-      renderPrivacy();
-      statusEl.textContent = `${nodes.length} nodes, ${edges.length} edges`;
-      renderSelection();
-    }
-
-    function selectItem(selection) {
-      state.selected = selection;
-      renderSelection();
-    }
-
-    function renderSelection() {
-      graphEl.querySelectorAll(".selected").forEach((item) => item.classList.remove("selected"));
-      if (!state.selected) {
-        detailTitleEl.textContent = "Graph";
-        detailMetaEl.textContent = state.payload
-          ? `${state.payload.graph.nodes.length} nodes in ${state.payload.scope}.`
-          : "No state loaded.";
-        setActionsEnabled();
-        return;
-      }
-
-      const { kind, item } = state.selected;
-      detailTitleEl.textContent = kind === "node" ? item.label : item.type;
-      detailMetaEl.textContent = kind === "node"
-        ? `${item.type} - ${item.confirmation_status}`
-        : `${item.source_node_id} -> ${item.target_node_id}`;
-      setActionsEnabled();
-    }
-
-    function renderPrivacy() {
-      const controls = state.payload.privacy_controls;
-      privacyEl.replaceChildren();
-      for (const [key, value] of Object.entries(controls)) {
-        const li = document.createElement("li");
-        li.textContent = `${key}: ${Array.isArray(value) ? value.length : 0}`;
-        privacyEl.appendChild(li);
-      }
-    }
-
-    function setActionsEnabled() {
-      const selected = state.selected;
-      const hasSelection = Boolean(selected);
-      buttons.hide.disabled = !hasSelection;
-      buttons.delete.disabled = !hasSelection;
-      buttons.reject.disabled = !hasSelection || selected.kind !== "edge" || !selected.item.suggestion;
-    }
-
-    async function submitControl(action) {
-      if (!state.selected) {
-        return;
-      }
-      const subjectType = state.selected.kind === "node" ? "graph_node" : "graph_edge";
-      const subjectId = state.selected.item.id;
-      const body = { subject_type: subjectType, subject_id: subjectId };
-      if (action === "reject") {
-        body.source_fragments = state.selected.item.suggestion.source_fragments;
-      }
-
-      const headers = { "Content-Type": "application/json" };
-      if (tg && tg.initData) {
-        headers["X-Telegram-Init-Data"] = tg.initData;
-      }
-      const response = await fetch(`/dream-memory/privacy/${action}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body)
+      els.graph.setAttribute("viewBox", `0 0 ${width} ${height}`); els.graph.replaceChildren();
+      edges.forEach((edge) => {
+        const source = byId.get(edge.source_node_id); const target = byId.get(edge.target_node_id);
+        const line = svg("line", { x1: source.x, y1: source.y, x2: target.x, y2: target.y, class: `edge ${edge.confirmation_status === "confirmed" ? "confirmed" : ""}`, "data-item-id": edge.id, role: "button", tabindex: "0", "aria-label": edgeLabel(edge.type) });
+        line.addEventListener("click", () => selectGraphItem("edge", edge));
+        activateOnKeyboard(line, () => selectGraphItem("edge", edge));
+        els.graph.appendChild(line);
       });
-      statusEl.textContent = response.ok ? `${action} saved.` : `${action} failed (${response.status}).`;
-      if (response.ok) {
-        await loadState();
-      }
+      nodes.forEach((node) => {
+        const group = svg("g", { class: "node", "data-item-id": node.id, role: "button", tabindex: "0", "aria-label": `${nodeLabel(node.type)}: ${node.label}` });
+        group.appendChild(svg("circle", { cx: node.x, cy: node.y, r: node.type === "Dream" ? 22 : 18, fill: node.type === "Dream" ? "var(--dream)" : "var(--motif)" }));
+        group.appendChild(svg("text", { x: node.x, y: node.y + 36 }, shorten(node.label, 28)));
+        group.addEventListener("click", () => selectGraphItem("node", node));
+        activateOnKeyboard(group, () => selectGraphItem("node", node));
+        els.graph.appendChild(group);
+      });
+      els.mapStatus.textContent = `${nodes.length} узлов · ${edges.length} связей`; renderGraphSelection();
     }
-
-    function svg(tag, attributes, text) {
-      const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
-      for (const [key, value] of Object.entries(attributes)) {
-        element.setAttribute(key, value);
+    function selectGraphItem(kind, item) { state.selected = { kind, item }; renderGraphSelection(); els.sheet.classList.add("open"); }
+    function renderGraphSelection() {
+      els.graph.querySelectorAll(".selected").forEach((item) => item.classList.remove("selected"));
+      if (!state.selected) {
+        els.detailTitle.textContent = "Карта"; els.detailMeta.textContent = "Выберите сон, мотив или связь."; els.excludeMap.disabled = true; els.restoreMap.disabled = true; els.rejectLink.disabled = true; return;
       }
-      if (text) {
-        element.textContent = text;
-      }
+      const { kind, item } = state.selected;
+      const selectedElement = Array.from(els.graph.querySelectorAll("[data-item-id]")).find((element) => element.dataset.itemId === item.id);
+      if (selectedElement) { selectedElement.classList.add("selected"); }
+      els.detailTitle.textContent = kind === "node" ? item.label : edgeLabel(item.type);
+      els.detailMeta.textContent = kind === "node" ? `${nodeLabel(item.type)} · ${statusLabel(item.confirmation_status)}` : `${shorten(item.source_node_id, 34)} → ${shorten(item.target_node_id, 34)}`;
+      const hidden = isHiddenSelection();
+      els.excludeMap.disabled = hidden;
+      els.restoreMap.disabled = !hidden;
+      els.rejectLink.disabled = hidden || kind !== "edge" || !item.suggestion;
+    }
+    async function submitGraphControl(action) {
+      if (!state.selected) { return; }
+      if (action === "hide" && !window.confirm("Исключить выбранный элемент из карты? Его можно вернуть в режиме «Все с историей». Исходный текст сна останется в архиве.")) { return; }
+      const body = { subject_type: state.selected.kind === "node" ? "graph_node" : "graph_edge", subject_id: state.selected.item.id };
+      if (action === "reject") { body.source_fragments = state.selected.item.suggestion.source_fragments; }
+      els.mapStatus.textContent = "Сохраняю изменение…";
+      try { await api(`/dream-memory/privacy/${action}`, { method: "POST", body: JSON.stringify(body) }); await loadState(); }
+      catch (error) { els.mapStatus.textContent = honestError(error, "Не удалось изменить карту."); }
+    }
+    function button(className, text, onClick, disabled = false) {
+      const element = document.createElement("button"); element.type = "button"; element.className = className; element.textContent = text; element.disabled = disabled; element.addEventListener("click", onClick); return element;
+    }
+    function activateOnKeyboard(element, callback) {
+      element.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); callback(); }
+      });
+    }
+    function isHiddenSelection() {
+      if (!state.selected || !state.graphPayload) { return false; }
+      const key = state.selected.kind === "node" ? "hidden_node_ids" : "hidden_edge_ids";
+      return (state.graphPayload.privacy_controls[key] || []).includes(state.selected.item.id);
+    }
+    function message(className, text) {
+      const element = document.createElement("div"); element.className = className; element.textContent = text;
+      if (className === "error") { element.setAttribute("role", "alert"); }
+      else if (className === "loading") { element.setAttribute("role", "status"); }
       return element;
     }
-
-    function label(value, maxLength) {
-      return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+    function retryMessage(text, callback) {
+      const element = message("error", text);
+      const retry = button("secondary", "Повторить", callback);
+      retry.style.marginTop = "10px";
+      element.appendChild(document.createElement("br"));
+      element.appendChild(retry);
+      return element;
     }
+    function svg(tag, attributes, text) {
+      const element = document.createElementNS("http://www.w3.org/2000/svg", tag); Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value)); if (text) { element.textContent = text; } return element;
+    }
+    function formatDate(value) { if (!value) { return "Дата не указана"; } const [year, month, day] = value.split("-"); return year && month && day ? `${day}.${month}.${year.slice(-2)}` : value; }
+    function statusLabel(status) { return ({ draft: "На проверке", unreviewed: "На проверке", confirmed: "Подтверждён", rejected: "Исключён", hidden: "Скрыт" })[status] || status; }
+    function overlapLabel(value) { return ({ full: "полное", partial: "частичное", structural: "структурное" })[value] || value; }
+    function nodeLabel(value) { return ({ Dream: "Сон", Motif: "Мотив" })[value] || value; }
+    function edgeLabel(value) { return ({ appears_in: "Мотив в этом сне", repeats_with: "Повторяющийся мотив" })[value] || value; }
+    function shorten(value, max) { const text = String(value || ""); return text.length > max ? `${text.slice(0, max - 1)}…` : text; }
+    function safeHttpUrl(value) {
+      if (typeof value !== "string") { return null; }
+      try {
+        const parsed = new URL(value);
+        return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.href : null;
+      } catch (error) { return null; }
+    }
+    function honestError(error, fallback) { return error && error.status === 401 ? "Откройте Mini App из Telegram, чтобы подтвердить доступ." : fallback; }
   </script>
 </body>
 </html>

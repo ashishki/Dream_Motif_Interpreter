@@ -39,12 +39,42 @@ async def _reset_public_schema(engine: AsyncEngine) -> None:
         await connection.exec_driver_sql("GRANT ALL ON SCHEMA public TO public")
 
 
-def _load_app():
+class _RecordingJobEnqueuer:
+    def __init__(self) -> None:
+        self.calls: list[tuple[uuid.UUID, str, int | None]] = []
+
+    async def enqueue_ingest(
+        self,
+        *,
+        job_id: uuid.UUID,
+        doc_id: str,
+        chat_id: int | None = None,
+    ) -> None:
+        self.calls.append((job_id, doc_id, chat_id))
+
+
+def _load_app(
+    monkeypatch: pytest.MonkeyPatch | None = None,
+    *,
+    job_enqueuer: _RecordingJobEnqueuer | None = None,
+):
     sys.modules.pop("app.api.dreams", None)
     sys.modules.pop("app.main", None)
     from app.shared.database import get_session_factory
 
     get_session_factory.cache_clear()
+
+    if job_enqueuer is not None:
+        import app.api.dreams as dreams_module
+
+        backend = dreams_module.RedisSyncBackend(
+            redis_client=dreams_module._get_redis_client(),
+            job_enqueuer=job_enqueuer,
+            doc_id=os.environ["GOOGLE_DOC_ID"],
+        )
+        assert monkeypatch is not None
+        monkeypatch.setattr(dreams_module, "_get_job_enqueuer", lambda: job_enqueuer)
+        monkeypatch.setattr(dreams_module, "_get_sync_backend", lambda: backend)
 
     from app.main import app
 
@@ -139,11 +169,13 @@ def _auth_headers() -> dict[str, str]:
 @pytest.mark.anyio
 async def test_post_sync_returns_202(
     migrated_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del migrated_session_factory
+    job_enqueuer = _RecordingJobEnqueuer()
 
     async with AsyncClient(
-        transport=ASGITransport(app=_load_app()),
+        transport=ASGITransport(app=_load_app(monkeypatch, job_enqueuer=job_enqueuer)),
         base_url="http://testserver",
     ) as client:
         response = await client.post("/sync", headers=_auth_headers())
@@ -151,7 +183,8 @@ async def test_post_sync_returns_202(
     assert response.status_code == 202
     body = response.json()
     assert body["status"] == "queued"
-    assert uuid.UUID(body["job_id"])
+    job_id = uuid.UUID(body["job_id"])
+    assert job_enqueuer.calls == [(job_id, os.environ["GOOGLE_DOC_ID"], None)]
 
 
 @pytest.mark.anyio

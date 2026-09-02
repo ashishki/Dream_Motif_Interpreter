@@ -56,7 +56,9 @@ def _build_document(paragraphs: list[str]) -> NormalizedDocument:
 
 
 @pytest.mark.anyio
-async def test_deduplication_by_content_hash(migrated_session: AsyncSession) -> None:
+async def test_repeated_fetch_is_idempotent_by_source_slot(
+    migrated_session: AsyncSession,
+) -> None:
     paragraphs = [
         "2026-02-14",
         "I was climbing a staircase made of paper.",

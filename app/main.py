@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api.dream_memory import router as dream_memory_router
-from app.api.dreams import _get_redis_client, is_valid_api_key, router as dreams_router
+from app.api.dreams import _get_job_enqueuer, _get_redis_client, is_valid_api_key
+from app.api.dreams import router as dreams_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
 from app.api.motifs import router as motifs_router
@@ -21,7 +24,29 @@ from app.shared.tracing import configure_logging, get_logger, get_tracer
 
 # The mini-app HTML shell is public by design because it contains no dream data.
 # Data APIs still require X-API-Key or verified Telegram WebApp init data.
-PUBLIC_PATHS = {"/health", "/auth/callback", "/dream-memory/mini-app"}
+PUBLIC_PATHS = {"/health", "/ready", "/auth/callback", "/dream-memory/mini-app"}
+NO_STORE_HEADERS = {
+    "Cache-Control": "no-store, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+BASE_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+MINI_APP_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://telegram.org; "
+    "style-src 'self' 'unsafe-inline'; "
+    "connect-src 'self'; "
+    "img-src 'self' data:; "
+    "font-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'none'; "
+    "frame-ancestors https://telegram.org https://*.telegram.org"
+)
 
 
 def create_app() -> FastAPI:
@@ -30,10 +55,25 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        enqueuer = _get_job_enqueuer()
+        enqueuer_start = getattr(enqueuer, "start", None)
+        if callable(enqueuer_start):
+            result = enqueuer_start()
+            if inspect.isawaitable(result) and not isinstance(result, asyncio.Task):
+                await result
         yield
-        close = getattr(_get_redis_client(), "aclose", None)
-        if close is not None:
-            await close()
+        enqueuer_close = getattr(enqueuer, "shutdown", None)
+        try:
+            if enqueuer_close is not None:
+                await enqueuer_close(timeout_seconds=1.0)
+            else:
+                close = getattr(_get_redis_client(), "aclose", None)
+                if close is not None:
+                    await close()
+        finally:
+            cache_clear = getattr(_get_job_enqueuer, "cache_clear", None)
+            if callable(cache_clear):
+                cache_clear()
 
     application = FastAPI(title="Dream Motif Interpreter", version="0.1.0", lifespan=lifespan)
     application.include_router(health_router)
@@ -76,6 +116,17 @@ def create_app() -> FastAPI:
                 status_code=response.status_code,
             )
             return response
+
+    @application.middleware("http")
+    async def protect_private_responses(request: Request, call_next):
+        response = await call_next(request)
+        for header, value in NO_STORE_HEADERS.items():
+            response.headers[header] = value
+        for header, value in BASE_SECURITY_HEADERS.items():
+            response.headers[header] = value
+        if request.url.path == "/dream-memory/mini-app":
+            response.headers["Content-Security-Policy"] = MINI_APP_CONTENT_SECURITY_POLICY
+        return response
 
     return application
 

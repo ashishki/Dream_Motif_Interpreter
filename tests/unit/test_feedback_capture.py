@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,7 +9,7 @@ import pytest
 from app.assistant.chat import ChatResult
 from app.assistant.facade import AssistantFacade
 from app.services.feedback_service import FeedbackService
-from app.telegram.handlers import FEEDBACK_PROMPT, text_message_handler
+from app.telegram.handlers import FEEDBACK_PROMPT, _content_hash, text_message_handler
 
 
 class StubSession:
@@ -74,6 +75,42 @@ def _make_context(
     )
 
 
+def _assert_privacy_safe_feedback_context(context: dict) -> None:
+    assert context["message_id"] == 9001
+    assert context["tool_calls_made"] == ["search_dreams"]
+    assert context["request_summary"] == {
+        "intent": "search",
+        "chars": 5,
+        "words": 1,
+        "has_reply_context": False,
+    }
+    assert context["response_summary"] == {"chars": 23, "words": 2}
+    assert len(context["request_hash"]) == 64
+    assert len(context["response_hash"]) == 64
+    assert "hello" not in str(context)
+    assert "Detailed interpretation" not in str(context)
+    assert context["route"] == "tool_use"
+
+
+def test_feedback_hash_is_keyed_and_not_dictionary_guessable() -> None:
+    plaintext = "да"
+    public_digest = hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
+    with patch(
+        "app.telegram.handlers.get_settings",
+        return_value=SimpleNamespace(SECRET_KEY="first-private-feedback-key"),
+    ):
+        first = _content_hash(plaintext)
+    with patch(
+        "app.telegram.handlers.get_settings",
+        return_value=SimpleNamespace(SECRET_KEY="second-private-feedback-key"),
+    ):
+        second = _content_hash(plaintext)
+
+    assert first != public_digest
+    assert second != public_digest
+    assert first != second
+
+
 @pytest.mark.asyncio
 async def test_digit_message_after_substantive_response_records_feedback() -> None:
     session = StubSession()
@@ -94,15 +131,11 @@ async def test_digit_message_after_substantive_response_records_feedback() -> No
     mock_record.assert_awaited_once()
     _, score, feedback_context, record_session = mock_record.await_args.args
     assert score == 3
-    assert feedback_context == {
-        "message_id": 9001,
-        "response_summary": "Detailed interpretation",
-        "tool_calls_made": ["search_dreams"],
-    }
+    _assert_privacy_safe_feedback_context(feedback_context)
     assert record_session is session
     assert session.committed is True
     message1.reply_text.assert_awaited_once_with(f"Detailed interpretation\n\n{FEEDBACK_PROMPT}")
-    message2.reply_text.assert_awaited_once_with("Thanks, noted.")
+    message2.reply_text.assert_awaited_once_with("Спасибо, записал.")
 
 
 @pytest.mark.asyncio
@@ -243,7 +276,7 @@ async def test_valid_digit_capture_replies_with_acknowledgement() -> None:
         await text_message_handler(update1, context)
         await text_message_handler(update2, context)
 
-    message2.reply_text.assert_awaited_once_with("Thanks, noted.")
+    message2.reply_text.assert_awaited_once_with("Спасибо, записал.")
 
 
 @pytest.mark.asyncio
@@ -266,15 +299,11 @@ async def test_reply_to_bot_message_with_digit_records_feedback() -> None:
     mock_record.assert_awaited_once()
     _, score, feedback_context, record_session = mock_record.await_args.args
     assert score == 4
-    assert feedback_context == {
-        "message_id": 9001,
-        "response_summary": "Detailed interpretation",
-        "tool_calls_made": ["search_dreams"],
-    }
+    _assert_privacy_safe_feedback_context(feedback_context)
     assert record_session is session
     assert mock_record.await_args.kwargs == {"comment": None}
     assert session.committed is True
-    message2.reply_text.assert_awaited_once_with("Thanks, noted.")
+    message2.reply_text.assert_awaited_once_with("Спасибо, записал.")
 
 
 @pytest.mark.asyncio
@@ -297,15 +326,11 @@ async def test_reply_to_bot_message_with_digit_and_comment_records_feedback_with
     mock_record.assert_awaited_once()
     _, score, feedback_context, record_session = mock_record.await_args.args
     assert score == 5
-    assert feedback_context == {
-        "message_id": 9001,
-        "response_summary": "Detailed interpretation",
-        "tool_calls_made": ["search_dreams"],
-    }
+    _assert_privacy_safe_feedback_context(feedback_context)
     assert record_session is session
     assert mock_record.await_args.kwargs == {"comment": "Great!"}
     assert session.committed is True
-    message2.reply_text.assert_awaited_once_with("Thanks, noted.")
+    message2.reply_text.assert_awaited_once_with("Спасибо, записал.")
 
 
 @pytest.mark.asyncio

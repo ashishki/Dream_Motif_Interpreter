@@ -10,7 +10,7 @@ AC-5: All routes covered by unit tests with stub DB session.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -19,11 +19,15 @@ import pytest
 from app.api.motifs import (
     MotifHistoryResponse,
     MotifListResponse,
+    MotifReviewListResponse,
     MotifStatusUpdateRequest,
     get_motif_history,
+    list_motifs_for_review,
     list_motifs,
     update_motif_status,
 )
+from app.services.dream_memory_graph import motif_to_graph_node
+from app.services.proof_receipts import build_node_memory_receipt
 
 # ---------------------------------------------------------------------------
 # Helpers / stubs
@@ -95,6 +99,9 @@ class _FakeResult:
 
     def scalar_one_or_none(self):
         return self._items[0] if self._items else None
+
+    def all(self):
+        return list(self._items)
 
 
 class _FakeSession:
@@ -252,6 +259,53 @@ async def test_list_motifs_interpretation_note_present() -> None:
         )
 
 
+@pytest.mark.asyncio
+async def test_review_inbox_returns_only_source_verified_evidence() -> None:
+    dream_id = uuid.uuid4()
+    dream = SimpleNamespace(
+        id=dream_id,
+        title="Лестница",
+        date=date(2026, 8, 29),
+        raw_text="Я поднималась по лестнице, но дверь была закрыта.",
+    )
+    good_text = "по лестнице"
+    good_start = dream.raw_text.index(good_text)
+    motif = _make_motif(
+        dream_id=dream_id,
+        fragments=[
+            {
+                "text": good_text,
+                "start_offset": good_start,
+                "end_offset": good_start + len(good_text),
+                "verified": True,
+            },
+            {"text": "этого не было", "verified": True},
+            {"text": "дверь", "verified": False},
+        ],
+    )
+    session = _FakeSession(execute_results=[_FakeResult([(motif, dream)])])
+
+    with patch(
+        "app.api.motifs.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await list_motifs_for_review(status="all", limit=100)
+
+    assert isinstance(response, MotifReviewListResponse)
+    assert response.draft_count == 1
+    assert response.items[0].dream_title == "Лестница"
+    assert response.items[0].dream_date == "2026-08-29"
+    assert response.items[0].can_research is False
+    assert response.items[0].fragments == [
+        {
+            "text": good_text,
+            "start_offset": good_start,
+            "end_offset": good_start + len(good_text),
+            "verified": True,
+        }
+    ]
+
+
 # ---------------------------------------------------------------------------
 # AC-2: PATCH /dreams/{dream_id}/motifs/{motif_id} updates status
 # ---------------------------------------------------------------------------
@@ -276,6 +330,59 @@ async def test_patch_motif_updates_status() -> None:
     assert response.status == "confirmed"
     assert motif.status == "confirmed"
     assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_patch_motif_can_rename_without_changing_status() -> None:
+    dream_id = uuid.uuid4()
+    motif = _make_motif(dream_id=dream_id, status="draft", label="Старое имя")
+    session = _FakeSession(execute_results=[_FakeResult([motif])])
+
+    with patch(
+        "app.api.motifs.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await update_motif_status(
+            dream_id=dream_id,
+            motif_id=motif.id,
+            payload=MotifStatusUpdateRequest(label="  Новое   имя  "),
+        )
+
+    assert response.label == "Новое имя"
+    assert response.status == "draft"
+    assert session.added[0].snapshot["label_before"] == "Старое имя"
+    assert session.added[0].snapshot["label_after"] == "Новое имя"
+    assert session.committed is True
+
+
+def test_patch_motif_rejects_empty_review_update() -> None:
+    with pytest.raises(ValueError):
+        MotifStatusUpdateRequest()
+
+    with pytest.raises(ValueError):
+        MotifStatusUpdateRequest(label="   ")
+
+
+@pytest.mark.asyncio
+async def test_patch_rejected_motif_can_return_to_versioned_draft_review() -> None:
+    dream_id = uuid.uuid4()
+    motif = _make_motif(dream_id=dream_id, status="rejected")
+    session = _FakeSession(execute_results=[_FakeResult([motif])])
+
+    with patch(
+        "app.api.motifs.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await update_motif_status(
+            dream_id=dream_id,
+            motif_id=motif.id,
+            payload=MotifStatusUpdateRequest(status="draft"),
+        )
+
+    assert response.status == "draft"
+    assert session.added[0].snapshot["status_before"] == "rejected"
+    assert session.added[0].snapshot["status_after"] == "draft"
+    assert "local_memory_action_receipts" not in session.added[0].snapshot
 
 
 @pytest.mark.asyncio
@@ -393,6 +500,34 @@ async def test_patch_motif_confirm_writes_local_memory_action_receipts() -> None
     }
     assert edge_receipt["verifier_status"] == "passed"
     assert edge_receipt["entropy_core_level"] == "receipt_compatible"
+
+
+@pytest.mark.asyncio
+async def test_confirm_and_rename_receipt_attests_new_label() -> None:
+    dream_id = uuid.uuid4()
+    motif = _make_motif(dream_id=dream_id, status="draft", label="Старое имя")
+    session = _FakeSession(execute_results=[_FakeResult([motif])])
+
+    with patch(
+        "app.api.motifs.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        await update_motif_status(
+            dream_id=dream_id,
+            motif_id=motif.id,
+            payload=MotifStatusUpdateRequest(status="confirmed", label="Новое имя"),
+        )
+
+    stored_node_receipt = session.added[0].snapshot["local_memory_action_receipts"][0]["receipt"]
+    expected = build_node_memory_receipt(
+        node=motif_to_graph_node(motif),
+        action="node_confirmed",
+    )
+    assert motif.label == "Новое имя"
+    assert motif.status == "confirmed"
+    assert stored_node_receipt["evidence_refs"][0]["checksum_sha256"] == (
+        expected.evidence_refs[0].checksum_sha256
+    )
 
 
 @pytest.mark.asyncio

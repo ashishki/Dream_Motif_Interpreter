@@ -1,447 +1,217 @@
 # Architecture — Dream Motif Interpreter
 
-Version: 3.0
-Last updated: 2026-04-16 (Phase 9 complete — WS-9.1–WS-9.6 implemented; WS-9.7 deferred)
-Status: Active — reflects implemented system through Phase 9
+Version: 4.1
+Last updated: 2026-08-31
+Status: Active — reflects the implemented runtime through migration 025
 
-## 1. System Definition
+## 1. System definition
 
-Dream Motif Interpreter is a private, single-user dream-analysis system.
+Dream Motif Interpreter is a private, single-operator dream archive and reflection system. It
+combines Google Docs intake, a canonical PostgreSQL archive, grounded retrieval, bounded LLM
+analysis, Telegram text/voice capture and an evidence-first motif review surface.
 
-The implemented system is:
+It is reflective journaling software, not a diagnostic or clinical system. Model output remains a
+suggestion until the operator confirms it.
 
-- ingestion from Google Docs
-- structured dream archive storage
-- LLM-assisted theme extraction and grounding
-- semantic and thematic retrieval
-- archive-level pattern analysis
-- versioned theme curation and rollback
-- Telegram assistant interface for text and voice interaction
+## 2. Runtime topology
 
-The Telegram layer does not change the product’s source of truth:
-the dream archive, retrieval layer, and curation rules remain owned by Dream Motif Interpreter.
+The same repository contains separate runtime boundaries:
 
-## 2. Product Category
+- FastAPI serves authenticated archive, motif, research and Dream Memory Map APIs.
+- The Telegram process runs long polling, bounded assistant tools and durable maintenance loops.
+- The optional auto-sync process polls lightweight Google metadata and runs ingestion after a real
+  document change.
+- A one-shot migration container applies Alembic before API and bot startup.
+- PostgreSQL/pgvector and Redis are infrastructure dependencies.
 
-Single-user dream-analysis system with a Telegram conversational interface for text and voice.
+There is no unrestricted agent loop and no runtime shell execution. Tool use is bounded to a
+catalog and a maximum number of rounds.
 
-The Telegram layer is an interface extension, not a reclassification into “bot script”.
-The backend remains the core product and source of truth.
+## 3. Data ownership
 
-## 3. Observed Current Architecture
+| Store | Ownership |
+|---|---|
+| PostgreSQL | Canonical dreams, chunks, themes, motifs, annotations, sessions, feedback, graph controls, durable capture stages, voice events and delivery cursors |
+| Google Docs | External intake and editable human mirror; not the transactional source of truth |
+| Redis | Expiring Telegram reply targets/confirmations/displayed sets plus sync coordination |
+| `VOICE_MEDIA_DIR` | Temporary raw media needed for retryable transcription |
+| `RUNTIME_STATE_FILE` | Active/extra Google document identifiers and cached names; shared `flock` plus atomic replace coordinates API, bot and auto-sync |
 
-The current repository implements:
+Redis loss must never delete a dream, but it removes safe restart context for short replies such as
+`да` or `к этому`. The production bot therefore verifies Redis during startup.
 
-- FastAPI application entry point in [app/main.py](/home/ashishki/Documents/dev/ai-stack/projects/Dream_Motif_Interpreter/app/main.py)
-- HTTP routers for sync, dreams, search, themes, patterns, and versioning
-- PostgreSQL models for dreams, chunks, themes, categories, and annotation versions
-- retrieval ingestion and query modules over pgvector
-- background worker functions for sync and indexing
-- shared config, tracing, and DB session factory
+## 4. Telegram capture and post-processing
 
-Current runtime dependencies:
+`AssistantFacade.create_dream()` has a deliberately small synchronous boundary:
 
-- PostgreSQL 16 + `pgvector`
-- Redis
-- Google Docs API
-- Anthropic API
-- OpenAI embeddings API
+1. Parse explicit date/title hints and remove recording commands from the body.
+2. Derive a deterministic provisional title without a provider call.
+3. In one PostgreSQL transaction, insert the canonical `DreamEntry` and four independent
+   `DreamProcessingJob` rows: `gdocs`, `index`, `analysis` and `motif`.
+4. Return a save card immediately with separate archive, processing and Google Docs states.
 
-Current storage ownership:
+The Telegram maintenance supervisor continuously claims due jobs and drains them again after a
+restart. Each row has a lease owner/token, bounded attempts, backoff and stale-lease recovery.
+Stages do not block one another: an embeddings outage does not prevent Google Docs delivery, and a
+Google API outage does not prevent search indexing.
 
-- PostgreSQL is the canonical system of record
-- Redis stores job state and approval-token state
+Stage idempotency boundaries:
 
-## 4. Current Backend Execution Boundary
+- `gdocs`: unique database receipt plus document-side named-range marker
+- `index`: upserted chunks keyed by dream/chunk identity
+- `analysis`: existing theme state is checked before provider work; writes are transactional and
+  versioned
+- `motif`: existing motif state is checked and errors are distinct from legitimate no-result runs
 
-The active runtime wiring is now explicit:
+The idempotency key belongs to the ingress event, not to dream prose. A replay of the same Telegram
+message reuses the dream and repairs missing stage rows; a later message with identical text is a
+legitimate separate dream. An exhausted failed job requires an explicit retry, which resets its
+attempt budget under database constraints.
 
-1. `POST /sync` in `app/api/dreams.py` enqueues `app.workers.ingest.ingest_document`.
-2. `ingest_document()` fetches Google Docs paragraphs and calls `_store_entries()`.
-3. `_store_entries()` segments the document, upserts `DreamEntry` rows by `content_hash`, and returns the resolved `dream_id` values for both newly inserted and already-known entries.
-4. `_collect_pipeline_targets()` inspects downstream state for those `dream_id` values:
-   - if a dream has no `DreamTheme` rows, it is queued for analysis
-   - if a dream has no `DreamChunk` rows, it is queued for indexing
-5. `_run_post_store_pipeline()` runs the missing downstream stages in order:
-   - `AnalysisService.analyse_dream_with_session_factory()` for dreams missing analysis
-   - `app.workers.index.index_dream()` for dreams missing indexed chunks
-6. `index_dream()` delegates to `RagIngestionService.index_dream()`, which chunks the dream text, embeds it, and upserts `DreamChunk` rows on `(dream_id, chunk_index)`.
+Notes use the same durable acknowledgement boundary. The note row and independent `index` and
+`gdocs` jobs commit in one transaction. The user-facing acknowledgement says the note was accepted
+into the background queue; it never claims that embeddings or Google Docs already completed.
+Document delivery is pinned to the target document captured when the note is created.
 
-Resulting runtime contract:
+## 5. Google Docs ingestion and reconciliation
 
-- Newly synced dreams are analysed and indexed automatically.
-- Re-syncing the same dream does not create duplicate `DreamEntry` or `DreamChunk` rows because storage uses `content_hash` and `(dream_id, chunk_index)` idempotency keys.
-- Re-syncing a dream that already has both themes and chunks skips those downstream stages.
-- Re-syncing a dream that is present but missing themes or chunks repairs the missing stage on the next sync run.
+The intake pipeline is:
 
-This is the boundary Phase 6 should rely on.
+1. `GoogleDocsSourceConnector` returns a normalized source document.
+2. A selected parser profile segments it into candidates.
+3. Validation rejects low-integrity candidates before embeddings.
+4. `_store_entries()` resolves stable source-slot identity and content identity.
+5. Missing analysis/index stages run idempotently.
 
-## 5. Core Architectural Principles
+Source-slot identity is scoped to a document and stable heading occurrence rather than the global
+paragraph index. Title/date-only edits can update the same archive row. Ambiguous body-plus-heading
+changes and cross-document identical bodies are fail-closed: ingestion reports a conflict instead
+of silently transferring source ownership or creating an unnoticed duplicate.
 
-- Dream Motif Interpreter remains the core product and source of truth.
-- The dream archive is not owned by the interface layer.
-- Deterministic code owns persistence, approval gates, rollback, search execution, and policy enforcement.
-- LLMs are used only for bounded interpretation tasks.
-- Any assistant interface must use explicit internal tools or service boundaries.
-- Conversational convenience must not bypass curation and audit guarantees.
+Google Docs uses UTF-16 character indices. Every insert/range calculation passes through the
+UTF-16 length helper so emoji and other astral characters cannot shift later operations.
 
-## 6. Current Capability Profiles
+## 6. Retrieval boundary
 
-| Profile | Status | Notes |
-|---------|--------|-------|
-| RAG | ON | Hybrid retrieval over dream archive is core product behavior |
-| Tool-Use | ON (bounded) | Telegram assistant uses a bounded tool-use loop (MAX_TOOL_ROUNDS=5); no autonomous tool use |
-| Agentic | OFF | system uses bounded workflows, not an autonomous loop |
-| Planning | OFF | no plan artifact governs execution |
-| Compliance | OFF | privacy-sensitive, but no named regulated framework |
+Retrieval combines exact PostgreSQL FTS and semantic pgvector candidates:
 
-## 7. Current Runtime Tier
-
-`T1`
-
-Why:
-
-- bounded application processes
-- persistent DB and queue
-- no shell mutation at runtime
-- no privileged autonomous execution
-
-Phase 6+ does not change the runtime tier.
-Adding a Telegram bot process still fits `T1`.
-
-## 8. Recommended Phase 6+ Target Architecture
-
-### 8.1 Recommended Shape
-
-Introduce a Telegram adapter inside the same repository as a separate internal application module and runtime process.
-
-Recommended process topology:
-
-- API process
-- worker process
-- Telegram bot process
-- PostgreSQL
-- Redis
-
-Optional later support:
-
-- scheduled sync process
-- media cleanup process
-
-### 8.2 Why This Shape Is Recommended
-
-- keeps domain logic close to the existing codebase
-- avoids a second repository drifting from the core product
-- avoids loopback HTTP where a direct internal service call is simpler and safer
-- preserves the option to add another interface later without rebuilding the core
-- matches the current single-user private-deployment model
-
-### 8.3 Implementation Reference Rule
-
-The Telegram-first repository at:
-
-- `~/Documents/dev/ai-stack/projects/film-school-assistant`
-
-is the implementation reference for the interaction layer.
-
-That means Phase 6+ work should prefer:
-
-- porting proven bot-runtime patterns
-- porting handler decomposition patterns
-- porting bounded tool-loop structure
-- porting voice-ingress sequencing
-- porting private bot operations patterns
-
-over generating an all-new Telegram layer from scratch.
-
-This is a reference for interface and operations patterns only.
-It is not the source of truth for:
-
-- Dream Motif Interpreter domain models
-- dream archive storage
-- retrieval logic
-- curation rules
-- taxonomy semantics
-
-### 8.4 Rejected Alternatives
-
-Separate external Telegram service calling the public API only:
-
-- cleaner isolation in theory
-- worse operational duplication
-- higher drift risk
-- weaker reuse of internal business rules
-
-Telegram handlers embedded directly into the FastAPI process:
-
-- weaker fault isolation
-- conflates HTTP and bot lifecycles
-- makes voice/media processing harder to reason about
-
-## 9. Target Components
-
-| Component | Responsibility | Status |
-|-----------|----------------|--------|
-| `app/api/` | public HTTP API for archive access and curation | implemented |
-| `app/services/` | domain services and business rules | implemented |
-| `app/retrieval/` | chunking, embeddings, retrieval | implemented |
-| `app/research/` | external research retrieval, synthesis, and orchestration services | implemented (Phase 10) |
-| `app/workers/` | sync, indexing, transcription, and cleanup workers | implemented |
-| `app/assistant/` | bounded assistant facade, chat loop, session persistence, voice media helpers | implemented (Phase 6–7) |
-| `app/telegram/` | bot runtime, auth guard, text/voice handlers, file download | implemented (Phase 6–7) |
-
-## 10. Assistant Boundary
-
-Phase 6+ should not expose raw ORM access or unrestricted domain operations to a conversational loop.
-
-The assistant layer should call a bounded service facade such as:
-
-- `search_dreams`
-- `get_dream`
-- `list_recent_dreams`
-- `get_patterns`
-- `get_theme_history`
-- `trigger_sync`
-
-Phase 6 now introduces `app/assistant/facade.py::AssistantFacade` as that backend boundary.
-It wraps internal services and read queries directly, returns DTO-style values rather than ORM objects, and keeps session ownership inside the facade.
-
-Deferred or tightly gated tools:
-
-- confirm theme
-- reject theme
-- rollback theme
-- approve category
-
-Initial recommendation:
-
-- Phase 6 bot tools are read-oriented plus explicit sync triggering
-- mutation tools are deferred until the conversational UX and audit surface are proven
-
-## 11. Telegram Interface Layer (Implemented — Phase 6–7)
-
-Telegram is the primary interaction surface for the single user.
-
-The implemented bot layer provides:
-
-- text conversation via bounded tool-use loop (`app/assistant/chat.py`)
-- voice-message handling via async transcription task (`app/workers/transcribe.py`)
-- `chat_id` allowlist authorization guard (`app/telegram/handlers.py`)
-- acknowledgements for in-progress transcription tasks
-- “insufficient evidence” behavior preserved in chat
-
-Runtime: `python3 -m app.telegram` (long polling, separate process from the API).
-
-See [Telegram Interaction Model](TELEGRAM_INTERACTION_MODEL.md) and [Telegram Bot Runbook](RUNBOOK_TELEGRAM_BOT.md).
-
-## 12. Voice Processing (Implemented — Phase 7)
-
-Implemented flow:
-
-1. Telegram voice update arrives.
-2. Bot validates sender via `chat_id` allowlist.
-3. `VoiceMediaEvent` is persisted with `received` status.
-4. Voice file is downloaded to `VOICE_MEDIA_DIR`.
-5. Bot acknowledges “Processing your voice note...”
-6. `asyncio.create_task(transcribe_and_reply(...))` enqueues background transcription.
-7. Worker calls OpenAI Whisper API (`whisper-1`, via `asyncio.to_thread`).
-8. Transcript routes through `handle_chat()` — same path as text messages.
-9. Bot sends reply via standalone `Bot(token=...)`.
-10. Raw audio is deleted immediately after successful reply; sweep cleanup handles survivors.
-
-Provider: **OpenAI Whisper API** (managed). Local Whisper deferred.
-
-See [Voice Pipeline](VOICE_PIPELINE.md) and [Voice Pipeline Runbook](RUNBOOK_VOICE_PIPELINE.md).
-
-See [Voice Pipeline](VOICE_PIPELINE.md).
-
-## 13. Session and State Model
-
-Backend:
-
-- no conversational state
-
-Telegram bot layer (implemented — Phase 6):
-
-- one conversation/session stream per allowed Telegram chat
-- session history persisted in `bot_sessions` table (PostgreSQL)
-- trimmed to `MAX_HISTORY_MESSAGES=20` on each save
-- Redis for locks, deduplication, and short-lived job state only
-
-Rule: bot session history is interaction state, not dream-archive truth.
-
-## 14. Auth and Authorization
-
-Backend auth:
-
-- single-user API key header
-
-Telegram auth (implemented — Phase 6):
-
-- allowlisted Telegram `chat_id` via `TELEGRAM_ALLOWED_CHAT_ID`
-- user_id allowlisting deferred to a future phase
-
-Authorization policy:
-
-- read/query operations broadly available to the allowed user
-- archive mutations remain explicitly gated and deferred from natural chat (see [Telegram Interaction Model](TELEGRAM_INTERACTION_MODEL.md) §11)
-
-See [Auth and Security](AUTH_SECURITY.md).
-
-## 15. Deployment Model
-
-Recommended canonical deployment documentation:
-
-- Compose-first for the multi-process stack
-- systemd as an optional private-VPS operating mode
-
-Reason:
-
-- Compose expresses the full service topology clearly
-- DMI is already naturally a multi-service private system
-
-See [Deployment](DEPLOY.md).
-
-## 16. Testing
-
-Current coverage (Phase 9 baseline): **187 unit tests passing / ~238 total passing (including integration)**.
-
-Covered areas:
-
-- Telegram auth guard behavior
-- tool-routing correctness and bounded loop guard
-- insufficient-evidence conversational handling
-- session load/save and history trimming
-- voice pipeline success and failure paths
-- cleanup worker (immediate deletion + sweep)
-- transcription worker status progression
-
-See [Testing Strategy](TESTING_STRATEGY.md).
-
-## 17. Motif Abstraction Layer (Implemented — Phase 9)
-
-Motif abstraction is a separate analytical layer that operates independently of the existing theme extraction pipeline.
-
-### Conceptual distinction
-
-- `ThemeExtractor` + `Grounder` (existing): assigns a dream to predefined categories from `theme_categories`. Closed vocabulary. Model selects from known options. Results stored in `dream_themes`.
-- `ImageryExtractor` + `MotifInductor` + `MotifGrounder` (Phase 9): derives abstract motif labels from concrete imagery without a predefined vocabulary. Open vocabulary. Model forms the abstraction itself. Results stored in `motif_inductions`. These two subsystems coexist; they are never merged.
-
-### Implemented components
-
-| Component | Responsibility |
-|-----------|----------------|
-| `app/services/imagery.py` (`ImageryExtractor`) | Extract concrete imagery fragments from dream text |
-| `app/services/motif_inductor.py` (`MotifInductor`) | Form abstract motif labels from extracted imagery |
-| `app/services/motif_grounder.py` (`MotifGrounder`) | Verify imagery fragment offsets against source text |
-| `app/services/motif_service.py` (`MotifService`) | Orchestrate the induction pipeline; integrate with ingest |
-| `app/api/motifs.py` | REST API for motif retrieval and status updates |
-| `app/models/motif.py` | SQLAlchemy ORM model for `motif_inductions` table |
-| `alembic/versions/009_add_motif_inductions.py` | Migration adding the `motif_inductions` table |
-| `motif_inductions` table | Stores inducted motifs with label, rationale, confidence, status, fragments |
-
-### Trust level
-
-Inducted motifs are computational abstractions, draft by default, and require human confirmation. Trust level: medium. They must be presented as model suggestions, not as interpretations.
-
-### Feature flag
-
-`MOTIF_INDUCTION_ENABLED` (default `false`). The ingest pipeline does not call `MotifService` unless this flag is enabled.
-
-See [MOTIF_ABSTRACTION.md](MOTIF_ABSTRACTION.md) and [ADR-008](adr/ADR-008-motif-induction-vs-taxonomy.md).
-
-## 18. Research Augmentation Layer
-
-Research augmentation is an on-demand external search layer for mythology, folklore, cultural, and taboo parallels to confirmed inducted motifs.
-
-### Trust boundary
-
-`ResearchRetriever` is an external trust boundary. All content retrieved by this component originates outside the system and cannot be verified by the archive. It is never stored in dream archive tables.
-
-### Components
-
-| Component | Responsibility |
-|-----------|----------------|
-| `app/research/retriever.py` (`ResearchRetriever`) | Call external search API; external trust boundary |
-| `app/research/synthesizer.py` (`ResearchSynthesizer`) | Summarise retrieved results into labeled parallels |
-| `app/research/service.py` (`ResearchService`) | Orchestrate retrieval, synthesis, and persistence for motif research |
-| `research_results` table | Stores parallels with source URL and retrieval timestamp |
-
-### Trust level
-
-All research results carry confidence values of `speculative`, `plausible`, or `uncertain`. The words `confirmed` and `high confidence` are prohibited in research output. Source URL and retrieval timestamp are required on every result.
-
-### Feature flag
-
-`RESEARCH_AUGMENTATION_ENABLED` (default `false`). The `research_motif_parallels` assistant tool is unavailable unless this flag is enabled.
-
-See [RESEARCH_AUGMENTATION.md](RESEARCH_AUGMENTATION.md) and [ADR-009](adr/ADR-009-research-trust-boundary.md).
-
-## 19. Feedback Model (Implemented — Phase 11 WS-11.1–11.3)
-
-The `assistant_feedback` table stores user-submitted ratings (1–5) with optional comment. Ratings are linked to the chat context of the preceding assistant response.
-
-Telegram numeric rating capture is disabled by default as of Phase 23 because digit-only messages
-conflict with numbered choices. The legacy capture path remains available behind
-`TELEGRAM_NUMERIC_FEEDBACK_ENABLED=true`.
-
-This is a quality signal for human review only. It does not feed into automated retraining or any unsupervised model update pipeline.
-
-See [FEEDBACK_LOOP.md](FEEDBACK_LOOP.md).
-
-## 20. Planned Storage Model (Phase 9–17 additions)
-
-Current tables (implemented):
-
-- `dream_entries`, `dream_chunks`, `dream_themes`, `theme_categories`, `annotation_versions`, `bot_sessions`, `voice_media_events`, `dream_write_statuses`, `motif_inductions`, `assistant_feedback`
-
-Phase 17 extends `voice_media_events` with nullable `transcript_text` for operational reply-to-voice saves. This transcript field is not archive truth; confirmed dreams are still stored in `dream_entries`.
-
-Planned additions:
-
-| Table | Phase | Purpose |
-|-------|-------|---------|
-| `research_results` | 10 | External research parallels; external trust boundary |
-
-### Implemented components
-
-| Component | Responsibility |
-|-----------|----------------|
-| `app/services/feedback_service.py` (`FeedbackService`) | Persist assistant feedback and build response-context snapshots for rating capture |
-| `app/api/feedback.py` | Read-only paginated API for stored feedback rows |
-| `app/models/feedback.py` | SQLAlchemy ORM model for `assistant_feedback` table |
-| `alembic/versions/011_add_feedback.py` | Migration adding the `assistant_feedback` table |
-| `assistant_feedback` table | Stores user rating scores; quality signal only |
-| `app/models/write_status.py` | SQLAlchemy ORM model for Google Doc write attempt state |
-| `alembic/versions/015_add_dream_write_statuses.py` | Migration adding `dream_write_statuses` for pending/succeeded/failed write attempts |
-| `alembic/versions/016_add_voice_transcript_text.py` | Migration adding operational transcript storage to `voice_media_events` |
-| `dream_write_statuses` table | Tracks Google Doc write attempts and retry eligibility |
-
-## 21. ADR Coverage
-
-Architecture-affecting decisions are documented in `docs/adr/`:
-
-- ADR-001: append-only annotation versioning
-- ADR-002: single-user API key auth
-- ADR-003: Telegram adapter inside the same repository
-- ADR-004: bounded assistant tool facade
-- ADR-005: managed transcription first (OpenAI Whisper)
-- ADR-006: persisted bot session state
-- ADR-007: Compose-first Telegram deployment
-- ADR-008: inducted motifs and taxonomy themes as separate data models (planned)
-- ADR-009: research trust boundary and confidence vocabulary (planned)
-- ADR-010: feature flag gating for Phase 9 and Phase 10 (planned)
-
-## 22. Resolved Architectural Decisions
-
-All Phase 6–8 decisions are resolved:
-
-| Decision | Outcome |
-|----------|---------|
-| Phase 6 write scope | Read-only plus `trigger_sync`; mutations deferred |
-| Transcription provider | OpenAI Whisper API (managed) |
-| Media retention | Immediate deletion after transcription; sweep via `VOICE_RETENTION_SECONDS` |
-| Telegram ingress mode | Long polling (no public webhook required) |
-| Session persistence | PostgreSQL `bot_sessions` table |
-| Deployment topology | Docker Compose with `telegram-bot` service |
-| Google Docs auth | OAuth env vars (current code path); service-account JSON deferred |
+- concrete-object queries receive an exact pass before semantic fusion
+- exact archive evidence survives a query-embedding outage
+- multi-token evidence must occur in the same sentence
+- theme fragments are included only when conditioned on the current query
+- vector-only evidence must meet at least the verified semantic floor (`0.40`)
+- embedding vectors must be finite and exactly 1536-dimensional
+- duplicate chunks are fused with corrected evidence offsets and a final `RESULT_LIMIT`
+
+Database/programming errors propagate. Only the explicitly normalized embedding failure may use an
+exact-evidence fallback. When no verified evidence remains, the service returns
+`InsufficientEvidence` rather than inventing a result.
+
+## 7. Telegram workflow state
+
+Long conversation history is stored in `bot_sessions`. Short-lived interaction state is stored in
+Redis with TTL and mirrored in memory for the active process:
+
+- displayed dream sets and reply-message mappings
+- pending single/batch notes
+- pending dream capture confirmation
+- pending interpretation consent
+
+The handler resolves explicit reply context first and never silently substitutes the latest dream
+when the referenced message is unknown. Natural capture is anchored to a dream opening, respects
+negation, and separates a trailing interpretation question from the archived text.
+
+Feedback stores a privacy-safe capsule: normalized request/response hashes and lengths, tool names,
+dream IDs, build SHA, model/route and issue categories. Raw dream/request/response text is not copied
+into that capsule.
+
+## 8. Durable voice pipeline
+
+Voice ingress is unique on `(chat_id, telegram_message_id)`:
+
+1. Insert or resolve the durable event.
+2. Download into the configured media root.
+3. Persist the path before acknowledging background processing.
+4. Claim the event with a database lease.
+5. Transcribe with bounded retry/backoff.
+6. Persist the transcript, build the assistant reply, and stage the whole reply durably.
+7. Remove raw media only after durable reply staging or terminal retention handling.
+8. Deliver chunks below Telegram's limit, persisting the cursor after each successful chunk.
+
+Periodic recovery reclaims expired leases, retries `reply_pending` and transcription work, purges
+expired transcripts, and removes only old orphan files inside `VOICE_MEDIA_DIR`. Multiple bot
+instances cannot process the same live lease. Operational transcripts expire independently and do
+not become archive dreams without an explicit save action.
+
+## 9. Motif review and Dream Memory Map
+
+Motif induction is separate from curated taxonomy themes. Draft motifs retain verified source
+fragments. `GET /motifs/review` powers an evidence-first review inbox where the operator can:
+
+- confirm or reject a suggestion
+- rename it with version history
+- return it to draft
+- request external research only after confirmation
+
+The authenticated Mini App state may contain readable dream date/title labels. Privacy exports keep
+opaque source identifiers. Graph hide is reversible through an append-only `restore`; delete and
+reject remain intentionally irreversible in the UI. Every privacy mutation produces a receipt.
+
+## 10. API, authentication and observability
+
+All data APIs require either `X-API-Key` or verified Telegram Web App init data. Public routes are
+limited to `/health`, `/auth/callback` and the static Mini App shell; the shell contains no archive
+data. `SECRET_KEY` must be nonblank and strong outside tests. HTTP responses are `no-store` and
+carry baseline anti-sniffing/referrer/permissions headers; the Mini App additionally has a narrow
+Content Security Policy that permits its Telegram bootstrap while blocking arbitrary origins.
+
+Structured logs and OpenTelemetry spans/metrics are created across HTTP, DB and worker boundaries.
+OTLP exporters activate only when `OTEL_EXPORTER_OTLP_ENDPOINT` is explicitly configured. Public
+`/health` includes `BUILD_SHA` and database/index health, but is not a substitute for Redis,
+provider, Telegram or outbox smoke tests.
+
+## 11. Failure guarantees
+
+Implemented guarantees:
+
+- acknowledged text capture survives provider and process failure
+- replay of one Telegram event and Google delivery are idempotent at the database boundary; equal
+  text from a new event remains distinct
+- acknowledged notes survive provider and process failure and drain from independent jobs
+- due capture/voice work is recovered after restart and while the process stays alive
+- raw voice deletion is constrained to the configured media root
+- destructive retrieval evaluation cannot target the ordinary `DATABASE_URL`
+- graph hide/restore and motif edits retain append-only history
+
+Explicit non-guarantees:
+
+- hosted operation and provider quota are not proven by repository CI
+- Google/Telegram live semantics still require an operator smoke test
+- exact-once external effects rely on provider-side/document-side idempotency markers; leases alone
+  provide at-least-once execution
+- semantic synonym grouping in the graph is not implemented; repeat edges use normalized labels
+
+## 12. Main modules
+
+| Module | Responsibility |
+|---|---|
+| `app/api/` | Authenticated HTTP surfaces and public health/static shell |
+| `app/assistant/` | Bounded tools, capture facade, chat/session state |
+| `app/retrieval/` | Chunking, embeddings, exact/semantic retrieval and evidence |
+| `app/services/` | Analysis, motifs, graph controls, Google Docs and receipts |
+| `app/telegram/` | Authorized polling adapter, save cards, commands and callbacks |
+| `app/workers/dream_processing.py` | Leased independent post-capture stages and recovery |
+| `app/workers/sync_jobs.py` | Leased manual Google Docs sync jobs and recovery |
+| `app/workers/transcribe.py` | Leased transcription/reply delivery and maintenance |
+| `app/workers/ingest.py` | Normalized multi-source ingestion and reconciliation |
+
+Schema changes are append-only Alembic revisions. Current head is `026_manual_sync_jobs`.
+Deployment must stop API, bot and auto-sync, run `alembic upgrade head` to completion, and only then
+start application processes; `scripts/deploy_compose.sh` enforces that quiesced sequence.
+
+## 13. Decision records
+
+Architecture decisions live in `docs/adr/`. The implementation continues to follow the core
+choices: one repository with separate process boundaries, bounded assistant tools, managed Whisper,
+persisted sessions, Compose-first deployment, motifs separate from taxonomy and external research
+behind an explicit trust/feature gate.

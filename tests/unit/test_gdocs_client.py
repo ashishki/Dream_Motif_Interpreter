@@ -6,7 +6,13 @@ from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 from httplib2 import Response
 
-from app.services.gdocs_client import GDocsAuthError, GDocsClient, GDocsWriteError
+from app.services.gdocs_client import (
+    GDocsAuthError,
+    GDocsClient,
+    GDocsWriteError,
+    _idempotency_named_range_name,
+    _utf16_length,
+)
 
 
 def _build_settings(**overrides: str) -> SimpleNamespace:
@@ -15,6 +21,7 @@ def _build_settings(**overrides: str) -> SimpleNamespace:
         "GOOGLE_CLIENT_SECRET": "client-secret-456",
         "GOOGLE_REFRESH_TOKEN": "refresh-token-789",
         "GOOGLE_SERVICE_ACCOUNT_FILE": "",
+        "GOOGLE_API_TIMEOUT_SECONDS": 60,
         "GOOGLE_DOC_ID": "doc-id-abc",
     }
     defaults.update(overrides)
@@ -77,6 +84,33 @@ def test_service_account_file_must_exist() -> None:
 
     with pytest.raises(GDocsAuthError, match="service account file not found"):
         client._build_credentials()
+
+
+def test_google_service_uses_bounded_authorized_transport() -> None:
+    client = GDocsClient(settings=_build_settings(GOOGLE_API_TIMEOUT_SECONDS=37))
+    credentials = Mock()
+    raw_http = Mock()
+    authorized_http = Mock()
+
+    with (
+        patch.object(client, "_build_credentials", return_value=credentials),
+        patch("app.services.gdocs_client.httplib2.Http", return_value=raw_http) as http_factory,
+        patch(
+            "app.services.gdocs_client.AuthorizedHttp",
+            return_value=authorized_http,
+        ) as authorized_factory,
+        patch("app.services.gdocs_client.build") as build_service,
+    ):
+        client._build_docs_service()
+
+    http_factory.assert_called_once_with(timeout=37)
+    authorized_factory.assert_called_once_with(credentials, http=raw_http)
+    build_service.assert_called_once_with(
+        "docs",
+        "v1",
+        http=authorized_http,
+        cache_discovery=False,
+    )
 
 
 @pytest.mark.parametrize("status_code", [401, 403])
@@ -647,6 +681,96 @@ def test_append_dream_entry_inserts_same_date_after_existing_same_date() -> None
     assert request["insertText"]["location"]["index"] == 40
     assert request["insertText"]["text"].startswith("\n\n19.05.26 - Second\n\n")
     assert request["insertText"]["text"].endswith("\n\n")
+
+
+def test_append_dream_entry_skips_retry_when_named_range_exists() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    marker = _idempotency_named_range_name("dream", "dream:abc")
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {"content": [{"endIndex": 1}]},
+        "namedRanges": {
+            "range-id": {"namedRanges": [{"name": marker}]},
+        },
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        inserted = client.append_dream_entry(
+            "doc-123",
+            "19.05.26",
+            "River",
+            "Dream body",
+            idempotency_key="dream:abc",
+        )
+
+    assert inserted is False
+    mocked_service.documents.return_value.batchUpdate.assert_not_called()
+
+
+def test_append_dream_entry_creates_atomic_named_range_marker() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {"content": [{"endIndex": 2}]}
+    }
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        inserted = client.append_dream_entry(
+            "doc-123",
+            "19.05.26",
+            "River",
+            "Dream body",
+            idempotency_key="dream:abc",
+        )
+
+    assert inserted is True
+    requests = mocked_service.documents.return_value.batchUpdate.call_args.kwargs["body"][
+        "requests"
+    ]
+    assert requests[-1]["createNamedRange"]["name"] == _idempotency_named_range_name(
+        "dream", "dream:abc"
+    )
+
+
+def test_append_dream_entry_uses_utf16_indices_for_emoji() -> None:
+    client = GDocsClient(settings=_build_settings())
+    mocked_service = Mock()
+    mocked_service.documents.return_value.get.return_value.execute.return_value = {
+        "body": {"content": [{"endIndex": 2}]}
+    }
+    date_str = "19.05.26"
+    title = "🌙 River"
+    body = "I saw 🐋 under water"
+
+    with patch.object(client, "_build_docs_service", return_value=mocked_service):
+        client.append_dream_entry(
+            "doc-123",
+            date_str,
+            title,
+            body,
+            idempotency_key="dream:emoji",
+        )
+
+    requests = mocked_service.documents.return_value.batchUpdate.call_args.kwargs["body"][
+        "requests"
+    ]
+    heading = f"{date_str} - {title}"
+    title_start = 1
+    expected_title_end = title_start + _utf16_length(heading + "\n")
+    expected_body_start = title_start + _utf16_length(heading + "\n\n")
+    expected_body_end = expected_body_start + _utf16_length(body)
+
+    assert requests[1]["updateParagraphStyle"]["range"] == {
+        "startIndex": title_start,
+        "endIndex": expected_title_end,
+    }
+    assert requests[2]["updateParagraphStyle"]["range"] == {
+        "startIndex": expected_body_start,
+        "endIndex": expected_body_end,
+    }
+    assert requests[-1]["createNamedRange"]["range"]["endIndex"] == (
+        title_start + _utf16_length(f"{heading}\n\n{body}")
+    )
 
 
 def test_append_text_raises_gdocs_write_error_on_403() -> None:

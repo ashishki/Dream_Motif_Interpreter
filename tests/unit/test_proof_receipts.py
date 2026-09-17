@@ -18,6 +18,7 @@ from app.services.proof_receipts import (
     build_node_memory_receipt,
     build_privacy_export_receipt,
     build_rejection_receipt,
+    build_restore_receipt,
 )
 
 
@@ -167,6 +168,23 @@ def test_hide_receipt_passes_when_privacy_controls_include_subject() -> None:
     assert receipt.type == "privacy_control_receipt"
     assert receipt.action == "edge_hidden"
     assert receipt.subject_id == "edge-1"
+    assert receipt.verifier_status == "passed"
+    assert {ref.ref_type for ref in receipt.evidence_refs} == {
+        "privacy_control",
+        "graph_edge",
+    }
+
+
+def test_restore_receipt_records_reversible_graph_action() -> None:
+    receipt = build_restore_receipt(
+        subject_id="edge-1",
+        subject_type="graph_edge",
+        privacy_controls=DreamGraphPrivacyControls(),
+        generated_at=datetime(2026, 5, 31, tzinfo=timezone.utc),
+    )
+
+    assert receipt.type == "privacy_control_receipt"
+    assert receipt.action == "edge_restored"
     assert receipt.verifier_status == "passed"
     assert {ref.ref_type for ref in receipt.evidence_refs} == {
         "privacy_control",

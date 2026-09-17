@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -176,9 +177,18 @@ async def segment_and_store(
     tracer = get_tracer(__name__)
     entries = segment_paragraphs(document)
     stored_entries: list[DreamEntry] = []
+    heading_occurrences: dict[str, int] = {}
 
     with tracer.start_as_current_span("segmentation.segment_and_store"):
         for entry in entries:
+            heading_signature = _stored_entry_heading_signature(entry)
+            heading_occurrence = heading_occurrences.get(heading_signature, 0)
+            heading_occurrences[heading_signature] = heading_occurrence + 1
+            source_entry_key = _stored_entry_source_key(
+                entry.source_doc_id,
+                heading_signature,
+                heading_occurrence,
+            )
             values = {
                 "source_doc_id": entry.source_doc_id,
                 "date": entry.date,
@@ -186,6 +196,7 @@ async def segment_and_store(
                 "raw_text": entry.raw_text,
                 "word_count": entry.word_count,
                 "content_hash": entry.content_hash,
+                "source_entry_key": source_entry_key,
                 "segmentation_confidence": entry.segmentation_confidence,
                 "parser_profile": entry.parser_profile,
                 "parse_warnings": entry.parse_warnings,
@@ -193,7 +204,7 @@ async def segment_and_store(
             statement = (
                 insert(DreamEntry)
                 .values(**values)
-                .on_conflict_do_nothing(index_elements=[DreamEntry.content_hash])
+                .on_conflict_do_nothing(index_elements=[DreamEntry.source_entry_key])
                 .returning(DreamEntry)
             )
             with tracer.start_as_current_span("db.query.segmentation.upsert_dream_entry"):
@@ -201,11 +212,39 @@ async def segment_and_store(
             stored_entry = result.scalar_one_or_none()
             if stored_entry is not None:
                 stored_entries.append(stored_entry)
+                continue
+
+            # A stable source slot, not the body hash, is the idempotency key.
+            # Repeating the exact same text on another event/document is valid,
+            # while changing a known slot must be reconciled explicitly.
+            existing_entry = await session.scalar(
+                select(DreamEntry).where(DreamEntry.source_entry_key == source_entry_key)
+            )
+            if existing_entry is not None and existing_entry.content_hash != entry.content_hash:
+                await session.rollback()
+                raise ValueError("Stored source entry changed body at a known source slot")
 
         with tracer.start_as_current_span("db.query.segmentation.commit"):
             await session.commit()
 
     return stored_entries
+
+
+def _stored_entry_heading_signature(entry: DreamEntry) -> str:
+    normalized_title = " ".join(re.sub(r"[^0-9a-zа-яё]+", " ", entry.title.casefold()).split())
+    date_value = entry.date.isoformat() if entry.date is not None else "unknown-date"
+    return f"{date_value}:{normalized_title or 'untitled'}"
+
+
+def _stored_entry_source_key(
+    source_doc_id: str,
+    heading_signature: str,
+    heading_occurrence: int,
+) -> str:
+    source_identity = (
+        f"google_doc:{source_doc_id}:heading:{heading_signature}:occurrence:{heading_occurrence}"
+    )
+    return hashlib.sha256(source_identity.encode("utf-8")).hexdigest()
 
 
 def _detect_default_profile(document: NormalizedDocument) -> ParserProfileMatch:

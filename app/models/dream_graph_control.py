@@ -18,7 +18,7 @@ class DreamGraphPrivacyControl(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="ck_dream_graph_privacy_controls_subject_type",
         ),
         CheckConstraint(
-            "action IN ('delete', 'hide', 'reject')",
+            "action IN ('delete', 'hide', 'restore', 'reject')",
             name="ck_dream_graph_privacy_controls_action",
         ),
     )

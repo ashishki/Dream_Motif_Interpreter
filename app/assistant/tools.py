@@ -7,7 +7,7 @@ from typing import Any
 
 from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.facade import _resolve_absolute_dream_date, _resolve_relative_dream_date
-from app.assistant.session import save_pending_interpretation_request
+from app.assistant.session import RedisOperationalStateStore, save_pending_interpretation_request
 from app.shared.config import extract_google_doc_id, get_doc_name
 
 _BASE_TOOLS: list[dict[str, Any]] = [
@@ -394,6 +394,8 @@ async def execute_tool(
     *,
     chat_id: int | None = None,
     request_text: str | None = None,
+    operational_state_store: RedisOperationalStateStore | None = None,
+    source_event_key: str | None = None,
 ) -> str:
     if tool_name == "search_dreams":
         query = str(tool_input.get("query", "")).strip()
@@ -508,27 +510,23 @@ async def execute_tool(
                 title=title,
                 dream_date=dream_date,
                 chat_id=chat_id,
+                source_event_key=source_event_key,
             )
         except DreamRecordingUnavailable as exc:
             return str(exc)
-        if not created.created:
-            if created.written_to_google_doc:
-                return "Запись добавлена в Google Doc."
-            return (
-                "Запись сохранена в архиве. "
-                "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
-            )
         lines = [
-            f"Dream saved: {created.id} | {created.title} | "
+            f"{'Dream saved' if created.created else 'Dream already existed'}: "
+            f"{created.id} | {created.title} | "
             f"date={created.date or 'unknown'} | source={created.source_doc_id}"
         ]
-        if created.written_to_google_doc:
-            lines.append("Запись добавлена в Google Doc.")
-        else:
-            lines.append(
-                "Запись сохранена в архиве. "
-                "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
-            )
+        processing_status = str(getattr(created, "processing_status", "pending") or "pending")
+        google_status = str(getattr(created, "google_doc_write_status", "pending") or "pending")
+        semantic_status = str(getattr(created, "semantic_index_status", "pending") or "pending")
+        lines.append(f"Post-capture processing: {processing_status}.")
+        lines.append(f"Semantic index: {semantic_status}.")
+        lines.append(f"Google Docs: {google_status}.")
+        if google_status == "failed":
+            lines.append("Для повтора скажите «повтори запись в Google Doc».")
         return "\n".join(lines)
 
     if tool_name == "add_dream_note":
@@ -562,7 +560,9 @@ async def execute_tool(
             chat_id=chat_id,
         )
         if success:
-            return "Запись добавлена в Google Doc."
+            if reason == "already_present":
+                return "Запись уже была подтверждена в Google Doc; повторная вставка не нужна."
+            return "Запись добавлена в Google Doc после успешного повтора."
         if reason == "nothing_to_retry":
             return (
                 "Не нашёл сон, который можно повторно записать в Google Doc. "
@@ -600,11 +600,16 @@ async def execute_tool(
         if interpretation_request is None:
             return "Не найден сон для интерпретации."
         if chat_id is not None:
-            save_pending_interpretation_request(
+            pending_request = save_pending_interpretation_request(
                 chat_id,
                 dream_id=str(interpretation_request.dream_id),
                 prompt=interpretation_request.prompt,
             )
+            if operational_state_store is not None:
+                await operational_state_store.save_pending_interpretation(
+                    chat_id,
+                    pending_request,
+                )
         return "\n".join(
             [
                 f"Подготовлен запрос на интерпретацию сна «{interpretation_request.title}».",
@@ -835,12 +840,16 @@ async def execute_tool(
         if not motifs:
             return "No abstract motifs found for this dream."
         lines = [f"Abstract motif suggestions for dream {raw_id}:"]
+        has_drafts = False
+        has_confirmed = False
         for motif in motifs:
             confidence_label = motif.confidence or "unknown"
             if motif.status == "draft":
                 status_note = "(unconfirmed suggestion)"
+                has_drafts = True
             elif motif.status == "confirmed":
                 status_note = "(confirmed by user)"
+                has_confirmed = True
             else:
                 status_note = f"({motif.status})"
             lines.append(
@@ -848,6 +857,26 @@ async def execute_tool(
             )
             if motif.rationale:
                 lines.append(f"  Rationale: {motif.rationale}")
+            evidence = [
+                str(fragment["text"]).strip()
+                for fragment in motif.fragments
+                if isinstance(fragment, dict)
+                and fragment.get("verified") is True
+                and isinstance(fragment.get("text"), str)
+                and str(fragment["text"]).strip()
+            ]
+            if evidence:
+                for excerpt in evidence:
+                    lines.append(f'  Evidence: "{excerpt}"')
+            else:
+                lines.append("  Evidence: unavailable — do not confirm without a source excerpt.")
+        if has_drafts:
+            lines.append(
+                "Review required: open /map to confirm, reject, or rename draft motifs "
+                "before any external research."
+            )
+        elif has_confirmed:
+            lines.append("External research is available for confirmed motif IDs only.")
         return "\n".join(lines)
 
     if tool_name == "research_motif_parallels":
@@ -856,10 +885,20 @@ async def execute_tool(
             motif_id = uuid.UUID(raw_id)
         except ValueError:
             return f"Invalid motif_id: {raw_id!r}"
-        parallels = await facade.research_motif_parallels(
-            motif_id,
-            triggered_by="assistant",
-        )
+        try:
+            parallels = await facade.research_motif_parallels(
+                motif_id,
+                triggered_by="assistant",
+            )
+        except ValueError as exc:
+            if "confirmed motifs" in str(exc):
+                return (
+                    "Research was not started: this motif must be confirmed from its "
+                    "source evidence first. Open /map to review it."
+                )
+            return "Research was not started because the motif could not be found."
+        except Exception:
+            return "Research did not complete and no parallels were saved. Please retry later."
         if not parallels:
             return "No external parallels were returned for this motif."
         lines = ["External motif parallels (speculative, not verified):"]
@@ -1112,15 +1151,53 @@ _NATURAL_DREAM_OPENINGS = (
     "приснились сны",
     "приснилось, что",
 )
+_NATURAL_CAPTURE_NEGATIONS = (
+    re.compile(r"\bне\s+(?:сохраняй|сохранять|записывай|записывать)\b", re.IGNORECASE),
+    re.compile(r"\bне\s+(?:добавляй|добавлять|заноси|заносить)\s+в\s+архив\b", re.IGNORECASE),
+    re.compile(r"\b(?:не\s+надо|не\s+нужно)\s+(?:сохранять|записывать)\b", re.IGNORECASE),
+)
+_NATURAL_DREAM_FOLLOWUP_RE = re.compile(
+    r"(?is)^(?P<dream>.+?)(?:\n+|(?<=[.!?])\s+)"
+    r"(?P<question>"
+    r"(?:а\s+)?(?:что\s+(?:это|этот\s+сон)\s+(?:значит|означает)|"
+    r"как\s+ты\s+думаешь[^?]*|"
+    r"(?:можешь|можно)\s+(?:его\s+)?(?:разобрать|объяснить|интерпретировать)[^?]*|"
+    r"(?:разбери|объясни|интерпретируй)\s+(?:его|этот\s+сон)?[^?]*)\?"
+    r")\s*$"
+)
 
 
 def _has_natural_dream_opening(text: str) -> bool:
+    stripped = text.lstrip()
+    if any(pattern.search(stripped) is not None for pattern in _NATURAL_CAPTURE_NEGATIONS):
+        return False
+
     for opening in _NATURAL_DREAM_OPENINGS:
-        index = text.find(opening)
-        if index < 0:
+        if not stripped.casefold().startswith(opening):
             continue
-        tail = text[index + len(opening) :]
+        tail = stripped[len(opening) :]
+        if tail and tail[0].isalnum():
+            continue
         if len(_WORD_RE.findall(tail)) >= 1:
             return True
 
     return False
+
+
+def _split_natural_dream_followup(text: str) -> tuple[str, str | None]:
+    """Separate a clear meta-question from a naturally introduced dream.
+
+    Only a small set of explicit, sentence-final interpretation questions is
+    split. Questions spoken *inside* the dream remain part of the archive text.
+    """
+    stripped = text.strip()
+    if not _has_natural_dream_opening(stripped):
+        return stripped, None
+    match = _NATURAL_DREAM_FOLLOWUP_RE.match(stripped)
+    if match is None:
+        return stripped, None
+    dream_text = match.group("dream").strip()
+    question = match.group("question").strip()
+    if not _has_natural_dream_opening(dream_text):
+        return stripped, None
+    return dream_text, question

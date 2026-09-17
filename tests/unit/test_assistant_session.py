@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.assistant.session import (
+    DisplayedDreamRef,
+    DisplayedDreamSet,
     MAX_HISTORY_MESSAGES,
     PendingDreamDraft,
+    PendingInterpretationRequest,
+    PendingSingleDreamNote,
+    RedisOperationalStateStore,
     clear_pending_dream_draft,
     load_history,
     load_pending_dream_draft,
@@ -20,6 +26,29 @@ from app.assistant.session import (
     save_pending_dream_draft,
     save_recent_dream_set,
 )
+
+
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+        self.ttls: dict[str, int] = {}
+        self.closed = False
+
+    async def set(self, key: str, value: str, *, ex: int) -> None:
+        self.values[key] = value
+        self.ttls[key] = ex
+
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    async def delete(self, key: str) -> None:
+        self.values.pop(key, None)
+
+    async def ping(self) -> bool:
+        return True
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 def _make_session_factory(row: object) -> MagicMock:
@@ -36,6 +65,16 @@ def _make_session_factory(row: object) -> MagicMock:
     factory = MagicMock()
     factory.return_value = ctx
     return factory, session
+
+
+@pytest.mark.asyncio
+async def test_redis_operational_state_store_closes_owned_transport() -> None:
+    redis = _FakeRedis()
+    store = RedisOperationalStateStore(redis)
+
+    await store.aclose()
+
+    assert redis.closed is True
 
 
 @pytest.fixture(autouse=True)
@@ -93,6 +132,27 @@ async def test_load_history_returns_empty_list_when_json_is_not_a_list() -> None
     factory, _ = _make_session_factory(row=row)
     result = await load_history(factory, chat_id=99)
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_load_history_physically_deletes_expired_row_without_logging_content(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    sensitive_history = "private dream about a violet lighthouse"
+    row = MagicMock()
+    row.updated_at = datetime.now(timezone.utc) - timedelta(days=8)
+    row.history_json = json.dumps([{"role": "user", "content": sensitive_history}])
+    factory, session = _make_session_factory(row=row)
+
+    with caplog.at_level(logging.INFO, logger="app.assistant.session"):
+        result = await load_history(factory, chat_id=42)
+
+    assert result == []
+    session.execute.assert_awaited_once()
+    statement = session.execute.await_args.args[0]
+    assert str(statement).startswith("DELETE FROM bot_sessions")
+    session.commit.assert_awaited_once()
+    assert sensitive_history not in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -281,3 +341,83 @@ def test_load_recent_dream_set_ignores_expired_entries() -> None:
     session_module._recent_dream_sets[102] = stale
 
     assert load_recent_dream_set(102) is None
+
+
+@pytest.mark.asyncio
+async def test_operational_state_store_round_trips_reply_target_with_ttl() -> None:
+    redis = _FakeRedis()
+    store = RedisOperationalStateStore(redis, key_prefix="test:telegram")
+    displayed = DisplayedDreamSet(
+        refs=[
+            DisplayedDreamRef(
+                index=1,
+                dream_id="11111111-1111-4111-8111-111111111111",
+                date="2026-08-30",
+                title="Мост",
+            )
+        ],
+        created_at=datetime.now(timezone.utc),
+    )
+
+    await store.save_displayed_message(42, 901, displayed)
+    restored = await store.load_displayed_message(42, 901)
+
+    assert restored == displayed
+    assert redis.ttls["test:telegram:42:displayed_message:901"] == 120 * 60
+
+
+@pytest.mark.asyncio
+async def test_operational_state_store_pending_note_can_be_consumed_after_restart() -> None:
+    redis = _FakeRedis()
+    store = RedisOperationalStateStore(redis, key_prefix="test:telegram")
+    pending = PendingSingleDreamNote(
+        note_text="важная деталь",
+        created_at=datetime.now(timezone.utc),
+    )
+
+    await store.save_pending_single_note(42, pending)
+    restored = await store.load_pending_single_note(42)
+    await store.delete_pending_single_note(42)
+
+    assert restored == pending
+    assert await store.load_pending_single_note(42) is None
+
+
+@pytest.mark.asyncio
+async def test_operational_state_store_rejects_stale_pending_note_defensively() -> None:
+    redis = _FakeRedis()
+    store = RedisOperationalStateStore(redis, key_prefix="test:telegram")
+    stale = PendingSingleDreamNote(
+        note_text="already expired",
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=31),
+    )
+
+    await store.save_pending_single_note(42, stale)
+
+    assert await store.load_pending_single_note(42) is None
+
+
+@pytest.mark.asyncio
+async def test_operational_state_store_round_trips_pending_capture_and_interpretation() -> None:
+    store = RedisOperationalStateStore(_FakeRedis(), key_prefix="test:telegram")
+    now = datetime.now(timezone.utc)
+    draft = PendingDreamDraft(
+        raw_text="мне приснился мост",
+        title=None,
+        dream_date="2026-08-30",
+        source_message_id=501,
+        source_kind="text",
+        created_at=now,
+    )
+    interpretation = PendingInterpretationRequest(
+        dream_id="11111111-1111-4111-8111-111111111111",
+        prompt="Бережно разобрать образ моста",
+        source_message_id=502,
+        created_at=now,
+    )
+
+    await store.save_pending_dream(42, draft)
+    await store.save_pending_interpretation(42, interpretation)
+
+    assert await store.load_pending_dream(42) == draft
+    assert await store.load_pending_interpretation(42) == interpretation

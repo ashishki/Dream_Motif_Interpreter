@@ -11,11 +11,16 @@ from app.retrieval.query import EvidenceBlock, FragmentMatch, RagQueryService
 from app.retrieval import query
 
 
+def _embedding(seed: float) -> list[float]:
+    return [seed, *([0.0] * (query.EMBEDDING_DIMENSIONS - 1))]
+
+
 @pytest.mark.asyncio
 async def test_query_expansion_fallback() -> None:
     dream_id = uuid4()
     embedding_client = Mock()
-    embedding_client.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+    query_embedding = _embedding(0.1)
+    embedding_client.embed = AsyncMock(return_value=[query_embedding])
     service = RagQueryService(session_factory=Mock(), embedding_client=embedding_client)
     service._search = AsyncMock(
         return_value=[  # type: ignore[method-assign]
@@ -56,7 +61,8 @@ async def test_query_expansion_fallback() -> None:
 @pytest.mark.asyncio
 async def test_prayer_query_uses_deterministic_religious_expansion_when_llm_fails() -> None:
     embedding_client = Mock()
-    embedding_client.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+    query_embedding = _embedding(0.1)
+    embedding_client.embed = AsyncMock(return_value=[query_embedding])
     service = RagQueryService(session_factory=Mock(), embedding_client=embedding_client)
     service._search = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
@@ -71,13 +77,18 @@ async def test_prayer_query_uses_deterministic_religious_expansion_when_llm_fail
     expanded_query = embedding_client.embed.await_args.args[0][0]
     for term in query.RELIGIOUS_QUERY_EXPANSION_TERMS:
         assert term in expanded_query
-    service._search.assert_awaited_once_with(expanded_query, [0.1, 0.2, 0.3])
+    service._search.assert_awaited_once_with(
+        expanded_query,
+        query_embedding,
+        evidence_query=expanded_query,
+        require_all_evidence_terms=False,
+    )
 
 
 @pytest.mark.asyncio
 async def test_religious_query_merges_deterministic_and_llm_expansion() -> None:
     embedding_client = Mock()
-    embedding_client.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+    embedding_client.embed = AsyncMock(return_value=[_embedding(0.1)])
     service = RagQueryService(session_factory=Mock(), embedding_client=embedding_client)
     service._search = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
@@ -109,10 +120,10 @@ async def test_broad_religious_query_runs_multiple_retrieval_probes() -> None:
     embedding_client = Mock()
     embedding_client.embed = AsyncMock(
         side_effect=[
-            [[0.1, 0.2, 0.3]],
-            [[0.2, 0.3, 0.4]],
-            [[0.3, 0.4, 0.5]],
-            [[0.4, 0.5, 0.6]],
+            [_embedding(0.1)],
+            [_embedding(0.2)],
+            [_embedding(0.3)],
+            [_embedding(0.4)],
         ]
     )
     service = RagQueryService(session_factory=Mock(), embedding_client=embedding_client)

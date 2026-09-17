@@ -17,6 +17,7 @@ from typing import Any
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -40,6 +41,11 @@ BASELINE_SECTION = "## Baseline Metrics"
 CURRENT_SECTION = "## Current Metrics"
 NO_ANSWER_SECTION = "## No-Answer Behavior Quality"
 HISTORY_SECTION = "## Evaluation History"
+_SAFE_EVAL_DATABASE_NAME_RE = re.compile(
+    r"(?:^|[-_])(?:test|tests|eval|evaluation)$",
+    re.IGNORECASE,
+)
+_SAFE_EVAL_ENVIRONMENTS = {"ci", "eval", "evaluation", "test", "testing"}
 
 
 def _current_eval_date() -> str:
@@ -235,9 +241,13 @@ async def run_evaluation(
     write_markdown: bool = True,
     task_id: str = DEFAULT_TASK_ID,
     run_date: str | None = None,
+    confirm_reset: bool = False,
 ) -> tuple[EvaluationMetrics, list[QueryOutcome]]:
     effective_run_date = run_date or _eval_date()
-    session_factory = await _prepare_seeded_session_factory(fixture_path)
+    session_factory = await _prepare_seeded_session_factory(
+        fixture_path,
+        confirm_reset=confirm_reset,
+    )
     try:
         queries = load_evaluation_dataset(docs_path)
         use_stub = _should_use_stub_embeddings()
@@ -316,12 +326,10 @@ def _normalize_result(
 
 async def _prepare_seeded_session_factory(
     fixture_path: Path,
+    *,
+    confirm_reset: bool,
 ) -> async_sessionmaker[AsyncSession]:
-    database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError(
-            "TEST_DATABASE_URL or DATABASE_URL is required to run retrieval evaluation"
-        )
+    database_url = _validated_eval_database_url(confirm_reset=confirm_reset)
 
     os.environ["DATABASE_URL"] = database_url
     get_settings.cache_clear()
@@ -343,6 +351,46 @@ async def _prepare_seeded_session_factory(
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     await _seed_corpus(session_factory=session_factory, fixture_path=fixture_path)
     return session_factory
+
+
+def _validated_eval_database_url(*, confirm_reset: bool) -> str:
+    """Return a destructive-eval URL only after all safety gates pass."""
+    database_url = os.getenv("TEST_DATABASE_URL", "").strip()
+    if not database_url:
+        raise RuntimeError(
+            "TEST_DATABASE_URL is required for retrieval evaluation; "
+            "DATABASE_URL is intentionally ignored because the eval resets its schema"
+        )
+
+    try:
+        parsed_url = make_url(database_url)
+    except Exception as exc:
+        raise RuntimeError("TEST_DATABASE_URL is not a valid SQLAlchemy database URL") from exc
+
+    if parsed_url.get_backend_name() != "postgresql":
+        raise RuntimeError("TEST_DATABASE_URL must point to PostgreSQL")
+
+    database_name = (parsed_url.database or "").strip()
+    if not _SAFE_EVAL_DATABASE_NAME_RE.search(database_name):
+        raise RuntimeError(
+            "Refusing to reset TEST_DATABASE_URL: database name must end in "
+            "_test, _tests, _eval, or _evaluation"
+        )
+
+    environment = os.getenv("ENV", "").strip().lower()
+    if environment not in _SAFE_EVAL_ENVIRONMENTS:
+        raise RuntimeError(
+            "Refusing to reset TEST_DATABASE_URL unless ENV is test, testing, "
+            "eval, evaluation, or ci"
+        )
+
+    if not confirm_reset:
+        raise RuntimeError(
+            "Refusing to reset the evaluation database without explicit confirmation; "
+            "pass --confirm-reset"
+        )
+
+    return database_url
 
 
 async def _seed_corpus(
@@ -693,11 +741,17 @@ def main() -> None:
         action="store_true",
         help="Run evaluation without modifying docs/retrieval_eval.md",
     )
+    parser.add_argument(
+        "--confirm-reset",
+        action="store_true",
+        help="Confirm destruction and recreation of the TEST_DATABASE_URL public schema",
+    )
     args = parser.parse_args()
     asyncio.run(
         run_evaluation(
             task_id=args.task_id,
             write_markdown=not args.no_write_markdown,
+            confirm_reset=args.confirm_reset,
         )
     )
 

@@ -50,6 +50,7 @@ def test_ci_workflow_has_required_jobs() -> None:
     assert any("install" in job_name for job_name in jobs), jobs.keys()
     assert "ruff-check" in jobs
     assert "ruff-format" in jobs
+    assert "container-contract" in jobs
     assert "pytest" in jobs
 
 
@@ -74,9 +75,40 @@ def test_ci_uses_read_only_defaults_and_checks_public_evidence() -> None:
         workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
         action_count += assert_workflow_security(workflow)
 
-    assert action_count == 8
+    assert action_count == 9
     assert "scripts/eval_public_fixture.py" in workflow_text
     assert "dream_motif_public_retrieval_v1.json" in workflow_text
+
+
+def test_ci_rejects_stale_or_unverified_dependency_locks() -> None:
+    workflow_text = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert workflow_text.count("cache-dependency-path: requirements-dev.lock") == 4
+    assert workflow_text.count("pip install --require-hashes -r requirements-dev.lock") == 4
+    assert workflow_text.count("pip check") == 4
+    assert "uv lock --check" in workflow_text
+    assert "uv export --frozen --no-dev --no-emit-project --no-annotate" in workflow_text
+    assert "uv export --frozen --extra dev --no-emit-project --no-annotate" in workflow_text
+    assert (
+        "git diff --exit-code -- uv.lock requirements.lock requirements-dev.lock" in workflow_text
+    )
+
+
+def test_container_build_context_is_deny_by_default() -> None:
+    dockerignore = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+
+    rules = [line for line in dockerignore if line and not line.startswith("#")]
+    assert rules[0] == "**"
+    assert set(rules[1:]) == {
+        "!pyproject.toml",
+        "!README.md",
+        "!alembic.ini",
+        "!requirements.lock",
+        "!app/",
+        "!app/**",
+        "!alembic/",
+        "!alembic/**",
+    }
 
 
 @pytest.mark.parametrize(

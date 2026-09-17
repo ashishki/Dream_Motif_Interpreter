@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import re
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -323,6 +324,26 @@ def render_report(report: dict[str, Any]) -> str:
     return json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
+def write_report(report: dict[str, Any], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=output_path.parent,
+            delete=False,
+            prefix=f".{output_path.name}.",
+            suffix=".tmp",
+        ) as temp_file:
+            temp_file.write(render_report(report))
+            temp_path = Path(temp_file.name)
+        temp_path.replace(output_path)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
+
+
 def _input_descriptor(path: Path, *, count: int) -> dict[str, Any]:
     return {**_file_descriptor(path), "records": count}
 
@@ -358,15 +379,18 @@ def _ratio(numerator: float, denominator: int) -> float:
     return 0.0 if denominator == 0 else round(numerator / denominator, 6)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS_PATH)
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES_PATH)
     parser.add_argument("--run-date", help="Evidence date in YYYY-MM-DD format")
     parser.add_argument("--check", type=Path, help="Compare with an existing tracked report")
-    args = parser.parse_args()
+    parser.add_argument("--output", type=Path, help="Write the rendered report to this path")
+    args = parser.parse_args(argv)
 
     if args.check:
+        if args.output:
+            parser.error("--output cannot be combined with --check")
         expected = json.loads(args.check.read_text(encoding="utf-8"))
         run_date = expected.get("run_date")
         if not isinstance(run_date, str):
@@ -379,13 +403,21 @@ def main() -> None:
         print(
             f"PASS: {len(actual['traces'])} cases, content={actual['inputs']['corpus']['sha256']}"
         )
-        return
+        return 0
 
     if not args.run_date:
         parser.error("--run-date is required when not using --check")
     report = build_report(corpus_path=args.corpus, cases_path=args.cases, run_date=args.run_date)
-    print(render_report(report), end="")
+    if args.output:
+        write_report(report, args.output)
+        print(
+            f"WROTE: {args.output}, cases={len(report['traces'])}, "
+            f"content={report['inputs']['corpus']['sha256']}"
+        )
+    else:
+        print(render_report(report), end="")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

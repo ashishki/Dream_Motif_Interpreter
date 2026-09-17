@@ -2,6 +2,7 @@ import os
 
 import pytest
 import pytest_asyncio
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.shared.config import get_settings
@@ -9,10 +10,30 @@ from app.shared.config import get_settings
 
 # ── env vars for all tests ──────────────────────────────────────────────────
 
+
 # Real test DB (PostgreSQL on port 5433, created by env setup)
-_TEST_DB_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql+asyncpg://postgres@localhost:5433/dream_motif_test",
+def _validated_test_database_url(value: str) -> str:
+    """Fail collection before any integration fixture can drop a real schema."""
+    try:
+        parsed = make_url(value)
+    except Exception as exc:
+        raise RuntimeError("TEST_DATABASE_URL is not a valid SQLAlchemy URL") from exc
+    if parsed.get_backend_name() != "postgresql":
+        raise RuntimeError("TEST_DATABASE_URL must point to PostgreSQL")
+    database_name = (parsed.database or "").casefold()
+    if not database_name.endswith(("_test", "_testing", "_eval")):
+        raise RuntimeError(
+            "Refusing destructive integration tests: TEST_DATABASE_URL database "
+            "name must end in _test, _testing, or _eval"
+        )
+    return value
+
+
+_TEST_DB_URL = _validated_test_database_url(
+    os.getenv(
+        "TEST_DATABASE_URL",
+        "postgresql+asyncpg://postgres@localhost:5433/dream_motif_test",
+    )
 )
 
 REQUIRED_ENV_VARS = {

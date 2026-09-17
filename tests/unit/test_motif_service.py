@@ -228,8 +228,41 @@ async def test_row_has_correct_label_rationale_confidence() -> None:
 
     row = session.add.call_args[0][0]
     assert row.label == "obstructed vertical movement"
+    assert row.normalized_label == "obstructed vertical movement"
     assert row.rationale == "Stairs and locked door both impede upward progress."
     assert row.confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_logically_identical_motif_labels_are_persisted_once() -> None:
+    fragments = _make_fragments()
+    candidates = [
+        MotifCandidate(
+            label="  Рыба   в Воде ",
+            rationale="first",
+            confidence="high",
+            imagery_indices=[0],
+        ),
+        MotifCandidate(
+            label="рыба в воде",
+            rationale="duplicate",
+            confidence="moderate",
+            imagery_indices=[0],
+        ),
+    ]
+    service = MotifService(
+        imagery_extractor=_StubImageryExtractor(fragments),
+        motif_inductor=_StubMotifInductor(candidates),
+        motif_grounder=_StubMotifGrounder(),
+    )
+    session = _make_mock_session()
+
+    await service.run(_make_dream_entry(), session)
+
+    session.add.assert_called_once()
+    row = session.add.call_args.args[0]
+    assert row.label == "Рыба в Воде"
+    assert row.normalized_label == "рыба в воде"
 
 
 @pytest.mark.asyncio
@@ -270,6 +303,24 @@ async def test_fragments_field_contains_grounded_fragments() -> None:
     # All fragments in the row must have 'verified' key
     for frag in row.fragments:
         assert "verified" in frag
+
+
+@pytest.mark.asyncio
+async def test_candidate_without_verified_evidence_is_not_persisted() -> None:
+    class _RejectingGrounder:
+        def ground(self, dream_text: str, fragments: list[Any]) -> list[Any]:  # noqa: ARG002
+            return [{**fragment, "verified": False} for fragment in fragments]
+
+    service = MotifService(
+        imagery_extractor=_StubImageryExtractor(_make_fragments()),
+        motif_inductor=_StubMotifInductor(_make_candidates()),
+        motif_grounder=_RejectingGrounder(),  # type: ignore[arg-type]
+    )
+    session = _make_mock_session()
+
+    await service.run(_make_dream_entry(), session)
+
+    session.add.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +395,20 @@ async def test_motif_inductor_failure_does_not_crash() -> None:
 
     session.add.assert_not_called()
     session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_strict_mode_propagates_provider_failure_for_durable_retry() -> None:
+    service = MotifService(
+        imagery_extractor=_StubImageryExtractor(
+            [], raise_exc=ImageryExtractionError("provider unavailable")
+        ),
+        motif_inductor=_StubMotifInductor([]),
+        motif_grounder=_StubMotifGrounder(),
+    )
+
+    with pytest.raises(ImageryExtractionError, match="provider unavailable"):
+        await service.run(_make_dream_entry(), _make_mock_session(), strict=True)
 
 
 @pytest.mark.asyncio
@@ -477,7 +542,6 @@ async def test_ingest_calls_motif_service_when_flag_is_true() -> None:
             analysis_service=MagicMock(),
             motif_service=motif_service_mock,
             pipeline_targets=[target],
-            note_ids=[],
         )
 
     motif_service_mock.run.assert_called_once()
@@ -510,7 +574,6 @@ async def test_ingest_skips_motif_service_when_flag_is_false() -> None:
             analysis_service=MagicMock(),
             motif_service=motif_service_mock,
             pipeline_targets=[target],
-            note_ids=[],
         )
 
     motif_service_mock.run.assert_not_called()
@@ -557,7 +620,6 @@ async def test_ingest_commits_after_motif_service_run_returns() -> None:
             analysis_service=MagicMock(),
             motif_service=motif_service_mock,
             pipeline_targets=[target],
-            note_ids=[],
         )
 
     assert call_order == ["run", "commit"]

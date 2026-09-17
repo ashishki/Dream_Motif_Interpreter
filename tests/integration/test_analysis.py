@@ -236,8 +236,7 @@ async def test_grounded_themes_have_fragments(migrated_session: AsyncSession) ->
     assert stored_themes
     assert all(theme.fragments is not None for theme in stored_themes)
     assert all(isinstance(theme.fragments, list) and theme.fragments for theme in stored_themes)
-    assert stored_themes[0].fragments[0]["verified"] is True
-    assert stored_themes[1].fragments[0]["verified"] is False
+    assert {theme.fragments[0]["verified"] for theme in stored_themes} == {True, False}
 
 
 @pytest.mark.asyncio
@@ -300,3 +299,45 @@ async def test_regrounding_writes_annotation_version(migrated_session: AsyncSess
         assert update_snapshot["salience_before"] == first_state[theme.id]["salience"]
         assert update_snapshot["fragments_before"] == first_state[theme.id]["fragments"]
         assert theme.fragments != first_state[theme.id]["fragments"]
+
+
+@pytest.mark.asyncio
+async def test_identical_analysis_replay_does_not_duplicate_rows_or_versions(
+    migrated_session: AsyncSession,
+) -> None:
+    dream = DreamEntry(
+        source_doc_id="doc-analysis-replay",
+        date=None,
+        title="Replay-safe analysis",
+        raw_text="I moved through water in my old house while my mother called from upstairs.",
+        word_count=14,
+        content_hash=f"analysis-replay-hash-{uuid.uuid4()}",
+        segmentation_confidence="high",
+    )
+    migrated_session.add(dream)
+    await migrated_session.commit()
+    service = AnalysisService(
+        theme_extractor=StubThemeExtractor(),
+        grounder=StubGrounder(),
+    )
+
+    await service.analyse_dream(dream.id, migrated_session)
+    await service.analyse_dream(dream.id, migrated_session)
+
+    themes = (
+        (await migrated_session.execute(select(DreamTheme).where(DreamTheme.dream_id == dream.id)))
+        .scalars()
+        .all()
+    )
+    versions = (
+        (
+            await migrated_session.execute(
+                select(AnnotationVersion).where(AnnotationVersion.entity_type == "dream_theme")
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    assert len(themes) == 2
+    assert len(versions) == 2

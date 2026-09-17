@@ -225,19 +225,20 @@ class RagIngestionService:
             span.set_attribute("dream_id", str(dream_id))
             span.set_attribute("chunk_index", chunk_draft.chunk_index)
 
-            statement = (
-                insert(DreamChunk)
-                .values(
-                    dream_id=dream_id,
-                    chunk_index=chunk_draft.chunk_index,
-                    chunk_text=chunk_draft.chunk_text,
-                    embedding=_embedding_to_vector_literal(embedding),
-                )
-                .on_conflict_do_nothing(
-                    index_elements=[DreamChunk.dream_id, DreamChunk.chunk_index]
-                )
-                .returning(DreamChunk.id)
+            insert_statement = insert(DreamChunk).values(
+                dream_id=dream_id,
+                chunk_index=chunk_draft.chunk_index,
+                chunk_text=chunk_draft.chunk_text,
+                embedding=_embedding_to_vector_literal(embedding),
             )
+            statement = insert_statement.on_conflict_do_update(
+                index_elements=[DreamChunk.dream_id, DreamChunk.chunk_index],
+                set_={
+                    "chunk_text": insert_statement.excluded.chunk_text,
+                    "embedding": insert_statement.excluded.embedding,
+                },
+                where=DreamChunk.embedding.is_(None),
+            ).returning(DreamChunk.id)
             result = await session.execute(statement)
 
         return 1 if result.scalar_one_or_none() is not None else 0
@@ -254,20 +255,27 @@ class RagIngestionService:
         with tracer.start_as_current_span("db.query.rag_ingestion.upsert_note_chunk") as span:
             span.set_attribute("dream_id", str(note.dream_id))
             span.set_attribute("note_id", str(note.id))
-            chunk_index = await _next_note_chunk_index(session=session, dream_id=note.dream_id)
-            statement = (
-                insert(DreamChunk)
-                .values(
-                    dream_id=note.dream_id,
-                    note_id=note.id,
-                    source_kind="note",
-                    chunk_index=chunk_index,
-                    chunk_text=_note_chunk_text(note),
-                    embedding=_embedding_to_vector_literal(embedding),
-                )
-                .on_conflict_do_nothing(index_elements=[DreamChunk.note_id])
-                .returning(DreamChunk.id)
+            await _lock_dream_for_note_chunk_index(
+                session=session,
+                dream_id=note.dream_id,
             )
+            chunk_index = await _next_note_chunk_index(session=session, dream_id=note.dream_id)
+            insert_statement = insert(DreamChunk).values(
+                dream_id=note.dream_id,
+                note_id=note.id,
+                source_kind="note",
+                chunk_index=chunk_index,
+                chunk_text=_note_chunk_text(note),
+                embedding=_embedding_to_vector_literal(embedding),
+            )
+            statement = insert_statement.on_conflict_do_update(
+                index_elements=[DreamChunk.note_id],
+                set_={
+                    "chunk_text": insert_statement.excluded.chunk_text,
+                    "embedding": insert_statement.excluded.embedding,
+                },
+                where=DreamChunk.embedding.is_(None),
+            ).returning(DreamChunk.id)
             result = await session.execute(statement)
 
         return 1 if result.scalar_one_or_none() is not None else 0
@@ -329,9 +337,8 @@ def validate_dream_entry_candidates(
     candidates: list[DreamEntryCandidate],
 ) -> list[ValidatedDreamEntry]:
     validated_entries: list[ValidatedDreamEntry] = []
-    seen_content_hashes: set[str] = set()
 
-    for index, candidate in enumerate(candidates):
+    for candidate in candidates:
         if not candidate.source_doc_id.strip():
             raise DreamEntryValidationError("Dream entry candidate source_doc_id is required")
         if not candidate.title.strip():
@@ -346,16 +353,6 @@ def validate_dream_entry_candidates(
             raise DreamEntryValidationError(
                 "Dream entry candidate segmentation_confidence must be 'high' or 'low'"
             )
-        if candidate.content_hash in seen_content_hashes:
-            logger.warning(
-                "ingestion.duplicate_candidate_skipped",
-                content_hash=candidate.content_hash,
-                source_doc_id=candidate.source_doc_id,
-                duplicate_index=index,
-            )
-            continue
-
-        seen_content_hashes.add(candidate.content_hash)
         validated_entries.append(
             ValidatedDreamEntry(
                 source_doc_id=candidate.source_doc_id,
@@ -366,23 +363,12 @@ def validate_dream_entry_candidates(
                 date=candidate.date,
                 segmentation_confidence=candidate.segmentation_confidence,
                 applied_profile=candidate.applied_profile,
-                parse_warnings=[
-                    *candidate.parse_warnings,
-                    *(
-                        ["Duplicate content hash candidates skipped during validation."]
-                        if _has_duplicate_content_hash(candidates, candidate.content_hash)
-                        else []
-                    ),
-                ],
+                parse_warnings=list(candidate.parse_warnings),
                 notes=list(candidate.notes),
             )
         )
 
     return validated_entries
-
-
-def _has_duplicate_content_hash(candidates: list[DreamEntryCandidate], content_hash: str) -> bool:
-    return sum(1 for candidate in candidates if candidate.content_hash == content_hash) > 1
 
 
 def process_source_document(
@@ -499,6 +485,19 @@ async def _next_note_chunk_index(session: AsyncSession, dream_id: uuid.UUID) -> 
     if current_max is None:
         return note_chunk_base
     return int(current_max) + 1
+
+
+async def _lock_dream_for_note_chunk_index(
+    *,
+    session: AsyncSession,
+    dream_id: uuid.UUID,
+) -> None:
+    """Serialize note chunk-index allocation for one parent dream."""
+    locked_dream_id = await session.scalar(
+        select(DreamEntry.id).where(DreamEntry.id == dream_id).with_for_update()
+    )
+    if locked_dream_id is None:
+        raise ValueError(f"Dream entry {dream_id} does not exist")
 
 
 def _note_chunk_text(note: DreamNote) -> str:

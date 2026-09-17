@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import hmac
 import logging
+import os
 import re
 import uuid
 from collections.abc import MutableMapping
@@ -19,6 +22,7 @@ from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.facade import _prepare_dream_recording_input
 from app.assistant.session import (
     DisplayedDreamRef,
+    RedisOperationalStateStore,
     clear_pending_batch_dream_note,
     clear_pending_interpretation_request,
     clear_pending_dream_draft,
@@ -30,33 +34,49 @@ from app.assistant.session import (
     load_pending_interpretation_request,
     load_pending_dream_draft,
     load_pending_single_dream_note,
-    pop_pending_batch_dream_note,
     pop_pending_interpretation_request,
-    pop_pending_dream_draft,
-    pop_pending_single_dream_note,
     save_displayed_dream_message,
     save_displayed_dream_set,
     save_pending_batch_dream_note,
     save_pending_dream_draft,
+    save_pending_interpretation_request,
     save_pending_single_dream_note,
 )
-from app.assistant.tools import _has_natural_dream_opening, _is_explicit_create_request
-from app.assistant.voice_media import create_voice_media_event
+from app.assistant.tools import (
+    _has_natural_dream_opening,
+    _is_explicit_create_request,
+    _split_natural_dream_followup,
+)
 from app.assistant.voice_media import get_voice_transcript_for_message
+from app.assistant.voice_media import get_or_create_voice_media_event
+from app.assistant.voice_media import store_voice_media_path
+from app.assistant.voice_media import update_voice_media_event_status
 from app.llm.client import LLMClientError
 from app.services.feedback_service import FeedbackService
 from app.shared.config import get_settings
 from app.telegram.voice import download_voice_file
 
 LOGGER = logging.getLogger(__name__)
-GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
+GENERIC_ERROR_MESSAGE = "Что-то пошло не так. Попробуйте ещё раз."
 VOICE_PROCESSING_ACK = "Обрабатываю голосовое сообщение..."
+VOICE_RUNTIME_UNAVAILABLE = (
+    "Сейчас я не могу надёжно принять голосовое сообщение. "
+    "Пришлите его текстом или повторите позже."
+)
+VOICE_DOWNLOAD_FAILED = (
+    "Не удалось скачать голосовое сообщение. Я ничего не добавил в архив. "
+    "Отправьте его ещё раз или пришлите текстом."
+)
+NOTE_ACCEPTED_QUEUED_MESSAGE = (
+    "Заметка сохранена и принята в очередь. Семантический индекс и Google Docs обновятся в фоне."
+)
 FEEDBACK_PROMPT = "Ответьте 1–5, можно с коротким комментарием."
-FEEDBACK_ACK = "Thanks, noted."
-MINI_APP_OPEN_MESSAGE = "Dream Memory Map"
+FEEDBACK_ACK = "Спасибо, записал."
+MINI_APP_OPEN_MESSAGE = "Карта памяти снов"
 MINI_APP_OPEN_BUTTON = "Открыть карту"
-MINI_APP_UNCONFIGURED_MESSAGE = "Dream Memory Map ещё не настроен."
+MINI_APP_UNCONFIGURED_MESSAGE = "Карта памяти снов пока не настроена."
 FULL_DREAM_CALLBACK_PREFIX = "dream_full:"
+ADD_NOTE_CALLBACK_PREFIX = "dream_note:"
 BATCH_NOTE_CALLBACK_PREFIX = "batch_note:"
 VOICE_TRANSCRIPT_PROCESSING = (
     "Расшифровка голосового сообщения ещё выполняется. Повторите команду после завершения."
@@ -69,6 +89,26 @@ _BOT_MESSAGE_IDS_KEY = "_bot_message_ids_by_chat"
 MAX_PENDING_FEEDBACK_REQUESTS = 10_000
 TELEGRAM_MESSAGE_CHUNK_SIZE = 3900
 MISSING_DREAM_TEXT_REPLY = "Пришлите текст сна одним сообщением: например, «Запиши сон: ...»."
+START_MESSAGE = (
+    "Я помогаю вести личный архив снов.\n\n"
+    "Напишите «Мне приснилось…» — я сохраню сон и покажу дату, название и статус "
+    "Google Docs. Можно также прислать голосовое сообщение.\n\n"
+    "После сохранения можно искать сны обычными словами, открывать полный текст и "
+    "добавлять заметки. Команда /help покажет короткие примеры."
+)
+HELP_MESSAGE = (
+    "Быстрые примеры:\n"
+    "• «Мне приснилось, что я иду по мосту» — сохранить сон.\n"
+    "• «Найди сны про воду» — поиск по смыслу.\n"
+    "• «Найди слово лестница» — точный поиск.\n"
+    "• Ответьте на карточку сна: «заметка: важная деталь» — добавить заметку.\n"
+    "• /map — открыть карту мотивов.\n\n"
+    "Я не ставлю диагнозы: интерпретации здесь — только осторожные гипотезы."
+)
+UNKNOWN_CONFIRMATION_REPLY = (
+    "Не вижу ожидающего подтверждения — возможно, бот перезапускался или запрос устарел. "
+    "Повторите действие целиком, чтобы я точно не выбрал не тот сон."
+)
 _DIRECT_DREAM_RECORD_COMMAND_RE = re.compile(
     r"(?is)^\s*(?:пожалуйста[,\s]+)?"
     r"(?:(?:можешь|можно|давай|хочу|я\s+хочу)\s+)?"
@@ -131,6 +171,24 @@ async def chat_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         raise ApplicationHandlerStop
 
 
+async def start_command_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    message = update.effective_message
+    if message is not None:
+        await message.reply_text(START_MESSAGE)
+
+
+async def help_command_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    message = update.effective_message
+    if message is not None:
+        await message.reply_text(HELP_MESSAGE)
+
+
 async def dream_memory_map_command_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -186,7 +244,8 @@ async def dream_full_text_callback_handler(
     chat_id = getattr(chat, "id", None)
     message_id = getattr(sent_message, "message_id", None)
     if chat_id is not None and message_id is not None:
-        save_displayed_dream_message(
+        await _save_displayed_dream_message(
+            _operational_state_store(context),
             int(chat_id),
             message_id=int(message_id),
             refs=[
@@ -195,6 +254,61 @@ async def dream_full_text_callback_handler(
                     dream_id=str(dream_id),
                     date=str(getattr(detail, "date", "") or ""),
                     title=str(getattr(detail, "title", "") or ""),
+                )
+            ],
+        )
+
+
+async def add_note_callback_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Turn the save-card action into an unambiguous reply target."""
+    query = update.callback_query
+    if query is None:
+        return
+    data = str(query.data or "")
+    if not data.startswith(ADD_NOTE_CALLBACK_PREFIX):
+        return
+
+    with contextlib.suppress(Exception):
+        await query.answer()
+
+    raw_id = data.removeprefix(ADD_NOTE_CALLBACK_PREFIX)
+    try:
+        dream_id = uuid.UUID(raw_id)
+    except ValueError:
+        if query.message is not None:
+            await query.message.reply_text("Не смог распознать сон для заметки.")
+        return
+
+    message = query.message
+    chat = update.effective_chat
+    if message is None or chat is None:
+        return
+    detail = await _get_facade(context).get_dream(dream_id)
+    if detail is None:
+        await message.reply_text("Не нашёл этот сон в архиве.")
+        return
+
+    date_value = str(getattr(detail, "date", "") or "").strip()
+    title = str(getattr(detail, "title", "") or "без названия").strip()
+    label = ", ".join(part for part in (date_value, f"«{title}»") if part)
+    sent_message = await message.reply_text(
+        f"Добавляем заметку к сну {label}.\nОтветьте на это сообщение: «заметка: …»."
+    )
+    message_id = getattr(sent_message, "message_id", None)
+    if isinstance(message_id, int):
+        await _save_displayed_dream_message(
+            _operational_state_store(context),
+            chat.id,
+            message_id=message_id,
+            refs=[
+                DisplayedDreamRef(
+                    index=1,
+                    dream_id=str(dream_id),
+                    date=date_value,
+                    title=title,
                 )
             ],
         )
@@ -220,15 +334,22 @@ async def batch_note_callback_handler(
         return
 
     action = data.removeprefix(BATCH_NOTE_CALLBACK_PREFIX)
+    state_store = _operational_state_store(context)
     if action == "cancel":
         clear_pending_batch_dream_note(chat.id)
+        if state_store is not None:
+            await state_store.delete_pending_batch_note(chat.id)
         await message.reply_text("Хорошо, не добавляю заметку.")
         return
     if action != "confirm":
         await message.reply_text("Не смог распознать действие с заметкой.")
         return
 
-    reply = await _apply_pending_batch_note(chat.id, _get_facade(context))
+    reply = await _apply_pending_batch_note(
+        chat.id,
+        _get_facade(context),
+        state_store=state_store,
+    )
     await message.reply_text(reply)
 
 
@@ -244,8 +365,13 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     bot_msg_ids = _bot_message_ids(context)
     feedback_enabled = _numeric_feedback_enabled(context)
     stripped_text = message.text.strip()
+    source_event_key = _telegram_source_event_key(
+        chat_id,
+        getattr(message, "message_id", None),
+    )
     reply_to_msg_id = getattr(getattr(message, "reply_to_message", None), "message_id", None)
     session_factory = context.bot_data.get("session_factory")
+    state_store = _operational_state_store(context)
 
     if not feedback_enabled and chat_key is not None:
         pending_feedback.pop(chat_key, None)
@@ -257,6 +383,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         chat_id=chat_id,
         session_factory=session_factory,
         facade=_get_facade(context),
+        state_store=state_store,
     ):
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
@@ -313,6 +440,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         stripped_text,
         chat_id=chat_id,
         facade=_get_facade(context),
+        state_store=state_store,
     ):
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
@@ -324,6 +452,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         stripped_text,
         chat_id=chat_id,
         facade=_get_facade(context),
+        state_store=state_store,
     ):
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
@@ -335,6 +464,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         stripped_text,
         chat_id=chat_id,
         facade=_get_facade(context),
+        state_store=state_store,
     ):
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
@@ -346,6 +476,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         stripped_text,
         chat_id=chat_id,
         facade=_get_facade(context),
+        state_store=state_store,
     ):
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
@@ -356,6 +487,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         message,
         stripped_text,
         chat_id=chat_id,
+        state_store=state_store,
     ):
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
@@ -367,9 +499,15 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
             bot_msg_ids.pop(chat_key, None)
-        target_dream_id = _resolve_direct_note_target_dream_id(message, chat_id)
+        target_dream_id = await _resolve_direct_note_target_dream_id(
+            message,
+            chat_id,
+            state_store=state_store,
+        )
         if target_dream_id is None and _direct_note_requires_context(stripped_text):
-            save_pending_single_dream_note(chat_id, note_text=direct_note_text)
+            pending = save_pending_single_dream_note(chat_id, note_text=direct_note_text)
+            if state_store is not None:
+                await state_store.save_pending_single_note(chat_id, pending)
             await message.reply_text(
                 "Не понял, к какому сну добавить заметку. "
                 "Ответьте на сообщение с одним конкретным сном коротко: «к этому»."
@@ -396,30 +534,55 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 chat_id,
                 _get_facade(context),
                 stripped_text,
+                source_event_key=source_event_key,
             )
         except DreamRecordingUnavailable as exc:
             await message.reply_text(str(exc))
             return
-        clear_pending_dream_draft(chat_id)
-        await _reply_create_dream_and_remember(message, chat_id, created)
+        await _clear_pending_dream(chat_id, state_store=state_store)
+        await _reply_create_dream_and_remember(
+            message,
+            chat_id,
+            created,
+            raw_text=stripped_text,
+            state_store=state_store,
+        )
         return
 
     if chat_id is not None and _has_natural_dream_opening(stripped_text.casefold()):
         if chat_key is not None:
             pending_feedback.pop(chat_key, None)
             bot_msg_ids.pop(chat_key, None)
+        dream_text, followup_question = _split_natural_dream_followup(stripped_text)
         try:
             created = await _create_dream_with_typing(
                 context,
                 chat_id,
                 _get_facade(context),
-                stripped_text,
+                dream_text,
+                source_event_key=source_event_key,
             )
         except DreamRecordingUnavailable as exc:
             await message.reply_text(str(exc))
             return
-        clear_pending_dream_draft(chat_id)
-        await _reply_create_dream_and_remember(message, chat_id, created)
+        await _clear_pending_dream(chat_id, state_store=state_store)
+        await _reply_create_dream_and_remember(
+            message,
+            chat_id,
+            created,
+            raw_text=dream_text,
+            state_store=state_store,
+        )
+        if followup_question is not None:
+            await message.reply_text(
+                f"Вопрос заметил: «{followup_question}»\n"
+                "Я сохранил только описание сна. Для бережного разбора напишите "
+                "«интерпретируй этот сон» — перед запуском я покажу запрос на подтверждение."
+            )
+        return
+
+    if _is_unbound_confirmation(stripped_text):
+        await message.reply_text(UNKNOWN_CONFIRMATION_REPLY)
         return
 
     if _is_bare_context_reference(stripped_text):
@@ -448,11 +611,17 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
         typing_task = asyncio.create_task(_send_typing_action_loop(context, chat_id))
     try:
+        chat_kwargs: dict[str, Any] = {
+            "session_factory": session_factory,
+            "chat_id": chat_id,
+            "operational_state_store": state_store,
+        }
+        if source_event_key is not None:
+            chat_kwargs["source_event_key"] = source_event_key
         result = await handle_chat_with_metadata(
             _message_text_with_reply_context(message, message.text),
             facade,
-            session_factory=session_factory,
-            chat_id=chat_id,
+            **chat_kwargs,
         )
     finally:
         if typing_task is not None:
@@ -465,15 +634,22 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = _full_text_reply_markup(reply_text, result, chat_id=chat_id)
     sent_message = await _reply_text(message, reply_text, reply_markup=reply_markup)
     if chat_id is not None:
-        _remember_displayed_dreams(chat_id, reply_text, result, sent_message=sent_message)
+        await _remember_displayed_dreams(
+            chat_id,
+            reply_text,
+            result,
+            sent_message=sent_message,
+            state_store=state_store,
+        )
 
     if chat_id is not None:
-        _maybe_store_pending_dream(
+        await _maybe_store_pending_dream(
             result,
             message.text,
             chat_id=chat_id,
             source_message_id=getattr(message, "message_id", None),
             source_kind="text",
+            state_store=state_store,
         )
 
     if feedback_enabled and chat_key is not None and _is_substantive_response(result.text):
@@ -482,20 +658,20 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             bot_msg_ids,
             chat_key=chat_key,
             message_id=int(getattr(sent_message, "message_id", 0)),
+            request_text=stripped_text,
             response_text=result.text,
             tool_calls_made=list(result.tool_calls_made),
+            dream_ids=list(result.dream_ids),
+            has_reply_context=reply_to_msg_id is not None,
         )
 
 
 async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle Telegram voice messages from the authorized user.
 
-    Lifecycle (P7-T01 + P7-T02):
-    1. Validate voice attachment is present.
-    2. Persist VoiceMediaEvent with metadata (AC-2).
-    3. Download the file to local temp storage.
-    4. Acknowledge that processing has started (AC-3).
-    5. Enqueue async transcription task via asyncio.create_task.
+    The acknowledgement is sent only after both the ingress event and downloaded
+    path are durable. Telegram update redelivery reuses the unique event and does
+    not schedule duplicate transcription.
     """
     message = update.effective_message
     chat = update.effective_chat
@@ -510,81 +686,140 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     session_factory = context.bot_data.get("session_factory")
     media_dir: str = context.bot_data.get("voice_media_dir", "/tmp/dream_voice")
     bot_token: str = context.bot_data.get("bot_token", "")
+    facade = context.bot_data.get("facade")
     voice = message.voice
 
-    event_id = None
-    if session_factory is not None:
-        try:
-            event_id = await create_voice_media_event(
-                session_factory,
-                chat_id=chat.id,
-                telegram_message_id=message.message_id,
-                telegram_file_id=voice.file_id,
-                duration_seconds=voice.duration,
-                local_path="",
-            )
-        except Exception:
-            LOGGER.warning(
-                "Failed to persist voice media event for message_id=%s",
-                message.message_id,
-                exc_info=True,
-            )
+    if session_factory is None or not bot_token or not isinstance(facade, AssistantFacade):
+        LOGGER.error("Voice ingress rejected because durable runtime is not configured")
+        await _reply_voice_text(message, VOICE_RUNTIME_UNAVAILABLE)
+        return
 
     try:
-        local_path = await download_voice_file(update, context, media_dir=media_dir)
+        state, created = await get_or_create_voice_media_event(
+            session_factory,
+            chat_id=chat.id,
+            telegram_message_id=message.message_id,
+            telegram_file_id=voice.file_id,
+            duration_seconds=voice.duration,
+        )
+    except Exception:
+        LOGGER.exception(
+            "Failed to persist voice ingress message_id=%s",
+            message.message_id,
+        )
+        await _reply_voice_text(message, VOICE_RUNTIME_UNAVAILABLE)
+        return
+
+    if not created and not (state.status == "received" and not state.local_path):
+        LOGGER.info(
+            "Duplicate voice update ignored event_id=%s status=%s",
+            state.id,
+            state.status,
+        )
+        return
+
+    # Claim even a newly-created row before touching Telegram media. A duplicate
+    # update can therefore finish a crash-before-path event, while concurrent
+    # deliveries or another bot instance cannot download/process it twice.
+    from app.assistant.voice_media import claim_voice_media_event
+    from app.workers.transcribe import VOICE_LEASE_SECONDS
+
+    lease_owner = f"ingress:{uuid.uuid4().hex}"[:128]
+    claimed = await claim_voice_media_event(
+        session_factory,
+        state.id,
+        lease_owner=lease_owner,
+        lease_seconds=VOICE_LEASE_SECONDS,
+    )
+    if claimed is None:
+        LOGGER.info("Voice ingress already claimed event_id=%s", state.id)
+        return
+    state = claimed
+
+    try:
+        local_path = await download_voice_file(
+            update,
+            context,
+            media_dir=media_dir,
+            event_id=state.id,
+        )
         LOGGER.info(
             "Voice file downloaded event_id=%s path=%s",
-            event_id,
+            state.id,
             local_path,
         )
     except Exception:
         LOGGER.exception(
             "Voice download failed for message_id=%s event_id=%s",
             message.message_id,
-            event_id,
+            state.id,
         )
-        try:
-            await message.reply_text("Could not download your voice message. Please try again.")
-        except TelegramError:
-            pass
+        from app.workers.transcribe import stage_and_deliver_voice_reply
+
+        await stage_and_deliver_voice_reply(
+            event_id=state.id,
+            chat_id=chat.id,
+            telegram_bot_token=bot_token,
+            session_factory=session_factory,
+            reply_text=VOICE_DOWNLOAD_FAILED,
+            local_path="",
+            media_dir=media_dir,
+            lease_owner=lease_owner,
+        )
         return
 
     try:
-        await message.reply_text(VOICE_PROCESSING_ACK)
+        from app.workers.cleanup import resolve_voice_media_path
+
+        resolved_path = resolve_voice_media_path(local_path, media_dir=media_dir)
+        if resolved_path is None:
+            raise RuntimeError("Downloaded voice path is outside the configured media root")
+        local_path = str(resolved_path)
+        await store_voice_media_path(
+            session_factory,
+            state.id,
+            local_path,
+            lease_owner=lease_owner,
+        )
+        await update_voice_media_event_status(
+            session_factory,
+            state.id,
+            "processing",
+            lease_owner=lease_owner,
+        )
+    except Exception:
+        LOGGER.exception("Failed to persist downloaded voice path event_id=%s", state.id)
+        from app.workers.cleanup import delete_local_voice_file
+
+        delete_local_voice_file(local_path, media_dir=media_dir)
+        await _reply_voice_text(message, VOICE_RUNTIME_UNAVAILABLE)
+        return
+
+    await _reply_voice_text(message, VOICE_PROCESSING_ACK)
+
+    from app.workers.transcribe import run_claimed_voice_event, schedule_voice_task
+
+    schedule_voice_task(
+        context.bot_data,
+        run_claimed_voice_event(
+            bot_data=context.bot_data,
+            event_id=state.id,
+            lease_owner=lease_owner,
+        ),
+    )
+    LOGGER.info(
+        "Transcription task scheduled event_id=%s duration=%ss",
+        state.id,
+        voice.duration,
+    )
+
+
+async def _reply_voice_text(message: Any, text: str) -> None:
+    """Best-effort voice-specific Telegram response without masking durable state."""
+    try:
+        await message.reply_text(text)
     except TelegramError:
-        LOGGER.warning("Failed to send voice processing acknowledgement", exc_info=True)
-
-    facade = context.bot_data.get("facade")
-    if (
-        event_id is not None
-        and session_factory is not None
-        and bot_token
-        and isinstance(facade, AssistantFacade)
-    ):
-        from app.workers.transcribe import transcribe_and_reply
-
-        task = asyncio.create_task(
-            transcribe_and_reply(
-                event_id=event_id,
-                local_path=local_path,
-                chat_id=chat.id,
-                telegram_bot_token=bot_token,
-                session_factory=session_factory,
-                facade=facade,
-            )
-        )
-        context.bot_data.setdefault("_transcription_tasks", set()).add(task)
-        task.add_done_callback(context.bot_data["_transcription_tasks"].discard)
-        LOGGER.info(
-            "Transcription task enqueued event_id=%s duration=%ss",
-            event_id,
-            voice.duration,
-        )
-    else:
-        LOGGER.info(
-            "Voice ingress complete — transcription skipped (missing config) event_id=%s",
-            event_id,
-        )
+        LOGGER.warning("Failed to send voice ingress reply", exc_info=True)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -608,6 +843,125 @@ def _get_facade(context: ContextTypes.DEFAULT_TYPE) -> AssistantFacade:
     if not isinstance(facade, AssistantFacade):
         raise RuntimeError("Telegram bot facade not configured")
     return facade
+
+
+def _operational_state_store(
+    context: ContextTypes.DEFAULT_TYPE,
+) -> RedisOperationalStateStore | None:
+    store = context.bot_data.get("operational_state_store")
+    return store if isinstance(store, RedisOperationalStateStore) else None
+
+
+async def _save_displayed_dream_set(
+    state_store: RedisOperationalStateStore | None,
+    chat_id: int,
+    *,
+    refs: list[DisplayedDreamRef],
+) -> None:
+    displayed = save_displayed_dream_set(chat_id, refs=refs)
+    if state_store is not None:
+        await state_store.save_displayed_set(chat_id, displayed)
+
+
+async def _save_displayed_dream_message(
+    state_store: RedisOperationalStateStore | None,
+    chat_id: int,
+    *,
+    message_id: int,
+    refs: list[DisplayedDreamRef],
+) -> None:
+    displayed = save_displayed_dream_message(chat_id, message_id=message_id, refs=refs)
+    if state_store is not None:
+        await state_store.save_displayed_message(chat_id, message_id, displayed)
+
+
+async def _load_pending_batch_note(
+    chat_id: int,
+    *,
+    state_store: RedisOperationalStateStore | None,
+) -> Any:
+    pending = load_pending_batch_dream_note(chat_id)
+    if pending is None and state_store is not None:
+        pending = await state_store.load_pending_batch_note(chat_id)
+        if pending is not None:
+            save_pending_batch_dream_note(
+                chat_id,
+                note_text=pending.note_text,
+                refs=pending.refs,
+            )
+    return pending
+
+
+async def _load_pending_dream(
+    chat_id: int,
+    *,
+    state_store: RedisOperationalStateStore | None,
+) -> Any:
+    draft = load_pending_dream_draft(chat_id)
+    if draft is None and state_store is not None:
+        draft = await state_store.load_pending_dream(chat_id)
+        if draft is not None:
+            save_pending_dream_draft(
+                chat_id,
+                raw_text=draft.raw_text,
+                title=draft.title,
+                dream_date=draft.dream_date,
+                source_message_id=draft.source_message_id,
+                source_kind=draft.source_kind,
+            )
+    return draft
+
+
+async def _clear_pending_dream(
+    chat_id: int,
+    *,
+    state_store: RedisOperationalStateStore | None,
+) -> None:
+    """Clear both caches after a durable save or explicit rejection."""
+    clear_pending_dream_draft(chat_id)
+    if state_store is None:
+        return
+    try:
+        await state_store.delete_pending_dream(chat_id)
+    except Exception:
+        # The archive transaction already committed. Keep the user-facing save
+        # successful; ingress idempotency still protects a repeated action.
+        LOGGER.warning(
+            "Could not clear persisted pending dream after capture",
+            extra={"chat_id": chat_id},
+            exc_info=True,
+        )
+
+
+async def _load_pending_interpretation(
+    chat_id: int,
+    *,
+    state_store: RedisOperationalStateStore | None,
+) -> Any:
+    request = load_pending_interpretation_request(chat_id)
+    if request is None and state_store is not None:
+        request = await state_store.load_pending_interpretation(chat_id)
+        if request is not None:
+            save_pending_interpretation_request(
+                chat_id,
+                dream_id=request.dream_id,
+                prompt=request.prompt,
+                source_message_id=request.source_message_id,
+            )
+    return request
+
+
+async def _load_pending_single_note(
+    chat_id: int,
+    *,
+    state_store: RedisOperationalStateStore | None,
+) -> Any:
+    pending = load_pending_single_dream_note(chat_id)
+    if pending is None and state_store is not None:
+        pending = await state_store.load_pending_single_note(chat_id)
+        if pending is not None:
+            save_pending_single_dream_note(chat_id, note_text=pending.note_text)
+    return pending
 
 
 def _feedback_state(context: ContextTypes.DEFAULT_TYPE) -> MutableMapping[str, dict[str, Any]]:
@@ -663,18 +1017,67 @@ def _remember_feedback_request(
     message_id: int,
     response_text: str,
     tool_calls_made: list[str],
+    request_text: str = "",
+    dream_ids: list[str] | None = None,
+    has_reply_context: bool = False,
 ) -> None:
     while len(pending_feedback) >= MAX_PENDING_FEEDBACK_REQUESTS:
         oldest_key = next(iter(pending_feedback))
         pending_feedback.pop(oldest_key, None)
         bot_msg_ids.pop(oldest_key, None)
 
+    settings = get_settings()
     pending_feedback[chat_key] = {
         "message_id": message_id,
-        "response_summary": response_text[:200],
+        "request_summary": {
+            "intent": _feedback_intent(tool_calls_made),
+            "chars": len(request_text),
+            "words": len(request_text.split()),
+            "has_reply_context": has_reply_context,
+        },
+        "request_hash": _content_hash(request_text),
+        "response_summary": {
+            "chars": len(response_text),
+            "words": len(response_text.split()),
+        },
+        "response_hash": _content_hash(response_text),
         "tool_calls_made": tool_calls_made,
+        "dream_ids": list(dict.fromkeys(str(value) for value in (dream_ids or [])))[:10],
+        "build_sha": settings.BUILD_SHA,
+        "model": os.environ.get("ASSISTANT_MODEL", "claude-haiku-4-5-20251001"),
+        "route": "tool_use" if tool_calls_made else "conversation",
+        "issue_categories": [
+            "wrong_dream",
+            "weak_evidence",
+            "transcription",
+            "not_saved",
+            "duplicate",
+        ],
     }
     bot_msg_ids[chat_key] = message_id
+
+
+def _content_hash(value: str) -> str:
+    normalized = re.sub(r"\s+", " ", value).strip().casefold()
+    payload = b"telegram-feedback-v1\0" + normalized.encode("utf-8")
+    return hmac.new(
+        get_settings().SECRET_KEY.encode("utf-8"),
+        payload,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _feedback_intent(tool_calls_made: list[str]) -> str:
+    calls = set(tool_calls_made)
+    if "create_dream" in calls:
+        return "capture"
+    if "add_dream_note" in calls:
+        return "note"
+    if calls & {"search_dreams", "search_dreams_exact", "search_dreams_by_title"}:
+        return "search"
+    if "prepare_dream_interpretation" in calls:
+        return "interpretation"
+    return "conversation"
 
 
 def _is_rating_message(text: str) -> bool:
@@ -755,37 +1158,50 @@ async def _handle_pending_dream_confirmation(
     *,
     chat_id: int,
     facade: AssistantFacade,
+    state_store: RedisOperationalStateStore | None,
 ) -> bool:
     normalized = _normalize_confirmation_text(text)
     if not normalized:
         return False
 
     if _is_negative_confirmation(normalized):
-        if load_pending_dream_draft(chat_id) is None:
+        if await _load_pending_dream(chat_id, state_store=state_store) is None:
             return False
-        clear_pending_dream_draft(chat_id)
+        await _clear_pending_dream(chat_id, state_store=state_store)
         await message.reply_text("Хорошо, не сохраняю.")
         return True
 
     if not _is_positive_confirmation(normalized):
         return False
 
-    draft = pop_pending_dream_draft(chat_id)
+    # Do not consume the only copy until the archive transaction succeeds. A
+    # database outage must leave the user's text available for another «да».
+    draft = await _load_pending_dream(chat_id, state_store=state_store)
     if draft is None:
         return False
 
     dream_date = date.fromisoformat(draft.dream_date) if draft.dream_date else None
     try:
-        created = await facade.create_dream(
-            draft.raw_text,
-            title=draft.title,
-            dream_date=dream_date,
-            chat_id=chat_id,
-        )
+        create_kwargs: dict[str, Any] = {
+            "title": draft.title,
+            "dream_date": dream_date,
+            "chat_id": chat_id,
+        }
+        source_event_key = _telegram_source_event_key(chat_id, draft.source_message_id)
+        if source_event_key is not None:
+            create_kwargs["source_event_key"] = source_event_key
+        created = await facade.create_dream(draft.raw_text, **create_kwargs)
     except DreamRecordingUnavailable as exc:
         await message.reply_text(str(exc))
         return True
-    await _reply_create_dream_and_remember(message, chat_id, created)
+    await _clear_pending_dream(chat_id, state_store=state_store)
+    await _reply_create_dream_and_remember(
+        message,
+        chat_id,
+        created,
+        raw_text=draft.raw_text,
+        state_store=state_store,
+    )
     return True
 
 
@@ -795,15 +1211,18 @@ async def _handle_pending_interpretation_confirmation(
     *,
     chat_id: int,
     facade: AssistantFacade,
+    state_store: RedisOperationalStateStore | None,
 ) -> bool:
     normalized = _normalize_confirmation_text(text)
     if not normalized:
         return False
 
     if _is_negative_confirmation(normalized):
-        if load_pending_interpretation_request(chat_id) is None:
+        if await _load_pending_interpretation(chat_id, state_store=state_store) is None:
             return False
         clear_pending_interpretation_request(chat_id)
+        if state_store is not None:
+            await state_store.delete_pending_interpretation(chat_id)
         await message.reply_text("Хорошо, не запускаю интерпретацию.")
         return True
 
@@ -811,6 +1230,11 @@ async def _handle_pending_interpretation_confirmation(
         return False
 
     pending = pop_pending_interpretation_request(chat_id)
+    if pending is None:
+        pending = await _load_pending_interpretation(chat_id, state_store=state_store)
+    clear_pending_interpretation_request(chat_id)
+    if state_store is not None:
+        await state_store.delete_pending_interpretation(chat_id)
     if pending is None:
         return False
 
@@ -837,25 +1261,30 @@ async def _handle_pending_batch_note_confirmation(
     *,
     chat_id: int,
     facade: AssistantFacade,
+    state_store: RedisOperationalStateStore | None,
 ) -> bool:
     normalized = _normalize_confirmation_text(text)
     if not normalized:
         return False
 
     if _is_negative_confirmation(normalized):
-        if load_pending_batch_dream_note(chat_id) is None:
+        if await _load_pending_batch_note(chat_id, state_store=state_store) is None:
             return False
         clear_pending_batch_dream_note(chat_id)
+        if state_store is not None:
+            await state_store.delete_pending_batch_note(chat_id)
         await message.reply_text("Хорошо, не добавляю заметку.")
         return True
 
     if not _is_positive_confirmation(normalized):
         return False
 
-    if load_pending_batch_dream_note(chat_id) is None:
+    if await _load_pending_batch_note(chat_id, state_store=state_store) is None:
         return False
 
-    await message.reply_text(await _apply_pending_batch_note(chat_id, facade))
+    await message.reply_text(
+        await _apply_pending_batch_note(chat_id, facade, state_store=state_store)
+    )
     return True
 
 
@@ -865,21 +1294,28 @@ async def _handle_pending_single_note_target(
     *,
     chat_id: int,
     facade: AssistantFacade,
+    state_store: RedisOperationalStateStore | None,
 ) -> bool:
-    pending = load_pending_single_dream_note(chat_id)
+    pending = await _load_pending_single_note(chat_id, state_store=state_store)
     if pending is None:
         return False
 
     normalized = _normalize_confirmation_text(text)
     if _is_negative_confirmation(normalized):
         clear_pending_single_dream_note(chat_id)
+        if state_store is not None:
+            await state_store.delete_pending_single_note(chat_id)
         await message.reply_text("Хорошо, не добавляю заметку.")
         return True
 
     if not (_is_bare_context_reference(text) or _is_positive_confirmation(normalized)):
         return False
 
-    target_dream_id = _resolve_direct_note_target_dream_id(message, chat_id)
+    target_dream_id = await _resolve_direct_note_target_dream_id(
+        message,
+        chat_id,
+        state_store=state_store,
+    )
     if target_dream_id is None:
         await message.reply_text(
             "Всё ещё не понял, к какому сну добавить заметку. "
@@ -887,15 +1323,27 @@ async def _handle_pending_single_note_target(
         )
         return True
 
-    pending = pop_pending_single_dream_note(chat_id)
-    if pending is None:
+    try:
+        success, reply = await facade.add_dream_note(
+            pending.note_text,
+            dream_id=target_dream_id,
+            chat_id=chat_id,
+        )
+    except Exception:
+        LOGGER.exception("Failed to durably save pending single dream note")
+        success = False
+
+    if success:
+        clear_pending_single_dream_note(chat_id)
+        if state_store is not None:
+            await state_store.delete_pending_single_note(chat_id)
+        await message.reply_text(reply or NOTE_ACCEPTED_QUEUED_MESSAGE)
         return True
-    _success, reply = await facade.add_dream_note(
-        pending.note_text,
-        dream_id=target_dream_id,
-        chat_id=chat_id,
+
+    await message.reply_text(
+        "Не получилось надёжно сохранить заметку. Запрос сохранён для повтора — "
+        "ответьте «к этому» ещё раз."
     )
-    await message.reply_text(reply)
     return True
 
 
@@ -904,16 +1352,23 @@ async def _try_start_batch_note_confirmation(
     text: str,
     *,
     chat_id: int,
+    state_store: RedisOperationalStateStore | None,
 ) -> bool:
-    pending = _parse_batch_note_request(text, chat_id=chat_id)
+    pending = await _parse_batch_note_request(
+        text,
+        chat_id=chat_id,
+        state_store=state_store,
+    )
     if pending is None:
         return False
 
-    save_pending_batch_dream_note(
+    pending_note = save_pending_batch_dream_note(
         chat_id,
         note_text=pending["note_text"],
         refs=pending["refs"],
     )
+    if state_store is not None:
+        await state_store.save_pending_batch_note(chat_id, pending_note)
     await message.reply_text(
         _format_batch_note_confirmation(
             note_text=pending["note_text"],
@@ -937,56 +1392,93 @@ async def _try_start_batch_note_confirmation(
     return True
 
 
-async def _apply_pending_batch_note(chat_id: int, facade: AssistantFacade) -> str:
-    pending = pop_pending_batch_dream_note(chat_id)
+async def _apply_pending_batch_note(
+    chat_id: int,
+    facade: AssistantFacade,
+    *,
+    state_store: RedisOperationalStateStore | None,
+) -> str:
+    pending = await _load_pending_batch_note(chat_id, state_store=state_store)
     if pending is None:
         return "Не вижу ожидающей заметки. Повтори, пожалуйста, к каким снам её добавить."
 
-    fully_added = 0
-    archive_only = 0
+    accepted_results: list[tuple[DisplayedDreamRef, str]] = []
     failed_refs: list[DisplayedDreamRef] = []
     for ref in pending.refs:
         try:
-            success, message = await facade.add_dream_note(
+            success, result_message = await facade.add_dream_note(
                 pending.note_text,
                 dream_id=uuid.UUID(ref.dream_id),
                 chat_id=chat_id,
             )
         except ValueError:
             success = False
-            message = "Некорректный идентификатор сна."
+        except Exception:
+            LOGGER.exception(
+                "Failed to durably save one pending batch dream note",
+                extra={"dream_id": ref.dream_id, "chat_id": chat_id},
+            )
+            success = False
 
-        if not success:
-            failed_refs.append(ref)
-        elif message == "Заметка добавлена под нужным сном.":
-            fully_added += 1
+        if success:
+            accepted_results.append((ref, result_message))
         else:
-            archive_only += 1
+            failed_refs.append(ref)
 
     total = len(pending.refs)
-    if fully_added == total:
-        return f"Готово. Добавил заметку к {total} {_dream_count_word(total)}."
-
-    if fully_added + archive_only == total:
-        return (
-            f"В архив добавил заметку к {total} {_dream_count_word(total)}. "
-            f"В Google Doc полностью добавилось к {fully_added} из {total}; "
-            "для остальных не нашёл актуальный заголовок в документе."
+    accepted = len(accepted_results)
+    if accepted == total:
+        clear_pending_batch_dream_note(chat_id)
+        if state_store is not None:
+            await state_store.delete_pending_batch_note(chat_id)
+        return _format_batch_note_success(
+            f"Готово. Заметка для всех выбранных снов ({total}) надёжно сохранена.",
+            accepted_results,
         )
 
-    added = fully_added + archive_only
     failed_lines = "\n".join(_format_displayed_ref(ref) for ref in failed_refs)
-    if added:
+    if accepted:
         return (
-            f"Добавил заметку к {added} из {total} {_dream_count_word(total)}. "
-            "Не получилось добавить к этим снам:\n"
-            f"{failed_lines}"
+            f"Надёжно сохранено {accepted} из {total}. Не получилось сохранить "
+            f"для этих снов:\n{failed_lines}\n"
+            "Запрос сохранён для повтора; уже принятые заметки не продублируются."
         )
-    return "Не получилось добавить заметку к выбранным снам."
+    return (
+        "Не получилось надёжно сохранить заметку для выбранных снов. "
+        "Запрос сохранён для повтора; уже принятые заметки не продублируются."
+    )
 
 
-def _parse_batch_note_request(text: str, *, chat_id: int) -> dict[str, Any] | None:
+def _format_batch_note_success(
+    prefix: str,
+    accepted_results: list[tuple[DisplayedDreamRef, str]],
+) -> str:
+    messages = [message.strip() for _ref, message in accepted_results if message.strip()]
+    unique_messages = list(dict.fromkeys(messages))
+    if not unique_messages:
+        return prefix
+    if len(unique_messages) == 1:
+        return f"{prefix}\n{unique_messages[0]}"
+
+    status_lines = [
+        f"{ref.index}. «{ref.title}»: {message.strip()}"
+        for ref, message in accepted_results
+        if message.strip()
+    ]
+    return f"{prefix}\n" + "\n".join(status_lines)
+
+
+async def _parse_batch_note_request(
+    text: str,
+    *,
+    chat_id: int,
+    state_store: RedisOperationalStateStore | None,
+) -> dict[str, Any] | None:
     displayed = load_displayed_dream_set(chat_id)
+    if displayed is None and state_store is not None:
+        displayed = await state_store.load_displayed_set(chat_id)
+        if displayed is not None:
+            save_displayed_dream_set(chat_id, refs=displayed.refs)
     if displayed is None or not displayed.refs:
         return None
     if _BATCH_NOTE_INTENT_RE.search(text) is None:
@@ -1097,6 +1589,7 @@ async def _handle_reply_to_voice_save(
     chat_id: int,
     session_factory: Any,
     facade: AssistantFacade,
+    state_store: RedisOperationalStateStore | None,
 ) -> bool:
     reply_to = getattr(message, "reply_to_message", None)
     if reply_to is None or getattr(reply_to, "voice", None) is None:
@@ -1120,32 +1613,46 @@ async def _handle_reply_to_voice_save(
         return True
 
     try:
-        created = await facade.create_dream(transcript, chat_id=chat_id)
+        source_event_key = _telegram_source_event_key(
+            chat_id,
+            getattr(reply_to, "message_id", None),
+        )
+        create_kwargs: dict[str, Any] = {"chat_id": chat_id}
+        if source_event_key is not None:
+            create_kwargs["source_event_key"] = source_event_key
+        created = await facade.create_dream(transcript, **create_kwargs)
     except DreamRecordingUnavailable as exc:
         await message.reply_text(str(exc))
         return True
-    await _reply_create_dream_and_remember(message, chat_id, created)
-    clear_pending_dream_draft(chat_id)
+    await _reply_create_dream_and_remember(
+        message,
+        chat_id,
+        created,
+        raw_text=transcript,
+        state_store=state_store,
+    )
+    await _clear_pending_dream(chat_id, state_store=state_store)
     return True
 
 
-def _maybe_store_pending_dream(
+async def _maybe_store_pending_dream(
     result: ChatResult,
     raw_text: str,
     *,
     chat_id: int,
     source_message_id: int | None,
     source_kind: str,
+    state_store: RedisOperationalStateStore | None,
 ) -> None:
     if "create_dream" in result.tool_calls_made:
-        clear_pending_dream_draft(chat_id)
+        await _clear_pending_dream(chat_id, state_store=state_store)
         return
     if not _has_natural_dream_opening(raw_text.casefold()):
         return
     if not _is_pending_dream_confirmation_reply(result.text):
         return
 
-    save_pending_dream_draft(
+    draft = save_pending_dream_draft(
         chat_id,
         raw_text=raw_text,
         title=None,
@@ -1153,6 +1660,8 @@ def _maybe_store_pending_dream(
         source_message_id=source_message_id,
         source_kind=source_kind,
     )
+    if state_store is not None:
+        await state_store.save_pending_dream(chat_id, draft)
 
 
 def _is_pending_dream_confirmation_reply(text: str) -> bool:
@@ -1173,15 +1682,32 @@ async def _create_dream_with_typing(
     chat_id: int,
     facade: AssistantFacade,
     raw_text: str,
+    *,
+    source_event_key: str | None = None,
 ) -> Any:
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
     typing_task = asyncio.create_task(_send_typing_action_loop(context, chat_id))
     try:
-        return await facade.create_dream(raw_text, chat_id=chat_id)
+        create_kwargs: dict[str, Any] = {"chat_id": chat_id}
+        if source_event_key is not None:
+            create_kwargs["source_event_key"] = source_event_key
+        return await facade.create_dream(raw_text, **create_kwargs)
     finally:
         typing_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await typing_task
+
+
+def _telegram_source_event_key(chat_id: object, message_id: object) -> str | None:
+    """Return the stable ingress identity for one real Telegram message."""
+    if (
+        isinstance(chat_id, bool)
+        or not isinstance(chat_id, int)
+        or isinstance(message_id, bool)
+        or not isinstance(message_id, int)
+    ):
+        return None
+    return f"telegram:{chat_id}:message:{message_id}"
 
 
 def _reply_context_text(message: Any) -> str:
@@ -1281,12 +1807,13 @@ def _visible_dream_reference_ids(reply_text: str, refs: Any) -> list[uuid.UUID]:
     return _coerce_dream_ids([ref.dream_id for ref in _visible_dream_references(reply_text, refs)])
 
 
-def _remember_displayed_dreams(
+async def _remember_displayed_dreams(
     chat_id: int,
     reply_text: str,
     result: ChatResult,
     *,
     sent_message: Any | None = None,
+    state_store: RedisOperationalStateStore | None,
 ) -> None:
     refs = _visible_dream_references(reply_text, getattr(result, "dream_refs", []))
     if not refs:
@@ -1301,10 +1828,15 @@ def _remember_displayed_dreams(
         for index, ref in enumerate(refs, start=1)
     ]
 
-    save_displayed_dream_set(chat_id, refs=displayed_refs)
+    await _save_displayed_dream_set(state_store, chat_id, refs=displayed_refs)
     message_id = getattr(sent_message, "message_id", None)
     if message_id is not None:
-        save_displayed_dream_message(chat_id, message_id=int(message_id), refs=displayed_refs)
+        await _save_displayed_dream_message(
+            state_store,
+            chat_id,
+            message_id=int(message_id),
+            refs=displayed_refs,
+        )
 
 
 def _visible_dream_references(reply_text: str, refs: Any) -> list[Any]:
@@ -1445,11 +1977,32 @@ def _is_negative_confirmation(text: str) -> bool:
     return text in {"нет", "не надо", "не нужно"}
 
 
-def _resolve_direct_note_target_dream_id(message: Any, chat_id: int) -> uuid.UUID | None:
+def _is_unbound_confirmation(text: str) -> bool:
+    normalized = _normalize_confirmation_text(text)
+    return _is_positive_confirmation(normalized) or _is_negative_confirmation(normalized)
+
+
+async def _resolve_direct_note_target_dream_id(
+    message: Any,
+    chat_id: int,
+    *,
+    state_store: RedisOperationalStateStore | None,
+) -> uuid.UUID | None:
     reply = getattr(message, "reply_to_message", None)
     reply_message_id = getattr(reply, "message_id", None)
     if reply_message_id is not None:
         displayed = load_displayed_dream_message(chat_id, int(reply_message_id))
+        if displayed is None and state_store is not None:
+            displayed = await state_store.load_displayed_message(
+                chat_id,
+                int(reply_message_id),
+            )
+            if displayed is not None:
+                save_displayed_dream_message(
+                    chat_id,
+                    message_id=int(reply_message_id),
+                    refs=displayed.refs,
+                )
         dream_id = _single_displayed_ref_dream_id(getattr(displayed, "refs", []))
         if dream_id is not None:
             return dream_id
@@ -1460,7 +2013,15 @@ def _resolve_direct_note_target_dream_id(message: Any, chat_id: int) -> uuid.UUI
         if len(reply_dream_ids) == 1:
             return reply_dream_ids[0]
 
+        # A reply is an explicit target. Falling back to an unrelated "latest"
+        # result after a restart can attach a private note to the wrong dream.
+        return None
+
     displayed = load_displayed_dream_set(chat_id)
+    if displayed is None and state_store is not None:
+        displayed = await state_store.load_displayed_set(chat_id)
+        if displayed is not None:
+            save_displayed_dream_set(chat_id, refs=displayed.refs)
     return _single_displayed_ref_dream_id(getattr(displayed, "refs", []))
 
 
@@ -1504,12 +2065,35 @@ def _is_bare_context_reference(text: str) -> bool:
     }
 
 
-async def _reply_create_dream_and_remember(message: Any, chat_id: int, created: Any) -> None:
-    sent_message = await message.reply_text(_format_create_dream_reply(created))
-    _remember_created_dream(chat_id, created, sent_message=sent_message)
+async def _reply_create_dream_and_remember(
+    message: Any,
+    chat_id: int,
+    created: Any,
+    *,
+    raw_text: str,
+    state_store: RedisOperationalStateStore | None,
+) -> None:
+    reply_markup = _create_dream_reply_markup(created)
+    kwargs = {"reply_markup": reply_markup} if reply_markup is not None else {}
+    sent_message = await message.reply_text(
+        _format_create_dream_reply(created, raw_text=raw_text),
+        **kwargs,
+    )
+    await _remember_created_dream(
+        chat_id,
+        created,
+        sent_message=sent_message,
+        state_store=state_store,
+    )
 
 
-def _remember_created_dream(chat_id: int, created: Any, *, sent_message: Any | None = None) -> None:
+async def _remember_created_dream(
+    chat_id: int,
+    created: Any,
+    *,
+    sent_message: Any | None = None,
+    state_store: RedisOperationalStateStore | None,
+) -> None:
     dream_id = str(getattr(created, "id", "") or "").strip()
     if not dream_id:
         return
@@ -1519,10 +2103,15 @@ def _remember_created_dream(chat_id: int, created: Any, *, sent_message: Any | N
         date=str(getattr(created, "date", "") or ""),
         title=str(getattr(created, "title", "") or "без названия"),
     )
-    save_displayed_dream_set(chat_id, refs=[ref])
+    await _save_displayed_dream_set(state_store, chat_id, refs=[ref])
     message_id = getattr(sent_message, "message_id", None)
     if isinstance(message_id, int):
-        save_displayed_dream_message(chat_id, message_id=message_id, refs=[ref])
+        await _save_displayed_dream_message(
+            state_store,
+            chat_id,
+            message_id=message_id,
+            refs=[ref],
+        )
 
 
 def _extract_direct_note_text(text: str) -> str | None:
@@ -1584,20 +2173,84 @@ def _normalize_direct_note_tail(text: str) -> str | None:
     return note_text or None
 
 
-def _format_create_dream_reply(created: Any) -> str:
-    if not getattr(created, "created", False):
-        if getattr(created, "written_to_google_doc", False):
-            return "Сон сохранён и добавлен в документ"
-        return (
-            "Эта запись уже есть в архиве. "
-            "Повторная запись в Google Doc не получилась; попробуйте позже."
-        )
-    if getattr(created, "written_to_google_doc", False):
-        return "Сон сохранён и добавлен в документ"
-    return (
-        "Сон сохранён в архиве. "
-        "Чтобы повторить запись в Google Doc, скажите «повтори запись в Google Doc»."
+def _format_create_dream_reply(created: Any, *, raw_text: str | None = None) -> str:
+    created_now = bool(getattr(created, "created", False))
+    written_to_doc = bool(getattr(created, "written_to_google_doc", False))
+    processing_status = str(getattr(created, "processing_status", "") or "").strip()
+    semantic_status = str(getattr(created, "semantic_index_status", "") or "").strip()
+    google_status = str(getattr(created, "google_doc_write_status", "") or "").strip()
+    date_value = _human_dream_date(str(getattr(created, "date", "") or "").strip())
+    title = str(getattr(created, "title", "") or "без названия").strip()
+    prepared_text = _prepare_dream_recording_input(raw_text or "").raw_text
+    snippet = _dream_snippet(prepared_text)
+
+    lines = ["✅ Сон сохранён" if created_now else "ℹ️ Этот сон уже был в архиве"]
+    if date_value or title:
+        metadata = " · ".join(part for part in (date_value, f"«{title}»") if part)
+        lines.append(metadata)
+    if snippet:
+        lines.extend(("", f"{snippet}"))
+    archive_label = "сохранено" if created_now else "без дубля"
+    processing_label = {
+        "pending": "в очереди",
+        "running": "выполняется",
+        "retryable": "будет повторена",
+        "succeeded": "готово",
+        "failed": "нужна проверка",
+    }.get(processing_status)
+    if processing_label is None and semantic_status:
+        processing_label = "готово" if semantic_status == "succeeded" else "в очереди"
+    google_label = {
+        "pending": "ожидает",
+        "succeeded": "добавлено",
+        "failed": "нужен повтор",
+    }.get(google_status, "добавлено" if written_to_doc else "нужен повтор")
+
+    lines.extend(("", f"Архив: {archive_label}"))
+    if processing_label is not None:
+        lines.append(f"Обработка: {processing_label}")
+    lines.append(f"Google Docs: {google_label}")
+    if google_label == "нужен повтор":
+        lines.append("Для повтора напишите: «повтори запись в Google Doc». ")
+    return "\n".join(lines).rstrip()
+
+
+def _create_dream_reply_markup(created: Any) -> InlineKeyboardMarkup | None:
+    raw_id = str(getattr(created, "id", "") or "").strip()
+    try:
+        dream_id = uuid.UUID(raw_id)
+    except ValueError:
+        return None
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Полный текст",
+                    callback_data=f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}",
+                ),
+                InlineKeyboardButton(
+                    "Добавить заметку",
+                    callback_data=f"{ADD_NOTE_CALLBACK_PREFIX}{dream_id}",
+                ),
+            ]
+        ]
     )
+
+
+def _dream_snippet(text: str, *, max_chars: int = 220) -> str:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    if not normalized:
+        return ""
+    if len(normalized) <= max_chars:
+        return f"«{normalized}»"
+    return f"«{normalized[: max_chars - 1].rstrip()}…»"
+
+
+def _human_dream_date(value: str) -> str:
+    match = re.fullmatch(r"(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})", value)
+    if match is None:
+        return value
+    return f"{match.group('day')}.{match.group('month')}.{match.group('year')[-2:]}"
 
 
 async def _send_typing_action_loop(

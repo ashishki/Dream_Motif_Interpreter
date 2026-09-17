@@ -161,6 +161,37 @@ async def test_handle_chat_executes_search_tool_and_returns_final_text() -> None
 
 
 @pytest.mark.asyncio
+async def test_handle_chat_threads_source_event_key_into_tool_execution() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    tool_response = _make_response(
+        "tool_use",
+        [_tool_use_block("create_dream", "t1", {"raw_text": "Мне приснился мост."})],
+    )
+    final_response = _make_response("end_turn", [_text_block("Сон сохранён.")])
+
+    with (
+        patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}),
+        patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls,
+        patch(
+            "app.assistant.chat.execute_tool",
+            new=AsyncMock(return_value="Dream saved"),
+        ) as execute,
+    ):
+        client = AsyncMock()
+        client.messages.create = AsyncMock(side_effect=[tool_response, final_response])
+        mock_client_cls.return_value = client
+
+        await handle_chat_with_metadata(
+            "запиши сон: Мне приснился мост.",
+            facade,
+            chat_id=42,
+            source_event_key="telegram:42:message:94",
+        )
+
+    assert execute.await_args.kwargs["source_event_key"] == "telegram:42:message:94"
+
+
+@pytest.mark.asyncio
 async def test_handle_chat_metadata_returns_search_dream_ids_when_final_text_omits_ids() -> None:
     dream_id = uuid.uuid4()
     facade = AsyncMock(spec=AssistantFacade)
@@ -610,13 +641,10 @@ def test_system_prompt_requires_create_dream_for_explicit_save_requests() -> Non
 
 
 def test_system_prompt_requires_honest_google_doc_write_confirmation() -> None:
-    assert "For successful writes, say exactly: «Сон сохранён и добавлен в документ»." in (
-        SYSTEM_PROMPT
-    )
+    assert "always confirm the archive truth first" in SYSTEM_PROMPT
+    assert "pending/retryable is not a failure" in SYSTEM_PROMPT
     assert "Do not include a Google Doc name, URL, or document ID" in SYSTEM_PROMPT
-    assert "Only say the dream was added to the document when the tool result confirms" in (
-        SYSTEM_PROMPT
-    )
+    assert "already successful receipt created a second append" in SYSTEM_PROMPT
 
 
 def test_system_prompt_contains_terminology_rules_for_google_docs_sources() -> None:
@@ -785,6 +813,33 @@ async def test_execute_tool_create_dream_requires_explicit_user_request() -> Non
 
     assert "explicit user request" in result.lower()
     facade.create_dream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_passes_source_event_key_to_create_dream() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.create_dream.return_value = SimpleNamespace(
+        id=uuid.uuid4(),
+        created=True,
+        date="2026-08-30",
+        title="Мост",
+        word_count=4,
+        source_doc_id="telegram:42",
+        processing_status="pending",
+        semantic_index_status="pending",
+        google_doc_write_status="pending",
+    )
+
+    await tools_module.execute_tool(
+        "create_dream",
+        {"raw_text": "Мне приснился мост."},
+        facade,
+        chat_id=42,
+        request_text="запиши сон: Мне приснился мост.",
+        source_event_key="telegram:42:message:95",
+    )
+
+    assert facade.create_dream.await_args.kwargs["source_event_key"] == ("telegram:42:message:95")
 
 
 @pytest.mark.asyncio
@@ -990,6 +1045,9 @@ async def test_execute_tool_create_dream_success_hides_doc_label() -> None:
         source_doc_id="telegram:42",
         written_to_google_doc=True,
         written_to_doc_name="...O1rHIxHs",
+        processing_status="pending",
+        semantic_index_status="pending",
+        google_doc_write_status="pending",
     )
 
     result = await tools_module.execute_tool(
@@ -1000,12 +1058,15 @@ async def test_execute_tool_create_dream_success_hides_doc_label() -> None:
         request_text="запиши сон про рыбу",
     )
 
-    assert "Запись добавлена в Google Doc." in result
+    assert "Dream saved:" in result
+    assert "Post-capture processing: pending." in result
+    assert "Google Docs: pending." in result
+    assert "Запись добавлена в Google Doc." not in result
     assert "...O1rHIxHs" not in result
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_create_dream_failure_does_not_claim_doc_write() -> None:
+async def test_execute_tool_create_dream_pending_does_not_claim_doc_failure() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     facade.create_dream.return_value = SimpleNamespace(
         id=uuid.uuid4(),
@@ -1016,6 +1077,9 @@ async def test_execute_tool_create_dream_failure_does_not_claim_doc_write() -> N
         source_doc_id="telegram:42",
         written_to_google_doc=False,
         written_to_doc_name="Dream Archive",
+        processing_status="pending",
+        semantic_index_status="pending",
+        google_doc_write_status="pending",
     )
 
     result = await tools_module.execute_tool(
@@ -1027,12 +1091,13 @@ async def test_execute_tool_create_dream_failure_does_not_claim_doc_write() -> N
     )
 
     assert "Запись добавлена в Google Doc." not in result
-    assert "Запись сохранена в архиве." in result
-    assert "повтори запись в Google Doc" in result
+    assert "Dream saved:" in result
+    assert "Google Docs: pending." in result
+    assert "повтори запись в Google Doc" not in result
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_create_dream_duplicate_can_rewrite_google_doc() -> None:
+async def test_execute_tool_create_dream_duplicate_repairs_jobs_without_rewrite_claim() -> None:
     facade = AsyncMock(spec=AssistantFacade)
     facade.create_dream.return_value = SimpleNamespace(
         id=uuid.uuid4(),
@@ -1043,6 +1108,9 @@ async def test_execute_tool_create_dream_duplicate_can_rewrite_google_doc() -> N
         source_doc_id="telegram:42",
         written_to_google_doc=True,
         written_to_doc_name="Dream Archive",
+        processing_status="pending",
+        semantic_index_status="succeeded",
+        google_doc_write_status="pending",
     )
 
     result = await tools_module.execute_tool(
@@ -1053,8 +1121,10 @@ async def test_execute_tool_create_dream_duplicate_can_rewrite_google_doc() -> N
         request_text="запиши сон про рыбу",
     )
 
-    assert result == "Запись добавлена в Google Doc."
-    assert "повторно не записывается" not in result
+    assert "Dream already existed:" in result
+    assert "Semantic index: succeeded." in result
+    assert "Google Docs: pending." in result
+    assert "Запись добавлена в Google Doc." not in result
 
 
 @pytest.mark.asyncio
@@ -1104,7 +1174,24 @@ async def test_execute_tool_retry_write_success_hides_doc_label() -> None:
         request_text="повтори запись в Google Doc",
     )
 
-    assert result == "Запись добавлена в Google Doc."
+    assert result == "Запись добавлена в Google Doc после успешного повтора."
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_retry_write_reports_existing_receipt_without_reappend() -> None:
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.retry_write_to_google_doc.return_value = (True, "...O1rHIxHs", "already_present")
+
+    result = await tools_module.execute_tool(
+        "retry_write_to_google_doc",
+        {},
+        facade,
+        chat_id=42,
+        request_text="повтори запись в Google Doc",
+    )
+
+    assert result == "Запись уже была подтверждена в Google Doc; повторная вставка не нужна."
+    assert "...O1rHIxHs" not in result
 
 
 @pytest.mark.parametrize(
@@ -1503,7 +1590,10 @@ async def test_execute_tool_get_dream_motifs_includes_motif_uuid() -> None:
             rationale="The dream repeatedly frames passage through liminal spaces.",
             confidence="high",
             status="confirmed",
-            fragments=[],
+            fragments=[
+                {"text": "a locked gate", "verified": True},
+                {"text": "invented excerpt", "verified": False},
+            ],
             model_version="test",
             created_at="2026-04-23T00:00:00+00:00",
         )
@@ -1517,6 +1607,55 @@ async def test_execute_tool_get_dream_motifs_includes_motif_uuid() -> None:
 
     assert f"- [high confidence] Threshold crossing (confirmed by user) [id={motif_id}]" in result
     assert "  Rationale: The dream repeatedly frames passage through liminal spaces." in result
+    assert '  Evidence: "a locked gate"' in result
+    assert "invented excerpt" not in result
+    assert "External research is available for confirmed motif IDs only." in result
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_get_dream_motifs_requires_review_before_research() -> None:
+    dream_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.get_dream_motifs.return_value = [
+        MotifInductionItem(
+            id=uuid.uuid4(),
+            label="Blocked ascent",
+            rationale=None,
+            confidence="moderate",
+            status="draft",
+            fragments=[{"text": "лестница закончилась стеной", "verified": True}],
+            model_version="test",
+            created_at="2026-04-23T00:00:00+00:00",
+        )
+    ]
+
+    result = await tools_module.execute_tool(
+        "get_dream_motifs",
+        {"dream_id": str(dream_id)},
+        facade,
+    )
+
+    assert "Review required: open /map to confirm, reject, or rename" in result
+    assert "before any external research" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_research_reports_draft_failure_honestly() -> None:
+    motif_id = uuid.uuid4()
+    facade = AsyncMock(spec=AssistantFacade)
+    facade.research_motif_parallels.side_effect = ValueError(
+        "Research can only be run for confirmed motifs"
+    )
+
+    result = await tools_module.execute_tool(
+        "research_motif_parallels",
+        {"motif_id": str(motif_id)},
+        facade,
+    )
+
+    assert result.startswith("Research was not started")
+    assert "must be confirmed" in result
+    assert "no parallels" not in result.lower()
 
 
 @pytest.mark.asyncio
@@ -1816,12 +1955,14 @@ async def test_execute_tool_prepare_dream_interpretation_stores_pending_request(
         prompt="approved prompt",
     )
     clear_pending_interpretation_request(42)
+    state_store = AsyncMock()
 
     result = await tools_module.execute_tool(
         "prepare_dream_interpretation",
         {"request": "что значит рыба?"},
         facade,
         chat_id=42,
+        operational_state_store=state_store,
     )
 
     assert "Подготовлен запрос на интерпретацию сна «Запретная рыба»." in result
@@ -1830,6 +1971,8 @@ async def test_execute_tool_prepare_dream_interpretation_stores_pending_request(
     assert pending is not None
     assert pending.dream_id == str(dream_id)
     assert pending.prompt == "approved prompt"
+    state_store.save_pending_interpretation.assert_awaited_once()
+    assert state_store.save_pending_interpretation.await_args.args[0] == 42
     clear_pending_interpretation_request(42)
 
 

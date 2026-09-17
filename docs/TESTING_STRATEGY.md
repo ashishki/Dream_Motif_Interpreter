@@ -96,11 +96,16 @@ Before pushing maintenance or Telegram UX changes, run the same classes of check
 .venv/bin/pytest tests/ -q --tb=short
 .venv/bin/python scripts/eval_public_fixture.py \
   --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json
-.venv/bin/python scripts/eval.py --task-id CI --no-write-markdown
+ENV=test TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/dmi_eval \
+  .venv/bin/python scripts/eval.py --task-id CI --no-write-markdown --confirm-reset
 ```
 
 Use the same placeholder env values as `.github/workflows/ci.yml` for tests/evals that should not
 touch live providers. Do not rely on production `.env` to prove CI safety.
+The seeded retrieval eval destroys and recreates the target `public` schema. It ignores
+`DATABASE_URL` and accepts only an explicitly confirmed `TEST_DATABASE_URL` whose database name
+ends in `_test`, `_tests`, `_eval`, or `_evaluation`, while `ENV` must identify a test/eval/CI
+runtime.
 
 ## 7. Live Smoke Boundary
 

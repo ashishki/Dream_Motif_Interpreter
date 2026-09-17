@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import ast
+import uuid
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from urllib.error import HTTPError
 
 import pytest
@@ -103,13 +104,13 @@ def test_chunks_do_not_exceed_512_real_tokens() -> None:
     assert all(ingestion._token_count(chunk.chunk_text) <= 512 for chunk in chunks)
 
 
-def test_tiktoken_in_requirements() -> None:
-    requirements_path = Path(__file__).resolve().parents[2] / "requirements.txt"
+def test_tiktoken_in_project_dependencies() -> None:
+    project_manifest = Path(__file__).resolve().parents[2] / "pyproject.toml"
 
-    assert "tiktoken" in requirements_path.read_text(encoding="utf-8")
+    assert '"tiktoken>=' in project_manifest.read_text(encoding="utf-8")
 
 
-def test_validate_dream_entry_candidates_skips_duplicate_hashes() -> None:
+def test_validate_dream_entry_candidates_preserves_repeated_bodies() -> None:
     candidates = [
         DreamEntryCandidate(
             source_doc_id="doc-123",
@@ -139,13 +140,15 @@ def test_validate_dream_entry_candidates_skips_duplicate_hashes() -> None:
 
     validated = ingestion.validate_dream_entry_candidates(candidates)
 
-    assert [entry.content_hash for entry in validated] == ["same-hash", "unique-hash"]
-    assert validated[0].parse_warnings == [
-        "Duplicate content hash candidates skipped during validation."
+    assert [entry.content_hash for entry in validated] == [
+        "same-hash",
+        "same-hash",
+        "unique-hash",
     ]
+    assert all(entry.parse_warnings == [] for entry in validated)
 
 
-def test_process_source_document_dedupes_duplicate_heading_sections() -> None:
+def test_process_source_document_preserves_distinct_repeated_heading_sections() -> None:
     document = FetchedSourceDocument(
         source_type="google_doc",
         external_id="doc-123",
@@ -166,11 +169,28 @@ def test_process_source_document_dedupes_duplicate_heading_sections() -> None:
 
     assert [entry.title for entry in pipeline.validated_entries] == [
         "Repeated dream",
+        "Repeated dream",
         "Unique dream",
     ]
-    assert pipeline.validated_entries[0].parse_warnings == [
-        "Duplicate content hash candidates skipped during validation."
-    ]
+    assert all(entry.parse_warnings == [] for entry in pipeline.validated_entries)
+
+
+@pytest.mark.asyncio
+async def test_note_chunk_index_lock_uses_parent_row_for_update() -> None:
+    dream_id = uuid.uuid4()
+    session = AsyncMock()
+    session.scalar.return_value = dream_id
+
+    await ingestion._lock_dream_for_note_chunk_index(
+        session=session,
+        dream_id=dream_id,
+    )
+
+    statement = session.scalar.await_args.args[0]
+    assert statement._for_update_arg is not None
+    compiled = str(statement)
+    assert "FROM dream_entries" in compiled
+    assert "FOR UPDATE" in compiled
 
 
 @pytest.mark.asyncio

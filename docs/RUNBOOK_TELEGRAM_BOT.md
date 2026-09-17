@@ -1,377 +1,249 @@
 # Runbook — Telegram Bot
 
-Last updated: 2026-08-30 (reply notes, full-text buttons, Google Doc heading fallback)
+Last updated: 2026-08-31
 
 ## 1. Purpose
 
-Operate the Telegram bot runtime for Dream Motif Interpreter (Phase 6+ implemented).
+Operate the private Telegram adapter, verify a release with one high-value canary, and recover
+durable capture/voice work without exposing archive text.
 
-## 2. Primary Responsibilities
+## 2. Startup gate
 
-- accept authorized updates
-- reject unauthorized updates
-- route user text and voice requests
-- call assistant tools safely
-- report failures clearly
+Required:
 
-## 3. Startup Checklist
+- Alembic is at head (`026_manual_sync_jobs` or later)
+- PostgreSQL with pgvector is reachable
+- Redis returns `PONG`
+- Telegram token and the single allowed chat ID are configured
+- Anthropic/OpenAI and one Google Docs credential path are configured
 
-- `TELEGRAM_BOT_TOKEN` set in environment
-- `TELEGRAM_ALLOWED_CHAT_ID` set to the single authorized chat ID (integer)
-- `ANTHROPIC_API_KEY` set (required for the bounded tool-use loop)
-- `OPENAI_API_KEY` set (required for voice transcription via Whisper)
-- `DATABASE_URL` reachable and migrations applied:
-  - `007_add_bot_sessions` — chat session persistence
-  - `008_add_voice_media_events` — voice media tracking
-  - `015_add_dream_write_statuses` — Google Doc write attempt tracking
-  - `016_add_voice_transcript_text` — stored voice transcript for reply-to-voice saves
-- `REDIS_URL` reachable
-- `VOICE_MEDIA_DIR` is a writable directory (default: `/tmp/dream_voice`)
+Manual Google Docs sync requests are durable: `/sync` and `trigger_sync` create rows in
+`manual_sync_jobs`, and Telegram startup recovers pending/retryable/stale-running rows. Redis keeps
+the short-lived user-visible status and notification cursor, so inspect PostgreSQL first when a sync
+job appears to have vanished after a process restart.
+- `VOICE_MEDIA_DIR` and `RUNTIME_STATE_FILE` are persistent and writable
+- `SECRET_KEY` is strong and `BUILD_SHA` is the intended commit
 
-Startup command (direct):
+Compose start:
 
 ```bash
-python3 -m app.telegram
+export BUILD_SHA="$(git rev-parse HEAD)"
+export DEPLOY_BACKUP_DIR=/var/backups/dream-motif
+./scripts/deploy_compose.sh --backup-dir "$DEPLOY_BACKUP_DIR"
+docker compose ps
+curl --fail http://127.0.0.1:8000/health
+docker compose exec redis redis-cli ping
 ```
 
-Startup via Compose:
+Expected: `migrate` exits 0; Postgres/Redis are healthy; API and bot stay running;
+the pre-migration backup manifest exists; `health.build_sha` equals `$BUILD_SHA`. `unknown` or a
+mismatch blocks production rollout.
+
+Direct start:
+
+Use this only after stopping every existing API, bot and auto-sync process; the migration must not
+run alongside an older writer.
 
 ```bash
-docker compose up telegram-bot
+alembic upgrade head
+python -m app.telegram
 ```
 
-The bot process runs long polling. No public webhook endpoint is required.
+Long polling is intentional. No Telegram webhook is required.
 
-Optional tuning:
+## 3. Automated release gate
 
-```env
-ASSISTANT_MODEL=claude-haiku-4-5-20251001   # default; override for a different model tier
-VOICE_MEDIA_DIR=/tmp/dream_voice            # default
-VOICE_RETENTION_SECONDS=3600               # default: 1 hour
-APP_TIMEZONE=Asia/Tbilisi                  # default; resolves "сегодня/вчера/позавчера"
-```
-
-## 4. Recording Smoke Test
-
-Run this after deployment or after changing Telegram, voice, assistant, or Google Docs write code.
-
-1. Send a natural dream opening, for example: `Сегодня мне приснилось, что я шёл по мосту над морем`.
-2. Verify the bot does not ask whether to record it and replies with either `Сон сохранён и добавлен в документ` after a successful Google Doc write or the archive-only retry message after a failed write.
-3. Verify the Google Doc gets one heading in the form `дд.мм.гг - <title>` and the title does not duplicate the date.
-4. Send a duplicate of the same dream text; verify it does not create a duplicate archive row but
-   does write the existing dream to Google Doc again when requested.
-5. Temporarily break Google Docs write credentials or use a test failure stub; verify the bot says the dream was saved only in the archive and does not claim it was added to Google Doc.
-6. Restore write access and send `повтори запись в Google Doc`; verify it retries the failed write.
-   Also verify that `повтори` after a save visibility issue repeats the latest dream from the
-   current Telegram chat when no failed write status exists.
-7. Send a voice message, wait for transcription, then reply to that voice message with `запиши сон`; verify the stored transcript is saved.
-8. Repeat the reply-to-voice save while transcription is still processing or after a failed transcription; verify the bot does not claim success.
-
-## 5. Test 6 Regression Smoke Checklist
-
-Run this checklist after any deployment that touches recording, search, or assistant tool routing.
-
-1. Text short dream: send `Сегодня мне приснилось рыба`; verify the bot saves immediately, does not ask for more details, and does not create a pending confirmation draft.
-2. Voice short dream: send a voice message whose transcript starts with `сегодня мне приснилось`; verify the transcript is saved directly without the assistant asking whether to record it.
-3. Successful Google Doc write: verify the visible success text is exactly `Сон сохранён и добавлен в документ` with no document name, URL, or fallback document ID.
-4. Failed Google Doc write: force a write failure and verify the bot says the dream was saved only in the archive and gives the retry phrase `повтори запись в Google Doc`.
-5. Fish/image search: ask `найди сон с рыбой`; verify the response contains an archive-backed evidence fragment with `рыба` or a same-stem fish word from the dream text.
-6. Full dream by title/date: ask for the full text of `04.04.26, Кирилл, мужик, настольки`; verify the assistant resolves the title/date, calls `get_dream`, and does not ask the user for a UUID.
-
-Automated regression slice:
+Run deterministic checks before the private live canary:
 
 ```bash
-.venv/bin/python -m pytest tests/unit/test_assistant_chat.py tests/unit/test_assistant_facade.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py tests/unit/test_telegram_bot.py tests/unit/test_telegram_voice.py tests/unit/test_transcription_worker.py -q --tb=short
+.venv/bin/ruff check app/ scripts/ tests/
+.venv/bin/ruff format --check app/ scripts/ tests/
+.venv/bin/pytest tests/ -q --tb=short
+.venv/bin/python scripts/eval_public_fixture.py \
+  --check reports/evidence/portfolio-audit-2026-07-13/dream_motif_public_retrieval_v1.json
 ```
 
-## 6. Test 7/8 Sync, Notes, Titles, Interpretation Checklist
+The full pytest suite needs disposable PostgreSQL/pgvector. It does not need real Telegram,
+Google Docs or model credentials; those remain bounded canaries below.
 
-Run this checklist after deployments that touch Google Docs sync, note writing, title intake, or
-interpretation.
+## 4. Disposable Google Docs canary
 
-1. Check service state:
+Before the private Telegram canary, verify Google Docs writes against an operator-selected
+disposable document. The script mutates that document and refuses the configured primary
+`GOOGLE_DOC_ID` unless `--allow-primary` is passed for an intentional drill.
 
 ```bash
-systemctl is-active dream-motif-api.service dream-motif-auto-sync.service dream-motif-telegram.service
+GOOGLE_CANARY_DOC_ID="https://docs.google.com/document/d/.../edit" \
+  uv run --extra dev python scripts/gdocs_canary.py
 ```
 
-2. Inspect auto-sync state for every connected Google Doc and confirm `last_sync_status` is
-   `synced`, `running`, `failed`, or `never` with honest timestamps.
-3. Trigger one sync and verify the bot says it normally takes 1-2 minutes, will notify on
-   completion/failure, and does not expose `job_id` in the user-facing message.
-4. Verify the current Google Doc can contain duplicate parsed candidates without aborting the
-whole sync.
-5. Verify `dream_entries` contains `5.11.24 запретная рыба`.
-6. Ask `найди сон с рыбой`; verify the first result is `5.11.24 запретная рыба` with exact fish
-evidence.
-7. Add a note to the latest dream; inspect Google Doc and verify the note is at the end of that
-dream section, before the next dream heading.
-8. Save a dream with `Название — Пирог с фруктовой начинкой`; verify the stored title is exactly
-that title and `raw_text` does not include the recording command.
-9. Ask for an interpretation; verify the bot shows the pending prompt and does not interpret until
-the user replies `да`. Reply `нет` in a separate run and verify it cancels.
+The script fetches Drive metadata through the bounded Google HTTP transport, appends one canary
+dream with a named-range idempotency key, repeats the same key with different body text to prove
+the duplicate is blocked, inserts one note under the canary heading, repeats the same note key to
+prove named-range adoption, and switches the archive source using a temporary runtime state file.
+Pass `--runtime-state-file /path/to/runtime-state.json` only when deliberately testing the shared
+bot/API/auto-sync state file.
 
-## 7. Test 9 Full Text, English, Numeric Feedback Checklist
+## 5. One end-to-end private canary
 
-Run this checklist after deployments that touch full dream retrieval, Google Docs parsing,
-retrieval SQL, or Telegram feedback UX.
+Use a distinctive disposable phrase and remove only the test data through the normal operator
+workflow afterward.
 
-1. Ask for the full text of a long known dream by date/title. Verify the final lines are present
-   and the bot does not say the archive text is cut off.
-2. If the answer is longer than one Telegram message, verify it arrives in multiple messages and
-   no text is lost between parts.
-3. Add or identify an English Google Doc entry with a heading such as
-   `15.05.26 - Fish in the elevator`; run sync and verify the stored title is `Fish in the elevator`
-   and the body text is complete.
-4. Search for a distinctive English word from that dream; verify the result cites archive-backed
-   evidence from the English text.
-5. Ask the bot a question that returns numbered options, then answer `1` or `2`. Verify the digit
-   is treated as the chosen option, not as feedback.
-6. Verify ordinary substantive responses no longer append `Ответьте 1–5...`.
+1. Send `/start`; verify the response teaches the primary `Мне приснилось…` flow and `/help` is
+   available.
+2. Send `Не сохраняй, но мне приснилось, что ...`; verify no archive row is created.
+3. Send `Мне приснилась серебряная рыба у синей двери. Что это значит?`.
+4. Verify the save card immediately shows `✅ Сон сохранён`, date/title/preview and separate
+   `Архив`, `Обработка`, `Google Docs` states. Only the dream sentence—not the question—belongs in
+   `raw_text`.
+5. Verify one `dream_entries` row and four stage rows (`gdocs`, `index`, `analysis`, `motif`) were
+   committed. Wait for due stages to settle; the document contains one entry and exact search for
+   `серебряная рыба` returns a real archive sentence.
+6. Replay the same Telegram update/message ID in a controlled adapter test. Verify no duplicate
+   archive row, processing stage or Google Docs append appears. Then send the same words as a new
+   message and verify a separate dream is created: content equality is not event identity.
+7. Reply to the save card with `Добавь заметку к этому сну: canary`. Verify the immediate response
+   says the note was saved and queued, then verify its independent `index` and `gdocs` jobs reach
+   success. Replay the same note action once; note and document insertion stay idempotent.
+8. Restart the bot between a pending confirmation and `да`; verify Redis restores the intended
+   context. Then try a bare `да` with no pending context; it must not mutate anything.
+9. Send a short voice version. Verify one voice event reaches `delivered`; a duplicate update does
+   not schedule a second transcription or reply.
+10. Open `/map`; verify draft motifs show source evidence, research is blocked until confirmation,
+    hide removes an item from normal output, and restore brings back only a hidden item.
 
-Automated regression slice:
+This canary covers capture, negative intent, compound text splitting, durable jobs, exact
+retrieval, reply routing, restart state, voice and motif review in one pass.
+
+## 6. Dream processing diagnostics
+
+Aggregate state without selecting dream text:
+
+```sql
+SELECT status, stage, count(*) AS jobs,
+       min(available_at) AS next_due,
+       max(updated_at) AS last_update
+FROM dream_processing_jobs
+GROUP BY status, stage
+ORDER BY status, stage;
+```
+
+Find actionable rows:
+
+```sql
+SELECT id, dream_id, status, stage, attempt_count,
+       available_at, locked_at, updated_at, left(last_error, 200) AS error
+FROM dream_processing_jobs
+WHERE status IN ('retryable', 'failed')
+   OR (status = 'running' AND locked_at < now() - interval '10 minutes')
+ORDER BY updated_at;
+```
+
+Interpretation:
+
+- `pending`: newly committed and not claimed yet
+- `running`: leased; short-lived during provider/document work
+- `retryable`: temporary failure with a future `available_at`
+- `succeeded`: that independent stage is complete
+- `failed`: bounded attempts exhausted; operator action is required
+
+The live supervisor continuously drains due work and recovers stale leases. Restarting the bot is
+safe but should not be necessary for ordinary retries. Never delete jobs or set them to succeeded
+manually. Use the explicit stage-retry path to reset an exhausted attempt budget; sending the same
+text as a new Telegram message intentionally creates a new dream. A failed Google Docs receipt can
+also be retried with `повтори запись в Google Doc`; a prior successful receipt stays a no-op by
+design.
+
+Note jobs have the same status vocabulary and are diagnosed separately:
+
+```sql
+SELECT status, stage, count(*) AS jobs,
+       min(available_at) AS next_due,
+       max(updated_at) AS last_update
+FROM note_processing_jobs
+GROUP BY status, stage
+ORDER BY status, stage;
+```
+
+The acknowledgement is complete once the note plus jobs commit. It is normal to see `pending`
+briefly afterward; it is not correct to report Google Docs as updated until the `gdocs` job and its
+receipt succeed.
+
+## 7. Redis degraded state
+
+Redis stores expiring context that can contain pending dream/note text. Check connectivity only:
 
 ```bash
-.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_feedback_capture.py tests/unit/test_assistant_chat.py tests/unit/test_segmentation.py tests/unit/test_rag_query.py tests/unit/test_config.py -q --tb=short
+docker compose exec redis redis-cli ping
+docker compose logs --since=10m telegram-bot | grep -E 'Redis|operational state'
 ```
 
-## 8. Backdated Write Checklist
+Do not print keys/values into tickets or public logs.
 
-Run this after deployments that touch dream recording or Google Doc write placement.
+In production/staging, startup must fail if Redis is unavailable. In development/test, an explicit
+degraded log/flag is permitted, but restart-safe `да`, `к этому`, displayed result numbers and
+pending notes are not guaranteed. Restore Redis, restart the bot, and ask the user to repeat the
+full request—not a short confirmation—if its TTL/context was lost.
 
-1. Ensure the Google Doc has a dream heading for `20.05.26`.
-2. Ask the bot to save a dream for `19.05`, for example:
-   `Запиши сон за 19.05: Мне приснилась река в доме`.
-3. Verify the bot replies `Сон сохранён и добавлен в документ` only after a successful write.
-4. Inspect Google Doc and verify the new `19.05.26 - ...` heading appears before the `20.05.26`
-   heading.
-5. Repeat the same dream text and verify the archive row is not duplicated, while the Google Doc
-   write is attempted again.
-
-Automated regression slice:
-
-```bash
-.venv/bin/python -m pytest tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_telegram_bot.py -q --tb=short
-```
-
-Auto-sync Redis inspection helper:
-
-```bash
-.venv/bin/python - <<'PY'
-import asyncio
-from redis import asyncio as aioredis
-from app.services.auto_sync import read_auto_sync_state
-from app.shared.config import get_all_doc_ids, get_settings
-
-async def main():
-    redis = aioredis.from_url(get_settings().REDIS_URL)
-    try:
-        for doc_id in get_all_doc_ids():
-            print(doc_id, await read_auto_sync_state(redis, doc_id))
-    finally:
-        await redis.aclose()
-
-asyncio.run(main())
-PY
-```
-
-Expected user-facing sync copy:
-
-- Running: `синхронизируется ... обычно это занимает 1-2 минуты`.
-- Stale: `похоже зависла; новые сны из этого документа пока могут не находиться`.
-- Synced with entries: `готово; добавлено N новых снов`.
-- Synced with zero entries: `готово; новых снов не найдено`.
-- Failed: names the error and says new Google Docs dreams may not be findable yet.
-
-Manual multi-doc sync smoke:
-
-1. Add or edit a dream in a non-primary connected Google Doc.
-2. Trigger `обнови архив` or wait for auto-sync.
-3. Verify logs/Redis show sync state for that exact document ID.
-4. Verify `ingest_document` fetched that document, not the primary document.
-5. Ask `какой статус синхронизации?`; verify the reply uses document names and hides raw `job_id`.
-
-Automated Phase 22 regression slice:
-
-```bash
-.venv/bin/python -m pytest tests/unit/test_auto_sync.py tests/unit/test_ingest_notify.py tests/unit/test_rag_ingestion.py tests/unit/test_segmentation.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py tests/unit/test_assistant_chat.py tests/unit/test_assistant_session.py tests/unit/test_telegram_bot.py tests/unit/test_rag_query.py tests/unit/test_retrieval_eval.py -q --tb=short
-```
-
-## 9. Test 14 Contextual Batch Notes Checklist
-
-Run this after deployments that touch Telegram context, note writing, search result buttons, or
-assistant tool routing.
-
-1. Ask for a numbered dream selection, for example:
-   `Найди сны, где проявляются негативные эмоции по отношению к матери`.
-2. Verify the bot returns a numbered list and the number of `Полный текст` buttons matches the
-   number of displayed dreams.
-3. Send a natural follow-up:
-   `Добавь одинаковую заметку к снам 2, 3 и 4: проявление негативных эмоций по отношению к матери`.
-4. Verify the bot does not ask for UUIDs or exact titles. It should show a preview with the note
-   text and the selected dreams by the same numbers, dates, and titles.
-5. Confirm with `да` or the `Да, добавить` button. Verify one note is added to each selected
-   dream and the bot reports success or partial Google Doc insertion honestly.
-6. Repeat with `Добавь заметку ко всем найденным: ...`; verify all displayed dreams are selected.
-7. Record a dream through Telegram voice or text, then manually rename its heading in Google Doc
-   without changing the body text.
-8. Run or wait for sync. Verify the existing archive row is updated with the new Google Doc title
-   and date, no duplicate row is created, and `search_dreams_by_title` can find the new title.
-9. Add a note to that dream and verify Google Doc insertion targets the renamed heading.
-
-Automated regression slice:
-
-```bash
-.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_assistant_session.py tests/integration/test_ingestion_pipeline.py -q
-```
-
-## 10. Test 15 Reply Notes and Full-Text Buttons Checklist
-
-Run this after deployments that touch Telegram note routing, Google Doc write placement, or
-full-text button generation.
-
-1. Save a fresh dream through Telegram and verify the bot replies
-   `Сон сохранён и добавлен в документ`.
-2. Reply to that exact confirmation message with
-   `Добавь заметку к этому сну: #smoke-test`. Verify the note is added to that saved dream,
-   not to the latest unrelated archive dream.
-3. Create an ambiguous context by showing several dreams, then send
-   `Добавь заметку к этому сну: #pending-smoke`. Verify the bot asks the user to reply `к этому`
-   to one specific dream.
-4. Reply `к этому` to a message that contains one concrete dream. Verify the stored pending note
-   is applied and the bot does not route `к этому` to the LLM.
-5. In Google Doc, shorten a saved dream heading without changing its date or body. Add a note to
-   that dream. Verify the targeted insert succeeds through same-date title similarity.
-6. Ask for a dream list where the visible response contains N numbered dreams. Verify the inline
-   full-text keyboard contains exactly N buttons and does not include hidden retrieval candidates.
-
-Automated regression slice:
-
-```bash
-.venv/bin/python -m pytest tests/unit/test_telegram_bot.py tests/unit/test_gdocs_client.py tests/unit/test_assistant_facade.py -q --tb=short
-```
-
-## 11. Common Failure Modes
+## 8. Common incidents
 
 ### Bot starts but receives nothing
 
-Check:
-- bot token validity
-- polling/webhook mode mismatch
-- deployment firewall or connectivity
+- verify token and allowed chat ID
+- check that no second poller is using the same token
+- inspect `docker compose logs telegram-bot`
+- verify the process did not fail its Redis or configuration gate
 
-### Bot receives messages from unauthorized source
+### Save card remains pending
 
-Symptoms: log shows `Dropped update from unauthorized chat_id=...`; no reply is sent to the sender.
+- run the aggregate/actionable SQL above
+- check provider quota only for the failed stage; independent stages should continue
+- for `gdocs`, inspect the DB receipt status and service-account/OAuth permission
+- for `index`, verify embeddings and pgvector
+- for `analysis`/`motif`, verify the bounded model provider and feature flag
 
-Check:
-- `TELEGRAM_ALLOWED_CHAT_ID` is set to the correct integer value
-- the bot was not added to an unexpected group chat
+Do not copy `last_error` to a public issue without checking it contains no private/provider detail.
 
-### Bot replies with backend failure
+### Duplicate Google Docs entry
 
-Symptoms: user receives "Something went wrong. Please try again."
+- confirm the dream has exactly one `(dream_id, target_doc_id)` write receipt
+- inspect document named ranges for the dream idempotency marker
+- verify all character offsets use UTF-16 when the entry includes emoji
+- do not delete the canonical dream to repair the mirror
 
-Check:
-- DB connectivity (`DATABASE_URL`)
-- Redis connectivity (`REDIS_URL`)
-- `ANTHROPIC_API_KEY` is valid
-- retrieval service health (embedding index, pgvector)
-- logs for the unhandled error via `error_handler`
+### Wrong dream receives a note
 
-### Assistant returns no usable text
+- stop mutation testing for that chat
+- verify the user replied to the concrete save/result message
+- check Redis availability and message-reference TTL
+- reproduce with synthetic IDs; never dump private Redis payloads
 
-Symptoms: user receives a blank reply or fallback.
+### Unauthorized user reaches a handler
 
-Check:
-- `ANTHROPIC_API_KEY` is valid and has quota
-- `ASSISTANT_MODEL` is a valid model ID
-- bounded tool-use loop hit MAX_TOOL_ROUNDS=5 without an end_turn response (log will show this)
+- stop the bot immediately
+- rotate the Telegram token if exposure is plausible
+- verify `TypeHandler(Update, chat_guard)` remains group `-1000`
+- run the unauthorized replay test before restart
 
-## 10. Voice Failure Diagnostics
+## 9. Shutdown and rollback
 
-Voice messages go through a two-stage pipeline: the handler persists + downloads, then a background task transcribes and replies.
-
-### Transcription task not enqueued
-
-Symptoms: user receives "Processing your voice note..." but never gets a reply.
-
-Check logs for:
-- `Voice ingress complete — transcription skipped (missing config) event_id=...`
-
-This means one of the required bot_data keys is missing: `session_factory`, `bot_token`, or `facade`.
-
-Check:
-- startup completed without errors
-- all required env vars are set (see Startup Checklist)
-
-### Transcription task fails silently
-
-Symptoms: no reply after ack; event stuck at `received` or `failed` in DB.
-
-Check logs for:
-- `Transcription failed for event_id=...` — Whisper API error
-- `handle_chat failed after transcription for event_id=...` — assistant pipeline error
-- `Failed to send Telegram reply for chat_id=...` — reply delivery failure
-
-Diagnose event:
-```sql
-SELECT id, status, updated_at, local_path
-FROM voice_media_events
-WHERE id = '<event_id>';
+```bash
+docker compose stop telegram-bot api
 ```
 
-### Voice download fails
+Supervisors stop accepting work and release/cancel their tasks; database leases expire and are safe
+to reclaim on the next start. For code rollback, deploy a previous compatible image while leaving
+the database at the newer migration head. Do not run destructive Alembic downgrades on the private
+archive. Before relying on a deployment backup, run:
 
-Log pattern: `Voice download failed for message_id=... event_id=...`
-
-Check disk space and `VOICE_MEDIA_DIR` permissions. User will have already received "Could not download your voice message."
-
-## 11. Session State Diagnostics
-
-Chat history is persisted in the `bot_sessions` table (one row per `chat_id`).
-
-### Session history not loading
-
-Symptoms: assistant does not recall context from previous messages.
-
-Check:
-- migration `007_add_bot_sessions` was applied
-- `session_factory` is configured in bot_data (set in `build_application`)
-- `load_history` failure is logged at WARNING level with the exception
-
-### Session history growing unexpectedly large
-
-The history is trimmed to the last `MAX_HISTORY_MESSAGES=20` messages on each save. If this appears to be growing beyond that, check the `history_json` column directly:
-
-```sql
-SELECT chat_id, length(history_json), updated_at FROM bot_sessions;
+```bash
+./scripts/verify_compose_rollback.sh \
+  --manifest /var/backups/dream-motif/dream_motif_YYYYMMDDTHHMMSSZ_<build-sha>.dump.manifest \
+  --restore-drill-db dream_motif_restore_drill
 ```
 
-### Resetting a session
+The verifier restores only into the disposable `_restore_drill` database and drops it afterward; it
+refuses the canonical `dream_motif` database.
 
-To clear a chat's history (e.g., after a support incident):
-
-```sql
-UPDATE bot_sessions SET history_json = '[]', updated_at = now()
-WHERE chat_id = <chat_id>;
-```
-
-## 12. Safety Rule
-
-If chat-driven mutation tools are not in the approved phase scope, disable or omit them entirely.
-
-## 13. Logging Rules
-
-Use identifiers and statuses.
-Do not log raw dream text, transcript text, or secrets.
-
-Key log patterns:
-- `Dropped update from unauthorized chat_id=...` — auth guard
-- `Voice download failed for message_id=... event_id=...` — ingress failure
-- `Voice file downloaded event_id=... path=...` — download success
-- `Transcription task enqueued event_id=... duration=...s` — task created
-- `Transcription succeeded event_id=... chars=...` — Whisper returned
-- `Transcription failed for event_id=...` — Whisper error
-- `handle_chat failed after transcription for event_id=...` — assistant error
-- `Deleted local voice file after transcription path=...` — immediate cleanup
+After rollback, verify `/health.build_sha`, Redis, one read-only search and the outbox aggregates
+before resuming new capture.

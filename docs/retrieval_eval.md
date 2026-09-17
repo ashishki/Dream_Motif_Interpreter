@@ -171,6 +171,33 @@ False-negative policy:
 
 ---
 
+## Query-Layer Evidence Verification Regression Dataset
+
+This slice moves concrete-object fusion and evidence verification into
+`RagQueryService`, so API and Telegram callers receive the same typed `EvidenceBlock`
+contract. It also prevents an active theme fragment from being exposed merely because
+that fragment occurs somewhere in a retrieved chunk.
+
+Verification policy:
+
+- For extractor-approved concrete-object queries, a PostgreSQL FTS hit is archive-backed
+  evidence and survives embedding-call or response failure.
+- A theme fragment is returned in `matched_fragments` only when its own text has a Russian
+  or simple-FTS relation to the retrieval query. Multi-term concrete queries require all
+  core terms in that fragment; a shared adjective alone is not enough.
+- A vector-only neighbor must meet the verified semantic floor; the configured threshold
+  may raise that floor but cannot lower it below `0.40`.
+- Concrete exact rows and semantic rows retain the public `EvidenceBlock` return type and
+  are deduplicated by `dream_id`.
+
+| ID | Query | Positive fixture | Negative counterexample | Expected result |
+|----|-------|------------------|-------------------------|-----------------|
+| QLEV-01 | сон с рыбой | `Рыба черного цвета, она очень красивая.` | Embedding request fails | Fish dream remains first with literal archive sentence in `matched_fragments` |
+| QLEV-02 | сон с рыбой | Fish chunk has theme fragment `Рыба черного цвета` | Same chunk also has active fragment `стеклянным лифтом` | Fish fragment is returned; elevator fragment is not |
+| QLEV-03 | сон с рыбой | Semantic candidate has no query-related stored fragment | Active fragment only says `Стеклянный лифт` | Candidate may pass only the semantic floor; its unrelated fragment list is empty |
+
+---
+
 ## Phase 23 Test 9 Regression Coverage
 
 Focused automated check for the 2026-05-15 feedback: full-dream text retrieval, English-language

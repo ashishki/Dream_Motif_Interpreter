@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, text as sa_text
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, text as sa_text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,6 +15,13 @@ TIMESTAMP_SERVER_DEFAULT = sa_text("now()")
 
 class DreamNote(Base):
     __tablename__ = "dream_notes"
+    __table_args__ = (
+        UniqueConstraint(
+            "dream_id",
+            "content_hash",
+            name="uq_dream_notes_dream_id_content_hash",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -29,6 +36,7 @@ class DreamNote(Base):
         index=True,
     )
     text: Mapped[str] = mapped_column(Text(), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source: Mapped[str] = mapped_column(
         String(64),
         nullable=False,

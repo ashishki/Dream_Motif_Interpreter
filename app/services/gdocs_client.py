@@ -1,3 +1,4 @@
+import hashlib
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -5,6 +6,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httplib2
+from google_auth_httplib2 import AuthorizedHttp
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -210,6 +213,7 @@ class GDocsClient:
         *,
         heading: str,
         text: str,
+        idempotency_key: str | None = None,
     ) -> bool:
         """Insert text at the end of a matching Heading 1 section.
 
@@ -221,6 +225,13 @@ class GDocsClient:
             try:
                 service = self._build_docs_service()
                 document = service.documents().get(documentId=doc_id).execute()
+                named_range_name = _idempotency_named_range_name("note", idempotency_key)
+                if named_range_name and _document_has_named_range(document, named_range_name):
+                    logger.info(
+                        "Google Docs note write already applied",
+                        document_id=doc_id,
+                    )
+                    return True
                 insertion_index = _find_heading_section_end_index(document, heading)
                 if insertion_index is None:
                     insertion_index = _find_similar_heading_section_end_index(document, heading)
@@ -241,6 +252,19 @@ class GDocsClient:
                         }
                     }
                 ]
+                if named_range_name:
+                    inserted_length = _utf16_length("\n" + text)
+                    requests.append(
+                        {
+                            "createNamedRange": {
+                                "name": named_range_name,
+                                "range": {
+                                    "startIndex": insertion_index,
+                                    "endIndex": insertion_index + inserted_length,
+                                },
+                            }
+                        }
+                    )
                 service.documents().batchUpdate(
                     documentId=doc_id,
                     body={"requests": requests},
@@ -273,13 +297,33 @@ class GDocsClient:
                     f"Google Docs targeted insert failed (HTTP {status_code})"
                 ) from exc
 
-    def append_dream_entry(self, doc_id: str, date_str: str, title: str, body: str) -> None:
-        """Write a dream entry into the date-sorted position with a Heading 1 title."""
+    def append_dream_entry(
+        self,
+        doc_id: str,
+        date_str: str,
+        title: str,
+        body: str,
+        *,
+        idempotency_key: str | None = None,
+    ) -> bool:
+        """Write a dream entry once and return whether a new block was inserted.
+
+        A Google Docs named range acts as a durable idempotency marker.  It is
+        created atomically in the same ``batchUpdate`` as the text, so a retry
+        after a lost HTTP response can safely detect that the write landed.
+        """
         with self._tracer.start_as_current_span("gdocs.append_dream_entry"):
             logger.info("Writing dream entry to Google Docs document", document_id=doc_id)
             try:
                 service = self._build_docs_service()
                 document = service.documents().get(documentId=doc_id).execute()
+                named_range_name = _idempotency_named_range_name("dream", idempotency_key)
+                if named_range_name and _document_has_named_range(document, named_range_name):
+                    logger.info(
+                        "Google Docs dream write already applied",
+                        document_id=doc_id,
+                    )
+                    return False
                 end_index = _document_body_end_index(document)
                 insert_index = _find_dream_entry_insert_index(
                     document,
@@ -294,10 +338,12 @@ class GDocsClient:
                 title_line = f"{heading}\n\n"
                 full_text = prefix + title_line + body + suffix
 
-                title_start = insert_index + len(prefix)
-                title_end = title_start + len(heading) + 1  # +1 for trailing \n
-                body_start = title_start + len(title_line)
-                body_end = body_start + len(body)
+                # Google Docs indexes UTF-16 code units, not Python code
+                # points.  Astral emoji therefore count as two positions.
+                title_start = insert_index + _utf16_length(prefix)
+                title_end = title_start + _utf16_length(heading + "\n")
+                body_start = title_start + _utf16_length(title_line)
+                body_end = body_start + _utf16_length(body)
 
                 requests: list[dict] = [
                     {
@@ -342,6 +388,18 @@ class GDocsClient:
                             },
                         ]
                     )
+                if named_range_name:
+                    requests.append(
+                        {
+                            "createNamedRange": {
+                                "name": named_range_name,
+                                "range": {
+                                    "startIndex": title_start,
+                                    "endIndex": title_start + _utf16_length(title_line + body),
+                                },
+                            }
+                        }
+                    )
                 service.documents().batchUpdate(
                     documentId=doc_id,
                     body={"requests": requests},
@@ -349,6 +407,7 @@ class GDocsClient:
                 logger.info(
                     "Successfully wrote dream entry to Google Docs document", document_id=doc_id
                 )
+                return True
             except RefreshError as exc:
                 logger.warning("Google Docs authentication failed during append")
                 raise GDocsWriteError("Google Docs authentication failed during write") from exc
@@ -452,11 +511,28 @@ class GDocsClient:
 
     def _build_docs_service(self) -> Any:
         credentials = self._build_credentials()
-        return build("docs", "v1", credentials=credentials, cache_discovery=False)
+        return build(
+            "docs",
+            "v1",
+            http=self._authorized_http(credentials),
+            cache_discovery=False,
+        )
 
     def _build_drive_service(self) -> Any:
         credentials = self._build_credentials()
-        return build("drive", "v3", credentials=credentials, cache_discovery=False)
+        return build(
+            "drive",
+            "v3",
+            http=self._authorized_http(credentials),
+            cache_discovery=False,
+        )
+
+    def _authorized_http(
+        self, credentials: Credentials | ServiceAccountCredentials
+    ) -> AuthorizedHttp:
+        """Build a bounded transport so cancelled worker stages cannot leave immortal threads."""
+        transport = httplib2.Http(timeout=self._settings.GOOGLE_API_TIMEOUT_SECONDS)
+        return AuthorizedHttp(credentials, http=transport)
 
     def _build_credentials(self) -> Credentials:
         service_account_file = self._settings.GOOGLE_SERVICE_ACCOUNT_FILE.strip()
@@ -764,6 +840,39 @@ def _heading_title_similarity(first: str, second: str) -> float:
 
 def _normalize_doc_text(value: str) -> str:
     return " ".join(value.casefold().split())
+
+
+def _idempotency_named_range_name(kind: str, key: str | None) -> str | None:
+    if key is None or not key.strip():
+        return None
+    digest = hashlib.sha256(key.strip().encode("utf-8")).hexdigest()[:40]
+    return f"dream_motif_{kind}_{digest}"
+
+
+def _document_has_named_range(document: Mapping[str, Any], name: str) -> bool:
+    """Return True for either shape used by the Google Docs namedRanges map."""
+    named_ranges = document.get("namedRanges", {})
+    if not isinstance(named_ranges, Mapping):
+        return False
+    for key, value in named_ranges.items():
+        if key == name:
+            return True
+        if not isinstance(value, Mapping):
+            continue
+        candidates = value.get("namedRanges")
+        if not isinstance(candidates, list):
+            candidates = [value]
+        if any(
+            isinstance(candidate, Mapping) and candidate.get("name") == name
+            for candidate in candidates
+        ):
+            return True
+    return False
+
+
+def _utf16_length(value: str) -> int:
+    """Google Docs indexes text in UTF-16 code units."""
+    return len(value.encode("utf-16-le")) // 2
 
 
 def _clean_optional_str(value: Any) -> str | None:

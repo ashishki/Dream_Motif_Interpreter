@@ -5,7 +5,9 @@ dream-493107-1663e9547597.json
 # Environment variables
 .env
 .env.*
+!.env.example
 runtime_extra_docs.json
+runtime_extra_docs.json.lock
 
 # Python
 __pycache__/

@@ -62,6 +62,18 @@ def test_motif_induction_has_label_column() -> None:
     assert col.nullable is False
 
 
+def test_motif_induction_has_normalized_label_identity() -> None:
+    cols = _column_map(MotifInduction)
+    col = cols["normalized_label"].columns[0]
+    assert isinstance(col.type, sa.Text)
+    assert col.nullable is False
+    assert any(
+        isinstance(constraint, sa.UniqueConstraint)
+        and {column.name for column in constraint.columns} == {"dream_id", "normalized_label"}
+        for constraint in MotifInduction.__table__.constraints
+    )
+
+
 def test_motif_induction_has_rationale_column() -> None:
     cols = _column_map(MotifInduction)
     assert "rationale" in cols

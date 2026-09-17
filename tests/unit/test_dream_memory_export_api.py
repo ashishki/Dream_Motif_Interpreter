@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -16,9 +16,11 @@ from app.api.dream_memory import (
     DreamMemoryHideControlRequest,
     DreamMemoryRejectionControlRequest,
     DreamMemorySourceFragmentRequest,
+    _privacy_controls_from_rows,
     create_dream_memory_deletion_control,
     create_dream_memory_hide_control,
     create_dream_memory_rejection_control,
+    create_dream_memory_restore_control,
     export_dream_memory,
     read_dream_memory_state,
 )
@@ -33,6 +35,7 @@ def _make_dream() -> SimpleNamespace:
     dream.title = "private flying dream"
     dream.raw_text = "I flew over a private city."
     dream.source_doc_id = "private-doc-id"
+    dream.date = date(2026, 5, 30)
     dream.created_at = _NOW
     return dream
 
@@ -188,6 +191,8 @@ async def test_read_dream_memory_state_returns_filtered_graph_and_privacy_contro
     assert subject_id not in {node["id"] for node in response.graph["nodes"]}
     assert response.graph["edges"] == []
     assert response.privacy_controls["hidden_node_ids"] == [subject_id]
+    dream_node = next(node for node in response.graph["nodes"] if node["type"] == "Dream")
+    assert dream_node["label"] == "30.05.26 — private flying dream"
     assert "receipt" not in response.model_dump()
 
 
@@ -370,6 +375,7 @@ def test_dream_memory_export_router_registered_in_app() -> None:
     assert "/dream-memory/mini-app" in paths
     assert "/dream-memory/state" in paths
     assert "/dream-memory/export" in paths
+    assert "/dream-memory/privacy/restore" in paths
 
 
 def test_dream_memory_mini_app_shell_is_public_and_uses_telegram_init_data() -> None:
@@ -386,6 +392,31 @@ def test_dream_memory_mini_app_shell_is_public_and_uses_telegram_init_data() -> 
     assert "fetch(`/dream-memory/state?scope=" in response.text
     assert "X-Telegram-Init-Data" in response.text
     assert "X-API-Key" not in response.text
+    assert "/motifs/review?status=all" in response.text
+    assert "Исключить из карты" in response.text
+    assert "/dream-memory/privacy/${action}" in response.text
+    assert 'submitGraphControl("hide")' in response.text
+    assert 'submitGraphControl("restore")' in response.text
+    assert 'addEventListener("click", refreshCurrent)' in response.text
+    assert "retryMessage(honestError" in response.text
+    assert 'button("secondary", "Повторить", callback)' in response.text
+    assert 'tabindex: "0"' in response.text
+    assert 'id="graph" role="group"' in response.text
+    assert 'aria-pressed="true" aria-controls="review-view"' in response.text
+    assert 'id="map-status" role="status" aria-live="polite"' in response.text
+    assert "prefers-reduced-motion: reduce" in response.text
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["permissions-policy"] == ("camera=(), microphone=(), geolocation=()")
+    content_security_policy = response.headers["content-security-policy"]
+    assert "script-src 'self' 'unsafe-inline' https://telegram.org" in (content_security_policy)
+    assert "connect-src 'self'" in content_security_policy
+    assert "object-src 'none'" in content_security_policy
+    assert "frame-ancestors https://telegram.org https://*.telegram.org" in (
+        content_security_policy
+    )
 
 
 def test_dream_memory_state_requires_api_key() -> None:
@@ -400,6 +431,8 @@ def test_dream_memory_state_requires_api_key() -> None:
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_dream_memory_export_requires_api_key() -> None:
@@ -525,6 +558,49 @@ async def test_create_hide_control_returns_receipt_for_hidden_node() -> None:
     assert persisted.subject_id == "motif_induction:1"
     assert persisted.action == "hide"
     assert persisted.control_payload["hidden_node_ids"] == ["motif_induction:1"]
+
+
+@pytest.mark.asyncio
+async def test_create_restore_control_appends_receipted_restore() -> None:
+    session = _FakeSession(execute_results=[])
+
+    with patch(
+        "app.api.dream_memory.get_session_factory",
+        return_value=_FakeSessionFactory(session),
+    ):
+        response = await create_dream_memory_restore_control(
+            DreamMemoryHideControlRequest(
+                subject_type="graph_node",
+                subject_id="motif_induction:1",
+            )
+        )
+
+    assert response.receipt.receipt["action"] == "node_restored"
+    assert response.receipt.receipt["verifier_status"] == "passed"
+    assert session.committed is True
+    persisted = session.added[0]
+    assert persisted.action == "restore"
+    assert persisted.subject_id == "motif_induction:1"
+
+
+def test_restore_control_reverses_prior_hide_without_deleting_history() -> None:
+    subject_id = "motif_induction:1"
+    controls = _privacy_controls_from_rows(
+        [
+            _make_privacy_control(
+                subject_type="graph_node",
+                subject_id=subject_id,
+                action="hide",
+            ),
+            _make_privacy_control(
+                subject_type="graph_node",
+                subject_id=subject_id,
+                action="restore",
+            ),
+        ]
+    )
+
+    assert subject_id not in controls.hidden_node_ids
 
 
 def test_dream_memory_hide_control_requires_api_key() -> None:

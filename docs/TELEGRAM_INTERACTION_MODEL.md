@@ -99,7 +99,8 @@ Recommended:
 
 - one persisted session per allowed chat
 - short recent history retained for conversational continuity
-- short-lived operational state for displayed dream lists and pending confirmations
+- Redis-backed TTL state for displayed dream lists, reply mappings, pending notes, dream capture
+  and interpretation confirmations
 - reply-target state for displayed dreams and newly saved dream confirmations
 
 Do not:
@@ -167,7 +168,7 @@ Telegram supports a native, non-command UX for adding a note to one dream:
 
 - reply to a bot message that contains one concrete dream and write
   `Добавь заметку к этому сну: ...`
-- reply to the bot's `Сон сохранён и добавлен в документ` confirmation and write
+- reply to the bot's `✅ Сон сохранён` save card and write
   `Добавь заметку к этому сну: ...`
 - write `Добавь заметку к этому сну: ...` after the bot has shown exactly one recent dream
 
@@ -344,25 +345,23 @@ search and cite archive-backed fragments.
 | User provides | Resulting title |
 |--------------|----------------|
 | explicit date + explicit name | `Название`; Google Doc heading is `дд.мм.гг - Название` |
-| explicit date only | generated semantic title; Google Doc heading is `дд.мм.гг - title` |
+| explicit date only | deterministic provisional title; Google Doc heading is `дд.мм.гг - title` |
 | name only | use name as-is |
-| neither | generated semantic title using the save date for the Google Doc heading |
+| neither | deterministic provisional title using the save date for the Google Doc heading |
 
 If no explicit title marker is present, the model-supplied `create_dream.title` argument is ignored.
-The facade generates a short semantic title from the full dream text and falls back to the
-deterministic keyword title only when title generation is unavailable.
+The facade derives the provisional title locally so durable capture never depends on an LLM.
 
 Dates in save requests may be ISO, `DD.MM`, `DD.MM.YY`, `DD.MM.YYYY`, or Russian relative dates.
 `DD.MM` resolves to the current application year. Google Doc writes are inserted before the first
 later dated Heading 1, so a dream saved for `19.05` appears before an existing `20.05` dream.
-Duplicate dream text remains deduplicated in the archive, but the Google Doc write is attempted
-again when the user asks to save it again.
-When that repeated write succeeds, the tool result is the same success signal as a new write, so
-the final Telegram reply stays `Сон сохранён и добавлен в документ`.
+Duplicate dream text remains deduplicated in the archive, its four stage jobs and Google Docs.
+Repeating the save only repairs missing/failed stages. A successful Google Docs receipt is a no-op
+and cannot append the same idempotency marker twice.
 
 For a user command like `повтори` after a save visibility issue, the assistant calls
-`retry_write_to_google_doc`. That tool first retries the latest failed write; if no failed status
-exists, it repeats the latest dream from the current Telegram chat.
+`retry_write_to_google_doc`. The tool retries a pending/failed delivery; an already successful
+receipt is returned as complete without creating another document entry.
 
 ## 14. Phase 11 — Feedback Capture UX
 
@@ -388,7 +387,7 @@ Messages containing anything other than a single digit are not treated as rating
 
 ### Acknowledgment message
 
-When a rating is captured, the assistant sends a brief acknowledgment: "Thanks, noted." No further action is taken in the conversation.
+When a rating is captured, the assistant sends a brief acknowledgment: "Спасибо, записал." No further action is taken in the conversation.
 
 ### What ratings do not do
 

@@ -1,0 +1,12 @@
+# Keep the build context deny-by-default. Dockerfile only needs these paths;
+# local credentials, test data, VCS metadata, and developer artefacts never
+# need to be uploaded to the builder.
+**
+!pyproject.toml
+!README.md
+!alembic.ini
+!requirements.lock
+!app/
+!app/**
+!alembic/
+!alembic/**

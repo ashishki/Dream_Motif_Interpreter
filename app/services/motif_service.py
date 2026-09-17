@@ -38,12 +38,19 @@ class MotifService:
         self._motif_inductor = motif_inductor or MotifInductor()
         self._motif_grounder = motif_grounder or MotifGrounder()
 
-    async def run(self, dream_entry: DreamEntry, session: AsyncSession) -> None:
+    async def run(
+        self,
+        dream_entry: DreamEntry,
+        session: AsyncSession,
+        *,
+        strict: bool = False,
+    ) -> None:
         """Run the full motif induction pipeline for *dream_entry*.
 
         Results are persisted to motif_inductions with status='draft'.
-        If ImageryExtractor or MotifInductor fails, a structured warning is
-        logged and the method returns without crashing the ingest job.
+        By default provider failures are logged and swallowed for legacy ingest
+        callers.  Durable workers pass ``strict=True`` so transient failures
+        stay retryable instead of being checkpointed as successful empty work.
 
         Args:
             dream_entry: the DreamEntry ORM object to process.
@@ -73,6 +80,8 @@ class MotifService:
                     exc_info=True,
                     error=str(exc),
                 )
+                if strict:
+                    raise
                 return
 
             if not fragments:
@@ -93,6 +102,8 @@ class MotifService:
                     exc_info=True,
                     error=str(exc),
                 )
+                if strict:
+                    raise
                 return
 
             if not candidates:
@@ -103,8 +114,15 @@ class MotifService:
                 return
 
             # Stage 3: ground each candidate's fragments and persist
+            persisted_count = 0
+            seen_labels: set[str] = set()
             with tracer.start_as_current_span("motif_service.persist"):
                 for candidate in candidates:
+                    label = " ".join(candidate["label"].split())
+                    label_identity = " ".join(label.casefold().split())
+                    if not label or label_identity in seen_labels:
+                        continue
+                    seen_labels.add(label_identity)
                     # Collect imagery fragments referenced by this candidate
                     candidate_fragments = [
                         fragments[idx]
@@ -113,13 +131,26 @@ class MotifService:
                     ]
 
                     # Verify offsets against source text
-                    verified_fragments = self._motif_grounder.ground(
+                    grounded_fragments = self._motif_grounder.ground(
                         dream_entry.raw_text, list(candidate_fragments)
                     )
+                    verified_fragments = [
+                        fragment
+                        for fragment in grounded_fragments
+                        if isinstance(fragment, dict) and fragment.get("verified") is True
+                    ]
+                    if not verified_fragments:
+                        logger.warning(
+                            "motif_service.candidate_has_no_verified_evidence",
+                            dream_id=str(dream_id),
+                            motif_label=candidate["label"],
+                        )
+                        continue
 
                     row = MotifInduction(
                         dream_id=dream_id,
-                        label=candidate["label"],
+                        label=label,
+                        normalized_label=label_identity,
                         rationale=candidate["rationale"],
                         confidence=candidate["confidence"],
                         status="draft",
@@ -127,9 +158,10 @@ class MotifService:
                         model_version=_MODEL_VERSION,
                     )
                     session.add(row)
+                    persisted_count += 1
 
             logger.info(
                 "motif_service.run_complete",
                 dream_id=str(dream_id),
-                motif_count=len(candidates),
+                motif_count=persisted_count,
             )

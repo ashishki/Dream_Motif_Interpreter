@@ -383,9 +383,15 @@ async def test_theme_timeline_sorted_by_date(
         salience=0.4,
         status="confirmed",
     )
+    draft_dream = await _create_dream(
+        migrated_session_factory,
+        title="Draft ladder dream",
+        raw_text="This draft ladder association must stay out of the confirmed timeline.",
+        dream_date=date(2026, 4, 1),
+    )
     await _attach_theme(
         migrated_session_factory,
-        dream_id=dreams[1].id,
+        dream_id=draft_dream.id,
         category_id=ladder.id,
         salience=0.1,
         status="draft",

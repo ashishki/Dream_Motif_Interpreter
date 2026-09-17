@@ -299,6 +299,16 @@ file, а `DATABASE_URL` получает только из ignored `.env`. Postg
 которое требует firewall/reverse proxy и аутентификации. Секреты храните вне репозитория. В
 production `health.build_sha` не должен быть `unknown`.
 
+**Systemd на уже работающем хосте:**
+
+Если приложение уже запущено как `dream-motif-api.service`,
+`dream-motif-telegram.service` и `dream-motif-auto-sync.service`, это отдельный способ
+развёртывания. Не запускайте Compose поверх него: он создаст второй стек и может конфликтовать с
+портами и канонической базой данных. Выполняйте последовательность с остановкой writers,
+проверенным backup/restore drill, Alembic и readiness-gate из
+[Systemd Setup](docs/SYSTEMD_SETUP.md). Compose-specific
+`DMI_DATABASE_SECRET_FILE` требуется только при переходе на Compose.
+
 ## Verification boundary
 
 CI выполняет Ruff, полный pytest suite с disposable PostgreSQL/pgvector, существующий seeded

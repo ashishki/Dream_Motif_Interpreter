@@ -183,3 +183,15 @@ def test_active_deployment_docs_use_the_quiesced_rollout_script() -> None:
     assert "`BUILD_SHA`, so background writers do not accept new work" in deploy
     assert "Keep previous release" in deploy
     assert "tags until the rollback drill" in deploy
+
+
+def test_systemd_docs_do_not_recommend_running_compose_over_live_units() -> None:
+    systemd = (PROJECT_ROOT / "docs" / "SYSTEMD_SETUP.md").read_text(encoding="utf-8")
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "Systemd и Compose — два самостоятельных способа" in systemd
+    assert "не запускайте `docker compose up`" in systemd
+    assert "pg_restore --list" in systemd
+    assert "_restore_drill" in systemd
+    assert "пока API не прошёл `/ready`" in systemd
+    assert "Не запускайте Compose поверх него" in readme

@@ -1,19 +1,17 @@
 name: Kolia source snapshot
 
-# Temporary branch-only transport of already-public tracked source for offline review.
-# No production data, environment files, credentials or live provider calls.
+# Temporary branch-only transport for offline verification; removed before review.
+# Only public tracked source and hash-locked third-party wheels. No live credentials.
 on:
   push:
     branches: [codex/kolia-experience-v1]
     paths: [.github/workflows/kolia-source-snapshot.yml]
-
 permissions:
   contents: read
-
 jobs:
   source:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -25,5 +23,16 @@ jobs:
         with:
           name: kolia-source-${{ github.sha }}
           path: /tmp/kolia-source.bundle
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.13'
+      - name: Download hash-locked wheels for offline tests
+        run: python -m pip download --only-binary=:all: --require-hashes -r requirements-dev.lock --dest /tmp/kolia-wheels
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kolia-wheels-${{ github.sha }}
+          path: /tmp/kolia-wheels
           retention-days: 1
           if-no-files-found: error

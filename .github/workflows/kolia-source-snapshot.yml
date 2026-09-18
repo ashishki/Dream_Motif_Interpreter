@@ -29,7 +29,8 @@ jobs:
         with:
           python-version: '3.13'
       - name: Download hash-locked wheels for offline tests
-        run: python -m pip download --only-binary=:all: --require-hashes -r requirements-dev.lock --dest /tmp/kolia-wheels
+        run: |
+          python -m pip download --only-binary=:all: --require-hashes -r requirements-dev.lock --dest /tmp/kolia-wheels
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: kolia-wheels-${{ github.sha }}

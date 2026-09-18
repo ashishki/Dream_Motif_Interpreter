@@ -1,0 +1,37 @@
+name: Publish verified Kolia branch
+
+# Temporary transport for this explicitly requested branch publication only.
+# Removed by the connector before final PR CI. No production secrets or deployment.
+on:
+  push:
+    branches: [codex/kolia-experience-v1]
+    paths: [.github/workflows/kolia-deliver.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/codex/kolia-experience-v1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Verify source hashes and publish only the requested branch
+        run: python3 .kolia-delivery/apply.py
+      - name: Prepare public source and tokenizer for offline verification
+        run: |
+          mkdir -p /tmp/kolia-validation
+          git bundle create /tmp/kolia-validation/kolia-source.bundle HEAD
+          curl --fail --location --retry 2 https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken --output /tmp/kolia-validation/cl100k_base.tiktoken
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kolia-validation-${{ github.sha }}
+          path: /tmp/kolia-validation
+          retention-days: 1
+          if-no-files-found: error

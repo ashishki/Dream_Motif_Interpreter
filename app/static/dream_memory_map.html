@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Мотивы снов</title>
+  <title>Архив снов</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
@@ -23,11 +23,49 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 15px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    button, input, select { font: inherit; }
+    button, input, select, textarea { font: inherit; }
     button { cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: .5; }
-    button:focus-visible, input:focus-visible, select:focus-visible, .node:focus-visible, .edge:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .node:focus-visible, .edge:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
     .app { min-height: 100vh; }
+    .workspace { width: min(760px, 100%); margin: 0 auto; padding: 18px 14px 40px; }
+    .workspace h1 { font-size: 22px; margin: 0 0 8px; }
+    .muted { color: var(--muted); }
+    .workspace p { margin: 0 0 14px; }
+    .search-form { display: flex; gap: 8px; margin: 18px 0 10px; }
+    .search-form input, textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; background: var(--panel); color: var(--ink); }
+    .date-filters { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+    .date-filters label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); flex: 1 1 130px; }
+    .date-filters input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--panel); }
+    .result-list { display: grid; gap: 12px; }
+    .archive-card { width: 100%; text-align: left; color: var(--ink); }
+    .archive-card .preview { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+    .more { display: block; margin: 16px auto 0; min-height: 44px; }
+    [hidden] { display: none !important; }
+    dialog { width: min(740px, calc(100% - 24px)); max-height: calc(100dvh - 24px); border: 1px solid var(--line); border-radius: 18px; padding: 20px; background: var(--panel); color: var(--ink); overflow: auto; }
+    dialog::backdrop { background: rgb(0 0 0 / 45%); }
+    .reader-head { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+    .reader-head h2 { margin: 0; overflow-wrap: anywhere; }
+    .reader-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 20px 0; line-height: 1.7; }
+    .reader-notes { display: grid; gap: 8px; padding: 0; list-style: none; }
+    .reader-notes li { padding: 10px 12px; background: var(--bg); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .note-form { border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 10px; }
+    .note-form select { padding: 8px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+    .notice { padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--ink); margin-bottom: 12px; }
+    .review-pagination { text-align: center; margin: 14px 0; color: var(--muted); font-size: 13px; }
+    .selection-bar { margin-top: 20px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    .selection-bar label { display: block; margin: 10px 0; }
+    .selection-bar input[type="text"] { width: 100%; margin: 8px 0; padding: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; }
+    .selection-bar button { margin: 6px 6px 0 0; }
+    .selection-check { display: flex; align-items: center; gap: 8px; padding: 6px 12px 12px; min-height: 44px; font-size: 14px; }
+    .selection-check input { width: 20px; height: 20px; }
+    .source-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .source-card .card { border: 0; border-radius: 0; margin: 0; }
+    .research-answer { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+    .read-hint { display: block; margin-top: 12px; font-size: 12px; color: var(--muted); }
+    .reader-close { min-width: 44px; min-height: 44px; }
+    @media (max-width: 420px) { .tab { font-size: 13px; padding: 6px; } .search-form { flex-wrap: wrap; } .search-form input { flex: 1 1 100%; } .search-form button { width: 100%; } }
+
     .topbar { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px 14px 8px; padding-top: max(12px, env(safe-area-inset-top)); background: color-mix(in srgb, var(--panel) 96%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
     .title { font-size: 19px; font-weight: 750; }
     .refresh { min-width: 40px; min-height: 40px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--panel); }
@@ -109,14 +147,45 @@
 <body>
   <main class="app">
     <header class="topbar">
-      <div class="title">Мотивы снов</div>
+      <div class="title">Архив снов</div>
       <button class="refresh" id="refresh" type="button" title="Обновить" aria-label="Обновить">↻</button>
       <nav class="tabs" aria-label="Разделы">
-        <button class="tab active" id="review-tab" type="button" aria-pressed="true" aria-controls="review-view">На проверку <span id="tab-count"></span></button>
+        <button class="tab active" id="archive-tab" type="button" aria-pressed="true" aria-controls="archive-view">Архив</button>
+        <button class="tab" id="review-tab" type="button" aria-pressed="false" aria-controls="review-view">На проверку <span id="tab-count"></span></button>
         <button class="tab" id="map-tab" type="button" aria-pressed="false" aria-controls="map-view">Карта</button>
       </nav>
     </header>
-    <section class="view review-view" id="review-view">
+    <section class="view workspace" id="archive-view">
+      <h1>К какому сну вернёмся?</h1>
+      <p class="muted">Найдите образ, откройте полный текст или добавьте свою мысль. Новые сны можно по-прежнему присылать боту текстом и голосом.</p>
+      <form class="search-form" id="archive-search" role="search">
+        <input id="archive-query" type="search" maxlength="1000" placeholder="Дом, возвращение, вода…" aria-label="Что найти в снах" autocomplete="off">
+        <button class="primary" type="submit">Найти</button>
+      </form>
+      <button class="secondary" id="archive-recent" type="button">Последние сны</button>
+      <details id="period-controls"><summary>Выбрать период</summary>
+        <div class="date-filters"><label>С даты<input type="date" id="archive-since"></label><label>По дату<input type="date" id="archive-until"></label></div>
+        <button class="secondary" id="archive-period" type="button">Показать сны за период</button>
+      </details>
+      <details class="selection-bar" id="research-controls" hidden><summary>Исследовать подборку снов</summary>
+        <strong id="selection-count">Выбрано: 0</strong>
+        <button class="secondary" type="button" id="select-visible">Выбрать показанные</button>
+        <button class="secondary" type="button" id="clear-selected">Снять выбор</button>
+        <form id="research-form">
+          <label for="research-question">Что посмотреть в выбранных снах?</label>
+          <input id="research-question" type="text" maxlength="2000" value="Что общего и чем различаются эти сны?">
+          <button class="primary" id="research-run" type="submit" disabled>Разобрать выбранные</button>
+        </form>
+        <p class="muted" id="research-status" role="status" aria-live="polite"></p>
+        <p class="muted">Разбор не меняет записи и не добавляет коды. За один раз читаются не более 20 снов.</p>
+        <div class="research-answer" id="research-answer" aria-live="polite"></div>
+        <button class="secondary" id="research-download" type="button" hidden>Сохранить обзор в текстовый файл</button>
+      </details>
+      <p id="archive-status" class="muted" role="status" aria-live="polite"></p>
+      <div id="archive-list" class="result-list" aria-live="polite"></div>
+      <button class="secondary more" id="archive-more" type="button" hidden>Ещё сны</button>
+    </section>
+    <section class="view review-view" id="review-view" hidden>
       <div class="intro">
         <div><h1>Предложения модели</h1><p>Сверьте мотив с цитатой из сна. Это не интерпретация и не вывод о вас.</p></div>
         <div class="count" id="draft-count" role="status" aria-live="polite" aria-label="Новых предложений">0</div>
@@ -127,7 +196,10 @@
         <button class="filter" data-filter="rejected" type="button" aria-pressed="false">Исключённые</button>
         <button class="filter" data-filter="all" type="button" aria-pressed="false">Все</button>
       </div>
-      <div class="review-list" id="review-list" aria-live="polite"><div class="loading" role="status">Загружаю предложения…</div></div>
+      <div class="notice">Ничего не применяется автоматически. Можно добавить несколько своих #кодов в заметки; пропущенное предложение остаётся на проверке.</div>
+      <div class="review-list" id="review-list" aria-live="polite"></div>
+      <div class="review-pagination" id="review-total" role="status"></div>
+      <button class="secondary more" id="review-more" type="button" hidden>Ещё предложения</button>
     </section>
     <section class="view map-view" id="map-view" hidden>
       <div class="map-toolbar">
@@ -155,12 +227,30 @@
         </aside>
       </div>
     </section>
+    <dialog id="dream-reader" aria-labelledby="reader-title">
+      <div class="reader-head"><h2 id="reader-title">Сон</h2><button class="secondary reader-close" id="reader-close" type="button" aria-label="Закрыть сон">×</button></div>
+      <div id="reader-date" class="muted"></div>
+      <div id="reader-content" class="reader-text"></div>
+      <section id="reader-note-section" hidden><h3>Ваши заметки и коды</h3><ul id="reader-notes" class="reader-notes"></ul></section>
+      <form id="reader-note-form" class="note-form" hidden>
+        <label for="note-kind">Добавить к этому сну</label>
+        <select id="note-kind"><option value="note">Заметку</option><option value="code">Код (#метку)</option></select>
+        <label for="note-text">Ваша мысль или название кода</label>
+        <textarea id="note-text" rows="3" maxlength="4000" required></textarea>
+        <button id="note-save" class="primary" type="submit">Сохранить в заметках</button>
+        <div id="note-status" class="inline-status" role="status" aria-live="polite"></div>
+      </form>
+    </dialog>
   </main>
   <script>
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     if (tg) { tg.ready(); tg.expand(); }
-    const state = { activeView: "review", reviewFilter: "draft", motifs: [], graphPayload: null, selected: null };
+    const state = { activeView: "archive", reviewFilter: "draft", motifs: [], graphPayload: null, selected: null,
+      reviewEpoch: 0, reviewNext: null, reviewCounts: {}, reviewTotal: 0, archiveEpoch: 0, archiveNext: null,
+      archiveMode: "recent", archiveItems: [], readerEpoch: 0, reader: null, noteSaving: false,
+      researchIds: new Set(), researchEpoch: 0, researchBusy: false, researchAnswer: "" };
     const els = {
+      archiveTab: document.getElementById("archive-tab"), archiveView: document.getElementById("archive-view"),
       reviewTab: document.getElementById("review-tab"), mapTab: document.getElementById("map-tab"),
       reviewView: document.getElementById("review-view"), mapView: document.getElementById("map-view"),
       list: document.getElementById("review-list"), draftCount: document.getElementById("draft-count"),
@@ -171,6 +261,7 @@
       restoreMap: document.getElementById("restore-map"),
       rejectLink: document.getElementById("reject-link")
     };
+    els.archiveTab.addEventListener("click", () => switchView("archive"));
     els.reviewTab.addEventListener("click", () => switchView("review"));
     els.mapTab.addEventListener("click", () => switchView("map"));
     document.getElementById("refresh").addEventListener("click", refreshCurrent);
@@ -186,9 +277,27 @@
         item.classList.toggle("active", selected);
         item.setAttribute("aria-pressed", String(selected));
       });
-      renderReview();
+      loadReview();
     }));
-    loadReview();
+    document.getElementById("review-more").addEventListener("click", () => loadReview(true));
+    const archiveList = document.getElementById("archive-list");
+    const archiveStatus = document.getElementById("archive-status");
+    const archiveMore = document.getElementById("archive-more");
+    const reader = document.getElementById("dream-reader");
+    document.getElementById("archive-search").addEventListener("submit", (event) => { event.preventDefault(); state.archiveMode = "search"; document.getElementById("archive-since").value = ""; document.getElementById("archive-until").value = ""; loadArchive(); });
+    document.getElementById("archive-recent").addEventListener("click", () => { state.archiveMode = "recent"; document.getElementById("archive-query").value = ""; document.getElementById("archive-since").value = ""; document.getElementById("archive-until").value = ""; loadArchive(); });
+    document.getElementById("archive-period").addEventListener("click", () => { state.archiveMode = "recent"; document.getElementById("archive-query").value = ""; loadArchive(); });
+    archiveMore.addEventListener("click", () => loadArchive(true));
+    document.getElementById("research-form").addEventListener("submit", runResearch);
+    document.getElementById("select-visible").addEventListener("click", () => { state.researchIds = new Set(state.archiveItems.slice(0, 20).map(item => item.id)); updateSelection(); });
+    document.getElementById("clear-selected").addEventListener("click", () => { state.researchIds.clear(); updateSelection(); });
+    document.getElementById("research-download").addEventListener("click", downloadResearch);
+    document.getElementById("reader-close").addEventListener("click", closeReader);
+    reader.addEventListener("cancel", (event) => { event.preventDefault(); closeReader(); });
+    reader.addEventListener("close", () => { state.readerEpoch++; state.reader = null; if (tg && tg.BackButton) { tg.BackButton.hide(); } });
+    document.getElementById("reader-note-form").addEventListener("submit", saveNote);
+    if (tg && tg.BackButton) { tg.BackButton.onClick(closeReader); }
+    loadArchive();
 
     function authHeaders(json = false) {
       const headers = json ? { "Content-Type": "application/json" } : {};
@@ -196,7 +305,10 @@
       return headers;
     }
     async function api(url, options = {}) {
-      const response = await fetch(url, { ...options, headers: { ...authHeaders(Boolean(options.body)), ...(options.headers || {}) } });
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), url === "/workspace/research" ? 150000 : 30000);
+      try {
+      const response = await fetch(url, { cache: "no-store", ...options, signal: controller.signal, headers: { ...authHeaders(Boolean(options.body)), ...(options.headers || {}) } });
       let body = null;
       try { body = await response.json(); } catch (_) { body = null; }
       if (!response.ok) {
@@ -205,29 +317,176 @@
         throw error;
       }
       return body;
+      } finally { window.clearTimeout(timer); }
     }
-    async function loadReview() {
-      els.list.setAttribute("aria-busy", "true");
-      els.list.replaceChildren(message("loading", "Загружаю предложения…"));
+    async function loadReview(more = false) {
+      const epoch = ++state.reviewEpoch;
+      const offset = more ? state.reviewNext : 0;
+      if (offset === null) { return; }
+      const filter = state.reviewFilter;
+      const moreButton = document.getElementById("review-more");
+      moreButton.disabled = true; els.list.setAttribute("aria-busy", "true");
+      if (!more) { state.motifs = []; moreButton.hidden = true; els.list.replaceChildren(message("loading", "Загружаю предложения…")); }
       try {
-        const payload = await api("/motifs/review?status=all&limit=100");
-        state.motifs = payload.items || [];
-        updateCounts(); renderReview();
-      } catch (error) { els.list.replaceChildren(retryMessage(honestError(error, "Не удалось загрузить мотивы."), loadReview)); }
-      finally { els.list.setAttribute("aria-busy", "false"); }
+        const payload = await api(`/motifs/review?status=${encodeURIComponent(filter)}&limit=20&offset=${offset}`);
+        if (epoch !== state.reviewEpoch) { return; }
+        const combined = more ? [...state.motifs, ...(payload.items || [])] : (payload.items || []);
+        state.motifs = [...new Map(combined.map(item => [item.id, item])).values()];
+        state.reviewNext = payload.next_offset ?? null; state.reviewTotal = payload.total_count || 0;
+        state.reviewCounts = payload; updateCounts(); renderReview();
+      } catch (error) {
+        if (epoch !== state.reviewEpoch) { return; }
+        const retry = retryMessage(honestError(error, "Не удалось загрузить предложения."), () => loadReview(more));
+        if (more) { els.list.appendChild(retry); } else { els.list.replaceChildren(retry); }
+      } finally { if (epoch === state.reviewEpoch) { els.list.setAttribute("aria-busy", "false"); moreButton.disabled = false; } }
     }
     function updateCounts() {
-      const count = state.motifs.filter((motif) => motif.status === "draft").length;
+      const count = state.reviewCounts.draft_count || 0;
       els.draftCount.textContent = count; els.tabCount.textContent = count ? `(${count})` : "";
     }
     function renderReview() {
-      const motifs = state.motifs.filter((motif) => state.reviewFilter === "all" || motif.status === state.reviewFilter);
       els.list.replaceChildren();
-      if (!motifs.length) {
-        els.list.appendChild(message("empty", state.reviewFilter === "draft" ? "Новых предложений нет." : "В этом разделе пока пусто."));
+      document.getElementById("review-total").textContent = `Показано ${state.motifs.length} из ${state.reviewTotal}`;
+      document.getElementById("review-more").hidden = state.reviewNext === null;
+      if (!state.motifs.length) {
+        els.list.appendChild(message("empty", state.reviewFilter === "draft" ? "Новых предложений нет. Можно вернуться в архив или посмотреть подтверждённые." : "В этом разделе пока пусто."));
         return;
       }
-      motifs.forEach((motif) => els.list.appendChild(motifCard(motif)));
+      state.motifs.forEach((motif) => els.list.appendChild(motifCard(motif)));
+    }
+    async function loadArchive(more = false) {
+      const page = more ? state.archiveNext : 1;
+      if (page === null) { return; }
+      const query = document.getElementById("archive-query").value.trim();
+      const since = document.getElementById("archive-since").value;
+      const until = document.getElementById("archive-until").value;
+      if (state.archiveMode === "search" && !query) { archiveStatus.textContent = "Напишите образ или тему, которую хотите найти."; return; }
+      if (state.archiveMode !== "search" && since && until && since > until) { archiveStatus.textContent = "Начальная дата должна быть раньше конечной."; return; }
+      const epoch = ++state.archiveEpoch;
+      if (!more) { state.researchEpoch++; state.researchIds.clear(); state.researchBusy = false; state.researchAnswer = ""; document.getElementById("research-controls").hidden = true; document.getElementById("research-answer").textContent = ""; document.getElementById("research-status").textContent = ""; document.getElementById("research-download").hidden = true; }
+      archiveList.setAttribute("aria-busy", "true"); archiveMore.disabled = true;
+      if (!more) { state.archiveItems = []; state.archiveNext = null; archiveMore.hidden = true; archiveList.replaceChildren(message("loading", "Ищу записи…")); }
+      try {
+        let payload;
+        if (state.archiveMode === "search") {
+          payload = await api("/workspace/search", { method: "POST", body: JSON.stringify({ query }) });
+        } else {
+          const params = new URLSearchParams({ page: String(page), page_size: "20" });
+          if (since) { params.set("since", since); } if (until) { params.set("until", until); }
+          payload = await api(`/workspace/archive?${params}`);
+        }
+        if (epoch !== state.archiveEpoch) { return; }
+        const combined = more ? [...state.archiveItems, ...(payload.items || [])] : (payload.items || []);
+        state.archiveItems = [...new Map(combined.map(item => [item.id, item])).values()];
+        state.archiveNext = payload.next_page ?? null;
+        archiveStatus.textContent = payload.message || `Показано ${state.archiveItems.length} из ${payload.total || 0} записей${since || until ? " за выбранный период" : ""}.`;
+        archiveList.replaceChildren();
+        state.archiveItems.forEach(item => archiveList.appendChild(archiveCard(item)));
+        document.getElementById("research-controls").hidden = !state.archiveItems.length;
+        updateSelection();
+        if (!state.archiveItems.length) { archiveList.appendChild(message("empty", state.archiveMode === "search" ? "Попробуйте другой образ или более конкретную формулировку." : "Здесь пока нет снов. Расскажите сон боту или выберите другой период.")); }
+        archiveMore.hidden = state.archiveNext === null;
+      } catch (error) { if (epoch === state.archiveEpoch) { const retry = retryMessage(honestError(error, "Не удалось загрузить записи. Архив не изменён."), () => loadArchive(more)); if (more) { archiveList.appendChild(retry); } else { archiveList.replaceChildren(retry); } } }
+      finally { if (epoch === state.archiveEpoch) { archiveList.setAttribute("aria-busy", "false"); archiveMore.disabled = false; } }
+    }
+    function archiveCard(item) {
+      const card = button("card archive-card", "", () => openDream(item.id));
+      const title = document.createElement("div"); title.className = "dream-name"; title.textContent = item.title || "Без названия";
+      const date = document.createElement("div"); date.className = "dream-date"; date.textContent = formatDate(item.date);
+      const preview = document.createElement("div"); preview.className = "preview"; preview.textContent = item.preview || "Открыть полный текст";
+      const hint = document.createElement("span"); hint.className = "read-hint"; hint.textContent = "Открыть полный текст и заметки →";
+      card.append(title, date, preview, hint);
+      const wrapper = document.createElement("article"); wrapper.className = "source-card";
+      const label = document.createElement("label"); label.className = "selection-check";
+      const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.dataset.dreamId = item.id; checkbox.checked = state.researchIds.has(item.id);
+      checkbox.setAttribute("aria-label", `В подборку: ${formatDate(item.date)}, ${item.title || "без названия"}`);
+      checkbox.addEventListener("change", () => { if (checkbox.checked && state.researchIds.size >= 20) { checkbox.checked = false; document.getElementById("research-status").textContent = "Выберите до 20 снов для одного разбора. Можно сначала сравнить эту подборку, затем следующую."; return; } if (checkbox.checked) { state.researchIds.add(item.id); } else { state.researchIds.delete(item.id); } updateSelection(); });
+      label.append(checkbox, document.createTextNode("В подборку для разбора")); wrapper.append(card, label); return wrapper;
+    }
+    function updateSelection() {
+      document.getElementById("selection-count").textContent = `Выбрано: ${state.researchIds.size}`;
+      if (state.researchIds.size) { document.getElementById("research-controls").open = true; }
+      document.getElementById("select-visible").textContent = state.archiveItems.length > 20 ? "Выбрать первые 20" : "Выбрать показанные";
+      document.querySelectorAll("input[data-dream-id]").forEach(item => { item.checked = state.researchIds.has(item.dataset.dreamId); });
+      document.getElementById("research-run").disabled = !state.researchIds.size || state.researchBusy;
+    }
+    async function runResearch(event) {
+      event.preventDefault();
+      const question = document.getElementById("research-question").value.trim();
+      if (!question || !state.researchIds.size || state.researchBusy) { return; }
+      const epoch = ++state.researchEpoch;
+      const ids = state.archiveItems.filter(item => state.researchIds.has(item.id)).map(item => item.id);
+      const labels = state.archiveItems.filter(item => state.researchIds.has(item.id)).map(item => `${formatDate(item.date)} — ${item.title}`);
+      state.researchBusy = true; state.researchAnswer = ""; updateSelection();
+      const status = document.getElementById("research-status");
+      document.getElementById("research-answer").textContent = ""; document.getElementById("research-download").hidden = true;
+      status.textContent = `Читаю выбранные тексты и проверяю цитаты. Выбрано снов: ${ids.length}.`;
+      try {
+        const payload = await api("/workspace/research", { method: "POST", body: JSON.stringify({ dream_ids: ids, question }) });
+        if (epoch !== state.researchEpoch) { return; }
+        const heading = `Вопрос: ${question}\n\nРазбор относится к этой подборке:\n${labels.map((label, index) => `${index + 1}. ${label}`).join("\n")}\n\n`;
+        state.researchAnswer = heading + payload.answer;
+        document.getElementById("research-answer").textContent = state.researchAnswer;
+        status.textContent = payload.state === "complete" ? "Разбор готов. Цитаты проверены по текстам." : payload.state === "partial" ? "Разбор частичный — ограничения указаны ниже." : "Разбор не завершён. Можно повторить тот же вопрос.";
+        document.getElementById("research-download").hidden = payload.state === "unavailable";
+      } catch (error) { if (epoch === state.researchEpoch) { status.textContent = honestError(error, "Не удалось завершить разбор. Выбор и вопрос сохранены; можно повторить."); } }
+      finally { if (epoch === state.researchEpoch) { state.researchBusy = false; updateSelection(); } }
+    }
+    function downloadResearch() {
+      if (!state.researchAnswer || !window.confirm("Файл содержит тексты и цитаты из вашего архива. Сохранить на этом устройстве?")) { return; }
+      const blob = new Blob([state.researchAnswer], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "dream-archive-review.txt"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    async function openDream(id, suggestedCode = "") {
+      if (reader.open && !canLeaveReader()) { return; }
+      const epoch = ++state.readerEpoch; state.reader = null;
+      document.getElementById("reader-title").textContent = "Загружаю сон…";
+      document.getElementById("reader-date").textContent = "";
+      document.getElementById("reader-content").replaceChildren();
+      document.getElementById("reader-note-section").hidden = true;
+      document.getElementById("reader-note-form").hidden = true;
+      document.getElementById("note-text").value = "";
+      document.getElementById("note-status").textContent = "";
+      if (!reader.open) { reader.showModal(); }
+      if (tg && tg.BackButton) { tg.BackButton.show(); }
+      try {
+        const detail = await api(`/workspace/dreams/${encodeURIComponent(id)}`);
+        if (epoch !== state.readerEpoch || !reader.open) { return; }
+        state.reader = detail;
+        document.getElementById("reader-title").textContent = detail.title || "Без названия";
+        document.getElementById("reader-date").textContent = formatDate(detail.date);
+        document.getElementById("reader-content").textContent = detail.raw_text;
+        renderNotes();
+        document.getElementById("reader-note-form").hidden = false;
+        document.getElementById("note-kind").value = suggestedCode ? "code" : "note";
+        document.getElementById("note-text").value = suggestedCode;
+        if (suggestedCode) { document.getElementById("note-text").focus(); }
+      } catch (error) { if (epoch === state.readerEpoch && reader.open) { document.getElementById("reader-title").textContent = "Сон пока не открылся"; document.getElementById("reader-content").replaceChildren(retryMessage(honestError(error, "Не удалось получить текст. Попробуйте ещё раз."), () => openDream(id, suggestedCode))); } }
+    }
+    function renderNotes() {
+      const list = document.getElementById("reader-notes"); list.replaceChildren();
+      for (const note of state.reader.notes || []) { const item = document.createElement("li"); item.textContent = note; list.appendChild(item); }
+      document.getElementById("reader-note-section").hidden = !list.children.length;
+    }
+    function canLeaveReader() {
+      if (state.noteSaving) { document.getElementById("note-status").textContent = "Проверяю сохранение. Не закрывайте эту запись, чтобы увидеть результат."; return false; }
+      return !document.getElementById("note-text").value.trim() || window.confirm("В заметке есть несохранённый текст. Закрыть без сохранения?");
+    }
+    function closeReader() { if (canLeaveReader()) { reader.close(); } }
+    async function saveNote(event) {
+      event.preventDefault(); if (!state.reader || state.noteSaving) { return; }
+      const input = document.getElementById("note-text"); const kind = document.getElementById("note-kind");
+      const status = document.getElementById("note-status"); const save = document.getElementById("note-save");
+      const text = input.value.trim(); if (!text) { input.focus(); return; }
+      const id = state.reader.id; state.noteSaving = true; save.disabled = true; input.disabled = true; kind.disabled = true;
+      status.textContent = "Сохраняю к этому сну…";
+      try {
+        const result = await api(`/workspace/dreams/${encodeURIComponent(id)}/notes`, { method: "POST", body: JSON.stringify({ text, kind: kind.value }) });
+        if (!result.saved) { throw new Error("unconfirmed"); }
+        if (!(state.reader.notes || []).includes(result.text)) { state.reader.notes = [...(state.reader.notes || []), result.text]; }
+        renderNotes(); input.value = ""; status.textContent = result.message;
+      } catch (error) { status.textContent = honestError(error, error.status === 422 ? "Для кода используйте короткое название до 160 символов. Текст остался в поле." : "Не удалось подтвердить сохранение. Текст остался в поле; повторная отправка не создаст вторую такую заметку."); }
+      finally { state.noteSaving = false; save.disabled = false; input.disabled = false; kind.disabled = false; }
     }
     function motifCard(motif) {
       const card = document.createElement("article"); card.className = "card"; card.dataset.motifId = motif.id;
@@ -263,19 +522,22 @@
           button("exclude", "Исключить из карты", () => updateMotif(motif, { status: "rejected" }, card))
         );
       } else { actions.append(button("secondary", "Вернуть на проверку", () => updateMotif(motif, { status: "draft" }, card))); }
+      actions.append(button("secondary", "Открыть сон", () => openDream(motif.dream_id)));
+      actions.append(button("secondary", "Добавить #код в заметки", () => openDream(motif.dream_id, input.value)));
       card.appendChild(actions);
       const inline = document.createElement("div"); inline.className = "inline-status"; inline.setAttribute("aria-live", "polite"); card.appendChild(inline);
       return card;
     }
     async function updateMotif(motif, patch, card) {
       const status = card.querySelector(".inline-status"); const buttons = card.querySelectorAll("button");
+      const disabledStates = [...buttons].map(item => item.disabled);
       buttons.forEach((item) => { item.disabled = true; }); status.textContent = "Сохраняю…";
       try {
         const updated = await api(`/dreams/${motif.dream_id}/motifs/${motif.id}`, { method: "PATCH", body: JSON.stringify(patch) });
         state.motifs = state.motifs.map((item) => item.id === motif.id ? { ...item, ...updated, can_research: updated.status === "confirmed" } : item);
-        updateCounts(); renderReview();
+        await loadReview();
       } catch (error) {
-        buttons.forEach((item) => { item.disabled = false; }); status.textContent = honestError(error, "Не удалось сохранить решение.");
+        buttons.forEach((item, index) => { item.disabled = disabledStates[index]; }); status.textContent = honestError(error, "Не удалось сохранить решение.");
       }
     }
     async function researchMotif(motif, card) {
@@ -303,13 +565,14 @@
       }
     }
     function switchView(view) {
-      state.activeView = view; els.reviewView.hidden = view !== "review"; els.mapView.hidden = view !== "map";
-      els.reviewTab.classList.toggle("active", view === "review"); els.mapTab.classList.toggle("active", view === "map");
-      els.reviewTab.setAttribute("aria-pressed", String(view === "review"));
-      els.mapTab.setAttribute("aria-pressed", String(view === "map"));
+      state.activeView = view;
+      for (const [name, tab, panel] of [["archive", els.archiveTab, els.archiveView], ["review", els.reviewTab, els.reviewView], ["map", els.mapTab, els.mapView]]) {
+        panel.hidden = view !== name; tab.classList.toggle("active", view === name); tab.setAttribute("aria-pressed", String(view === name));
+      }
       if (view === "map") { loadState(); }
+      else if (view === "review") { loadReview(); }
     }
-    function refreshCurrent() { return state.activeView === "review" ? loadReview() : loadState(); }
+    function refreshCurrent() { return state.activeView === "archive" ? loadArchive() : state.activeView === "review" ? loadReview() : loadState(); }
     async function loadState() {
       els.mapStatus.textContent = "Загружаю карту…";
       try {
@@ -413,7 +676,7 @@
         return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.href : null;
       } catch (error) { return null; }
     }
-    function honestError(error, fallback) { return error && error.status === 401 ? "Откройте Mini App из Telegram, чтобы подтвердить доступ." : fallback; }
+    function honestError(error, fallback) { return error && error.status === 401 ? "Откройте архив кнопкой в боте Telegram, чтобы подтвердить доступ." : fallback; }
   </script>
 </body>
 </html>

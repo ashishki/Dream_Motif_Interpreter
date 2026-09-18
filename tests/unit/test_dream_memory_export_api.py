@@ -392,7 +392,10 @@ def test_dream_memory_mini_app_shell_is_public_and_uses_telegram_init_data() -> 
     assert "fetch(`/dream-memory/state?scope=" in response.text
     assert "X-Telegram-Init-Data" in response.text
     assert "X-API-Key" not in response.text
-    assert "/motifs/review?status=all" in response.text
+    assert (
+        "/motifs/review?status=${encodeURIComponent(filter)}&limit=20&offset=${offset}"
+        in response.text
+    )
     assert "Исключить из карты" in response.text
     assert "/dream-memory/privacy/${action}" in response.text
     assert 'submitGraphControl("hide")' in response.text
@@ -402,7 +405,8 @@ def test_dream_memory_mini_app_shell_is_public_and_uses_telegram_init_data() -> 
     assert 'button("secondary", "Повторить", callback)' in response.text
     assert 'tabindex: "0"' in response.text
     assert 'id="graph" role="group"' in response.text
-    assert 'aria-pressed="true" aria-controls="review-view"' in response.text
+    assert 'aria-pressed="true" aria-controls="archive-view"' in response.text
+    assert 'aria-pressed="false" aria-controls="review-view"' in response.text
     assert 'id="map-status" role="status" aria-live="polite"' in response.text
     assert "prefers-reduced-motion: reduce" in response.text
     assert response.headers["cache-control"] == "no-store, max-age=0"

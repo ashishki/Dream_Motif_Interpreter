@@ -521,7 +521,7 @@ async def test_text_message_handler_filters_full_text_buttons_to_visible_dreams(
 
 
 @pytest.mark.asyncio
-async def test_text_message_handler_limits_full_text_buttons_to_numbered_visible_count() -> None:
+async def test_text_message_handler_does_not_guess_identity_from_numbered_paragraphs() -> None:
     dream_ids = [
         "11111111-1111-4111-8111-111111111111",
         "22222222-2222-4222-8222-222222222222",
@@ -552,13 +552,12 @@ async def test_text_message_handler_limits_full_text_buttons_to_numbered_visible
     ):
         await text_message_handler(update, context)
 
-    keyboard = message.reply_text.await_args.kwargs["reply_markup"].inline_keyboard
-    assert len(keyboard) == 1
-    assert keyboard[0][0].callback_data == f"{FULL_DREAM_CALLBACK_PREFIX}{dream_ids[0]}"
+    # A paragraph count carries no archive identity; no fabricated first-result button.
+    assert "reply_markup" not in message.reply_text.await_args.kwargs
 
 
 @pytest.mark.asyncio
-async def test_text_message_handler_uses_numbered_count_when_only_some_titles_match() -> None:
+async def test_text_message_handler_omits_unidentifiable_results_without_guessing() -> None:
     dream_ids = [
         "11111111-1111-4111-8111-111111111111",
         "22222222-2222-4222-8222-222222222222",
@@ -594,7 +593,7 @@ async def test_text_message_handler_uses_numbered_count_when_only_some_titles_ma
     keyboard = message.reply_text.await_args.kwargs["reply_markup"].inline_keyboard
     buttons = [row[0] for row in keyboard]
     assert [button.callback_data for button in buttons] == [
-        f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}" for dream_id in dream_ids
+        f"{FULL_DREAM_CALLBACK_PREFIX}{dream_id}" for dream_id in (dream_ids[0], dream_ids[2])
     ]
 
 

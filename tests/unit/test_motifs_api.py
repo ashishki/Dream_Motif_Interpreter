@@ -283,7 +283,9 @@ async def test_review_inbox_returns_only_source_verified_evidence() -> None:
             {"text": "дверь", "verified": False},
         ],
     )
-    session = _FakeSession(execute_results=[_FakeResult([(motif, dream)])])
+    session = _FakeSession(
+        execute_results=[_FakeResult([(motif, dream)]), _FakeResult([("draft", 1)])]
+    )
 
     with patch(
         "app.api.motifs.get_session_factory",
@@ -621,3 +623,36 @@ def test_motifs_router_registered_in_app() -> None:
     assert len(motif_paths) >= 3, (
         f"Expected at least 3 motif routes registered, found: {motif_paths}"
     )
+
+
+@pytest.mark.asyncio
+async def test_review_pagination_reaches_older_items_and_counts_whole_queue():
+    dream_id = uuid.uuid4()
+    dream = SimpleNamespace(id=dream_id, title="Мост", date=date(2026, 1, 1), raw_text="Я у моста.")
+    rows = [(_make_motif(dream_id=dream_id), dream) for _ in range(20)]
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult(rows),
+            _FakeResult([("draft", 140), ("confirmed", 25), ("rejected", 4)]),
+        ]
+    )
+    with patch("app.api.motifs.get_session_factory", return_value=_FakeSessionFactory(session)):
+        result = await list_motifs_for_review(status="draft", limit=20, offset=100)
+    assert len(result.items) == 20 and result.total_count == 140
+    assert result.draft_count == 140 and result.confirmed_count == 25
+    assert result.next_offset == 120 and result.offset == 100
+
+
+@pytest.mark.asyncio
+async def test_review_last_page_has_no_continuation():
+    dream_id = uuid.uuid4()
+    dream = SimpleNamespace(id=dream_id, title="Мост", date=None, raw_text="Я у моста.")
+    session = _FakeSession(
+        execute_results=[
+            _FakeResult([(_make_motif(dream_id=dream_id), dream)]),
+            _FakeResult([("draft", 121)]),
+        ]
+    )
+    with patch("app.api.motifs.get_session_factory", return_value=_FakeSessionFactory(session)):
+        result = await list_motifs_for_review(status="draft", limit=20, offset=120)
+    assert result.next_offset is None and result.total_count == 121

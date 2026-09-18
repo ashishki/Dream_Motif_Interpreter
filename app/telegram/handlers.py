@@ -18,6 +18,7 @@ from telegram.error import TelegramError
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
 from app.assistant.chat import ChatResult, handle_chat_with_metadata
+from app.assistant.selection import visible_references
 from app.assistant.facade import AssistantFacade, DreamRecordingUnavailable
 from app.assistant.facade import _prepare_dream_recording_input
 from app.assistant.session import (
@@ -29,7 +30,6 @@ from app.assistant.session import (
     clear_pending_single_dream_note,
     load_displayed_dream_message,
     load_displayed_dream_set,
-    load_recent_dream_set,
     load_pending_batch_dream_note,
     load_pending_interpretation_request,
     load_pending_dream_draft,
@@ -72,8 +72,8 @@ NOTE_ACCEPTED_QUEUED_MESSAGE = (
 )
 FEEDBACK_PROMPT = "Ответьте 1–5, можно с коротким комментарием."
 FEEDBACK_ACK = "Спасибо, записал."
-MINI_APP_OPEN_MESSAGE = "Карта памяти снов"
-MINI_APP_OPEN_BUTTON = "Открыть карту"
+MINI_APP_OPEN_MESSAGE = "Архив снов: поиск, чтение и ваши заметки"
+MINI_APP_OPEN_BUTTON = "Открыть архив"
 MINI_APP_UNCONFIGURED_MESSAGE = "Карта памяти снов пока не настроена."
 FULL_DREAM_CALLBACK_PREFIX = "dream_full:"
 ADD_NOTE_CALLBACK_PREFIX = "dream_note:"
@@ -90,20 +90,24 @@ MAX_PENDING_FEEDBACK_REQUESTS = 10_000
 TELEGRAM_MESSAGE_CHUNK_SIZE = 3900
 MISSING_DREAM_TEXT_REPLY = "Пришлите текст сна одним сообщением: например, «Запиши сон: ...»."
 START_MESSAGE = (
-    "Я помогаю вести личный архив снов.\n\n"
-    "Напишите «Мне приснилось…» — я сохраню сон и покажу дату, название и статус "
-    "Google Docs. Можно также прислать голосовое сообщение.\n\n"
-    "После сохранения можно искать сны обычными словами, открывать полный текст и "
-    "добавлять заметки. Команда /help покажет короткие примеры."
+    "Здесь можно записывать сны и возвращаться к тому, что в них повторяется.\n\n"
+    "Расскажите сон текстом или голосом, начав с «Мне приснилось…». "
+    "Я сохраню его и подтвержу запись. Если копия в Google Docs ещё обновляется, скажу отдельно.\n\n"
+    "Или сразу спросите: «Найди сны, где я возвращаюсь домой». "
+    "Затем можно написать «покажи второй целиком» или «что у них общего?».\n\n"
+    "Ваши заметки и #коды остаются вашими решениями. Команда /help — несколько примеров."
 )
 HELP_MESSAGE = (
-    "Быстрые примеры:\n"
-    "• «Мне приснилось, что я иду по мосту» — сохранить сон.\n"
-    "• «Найди сны про воду» — поиск по смыслу.\n"
-    "• «Найди слово лестница» — точный поиск.\n"
-    "• Ответьте на карточку сна: «заметка: важная деталь» — добавить заметку.\n"
-    "• /map — открыть карту мотивов.\n\n"
-    "Я не ставлю диагнозы: интерпретации здесь — только осторожные гипотезы."
+    "Попробуйте обычными словами:\n"
+    "• «Мне приснилось, что я иду по мосту» — записать сон.\n"
+    "• «Найди сны про воду» — найти материал в архиве.\n"
+    "• «Покажи второй целиком» — открыть сон из последней подборки.\n"
+    "• «Третий не подходит» — убрать только из подборки, не из архива.\n"
+    "• «Что у них общего?» — сравнить выбранные сны.\n"
+    "• Ответьте на сон: «заметка: важная деталь» или «заметка: #границы» — добавить свою мысль.\n"
+    "• /map — открыть архив, заметки и предложения мотивов. Это необязательно: можно остаться в чате.\n\n"
+    "Я не ставлю диагнозы. Наблюдения и гипотезы требуют вашей проверки; "
+    "AI не принимает коды за вас. Подборка сохраняется на два часа, в том числе после перезапуска."
 )
 UNKNOWN_CONFIRMATION_REPLY = (
     "Не вижу ожидающего подтверждения — возможно, бот перезапускался или запрос устарел. "
@@ -1478,7 +1482,12 @@ async def _parse_batch_note_request(
     if displayed is None and state_store is not None:
         displayed = await state_store.load_displayed_set(chat_id)
         if displayed is not None:
-            save_displayed_dream_set(chat_id, refs=displayed.refs)
+            save_displayed_dream_set(
+                chat_id,
+                refs=displayed.refs,
+                created_at=displayed.created_at,
+                selection_id=displayed.selection_id,
+            )
     if displayed is None or not displayed.refs:
         return None
     if _BATCH_NOTE_INTENT_RE.search(text) is None:
@@ -1769,23 +1778,15 @@ def _full_text_reply_markup(
     *,
     chat_id: int | None,
 ) -> InlineKeyboardMarkup | None:
-    dream_ids = _extract_dream_ids_from_text(reply_text)
-    if not dream_ids:
-        refs = getattr(result, "dream_refs", [])
-        dream_ids = _visible_dream_reference_ids(reply_text, refs)
-        visible_count = _visible_numbered_result_count(reply_text)
-        if refs and visible_count and visible_count <= len(refs) and len(dream_ids) < visible_count:
-            dream_ids = _coerce_dream_ids(
-                [str(getattr(ref, "dream_id", "") or "") for ref in refs[:visible_count]]
-            )
-        if not dream_ids and refs:
-            return None
-    if not dream_ids and not getattr(result, "dream_refs", []):
-        dream_ids = _coerce_dream_ids(getattr(result, "dream_ids", []))
-    if not dream_ids and chat_id is not None and _should_offer_recent_full_text_buttons(result):
-        recent = load_recent_dream_set(chat_id)
-        if recent is not None:
-            dream_ids = _coerce_dream_ids(recent.dream_ids)
+    explicit = getattr(result, "selection_refs", None)
+    if explicit is not None:
+        dream_ids = _coerce_dream_ids([ref.dream_id for ref in explicit])
+    elif getattr(result, "preserve_selection", False):
+        dream_ids = _coerce_dream_ids([ref.dream_id for ref in getattr(result, "dream_refs", [])])
+    else:
+        dream_ids = _visible_dream_reference_ids(reply_text, getattr(result, "dream_refs", []))
+        if not getattr(result, "dream_refs", []):
+            dream_ids = _coerce_dream_ids(getattr(result, "dream_ids", []))
     if not dream_ids:
         return None
 
@@ -1815,8 +1816,16 @@ async def _remember_displayed_dreams(
     sent_message: Any | None = None,
     state_store: RedisOperationalStateStore | None,
 ) -> None:
-    refs = _visible_dream_references(reply_text, getattr(result, "dream_refs", []))
-    if not refs:
+    explicit = getattr(result, "selection_refs", None)
+    preserve = getattr(result, "preserve_selection", False)
+    refs = (
+        explicit
+        if explicit is not None
+        else _visible_dream_references(reply_text, getattr(result, "dream_refs", []))
+    )
+    if preserve:
+        refs = getattr(result, "dream_refs", [])
+    if not refs and explicit is None:
         return
     displayed_refs = [
         DisplayedDreamRef(
@@ -1828,7 +1837,8 @@ async def _remember_displayed_dreams(
         for index, ref in enumerate(refs, start=1)
     ]
 
-    await _save_displayed_dream_set(state_store, chat_id, refs=displayed_refs)
+    if not preserve:
+        await _save_displayed_dream_set(state_store, chat_id, refs=displayed_refs)
     message_id = getattr(sent_message, "message_id", None)
     if message_id is not None:
         await _save_displayed_dream_message(
@@ -1840,25 +1850,7 @@ async def _remember_displayed_dreams(
 
 
 def _visible_dream_references(reply_text: str, refs: Any) -> list[Any]:
-    if not isinstance(refs, list):
-        return []
-    visible_refs: list[Any] = []
-    normalized_reply = _normalize_visible_match_text(reply_text)
-    for ref in refs:
-        dream_id = str(getattr(ref, "dream_id", "") or "").strip()
-        if not dream_id:
-            continue
-        title = str(getattr(ref, "title", "") or "").strip()
-        date_value = str(getattr(ref, "date", "") or "").strip()
-        if _dream_reference_visible(normalized_reply, title=title, date_value=date_value):
-            visible_refs.append(ref)
-
-    if refs:
-        visible_count = _visible_numbered_result_count(reply_text)
-        if visible_count and visible_count <= len(refs) and len(visible_refs) < visible_count:
-            visible_refs = list(refs[:visible_count])
-
-    return visible_refs
+    return visible_references(reply_text, refs)
 
 
 def _visible_numbered_result_count(reply_text: str) -> int:
@@ -2002,6 +1994,8 @@ async def _resolve_direct_note_target_dream_id(
                     chat_id,
                     message_id=int(reply_message_id),
                     refs=displayed.refs,
+                    created_at=displayed.created_at,
+                    selection_id=displayed.selection_id,
                 )
         dream_id = _single_displayed_ref_dream_id(getattr(displayed, "refs", []))
         if dream_id is not None:
@@ -2021,7 +2015,12 @@ async def _resolve_direct_note_target_dream_id(
     if displayed is None and state_store is not None:
         displayed = await state_store.load_displayed_set(chat_id)
         if displayed is not None:
-            save_displayed_dream_set(chat_id, refs=displayed.refs)
+            save_displayed_dream_set(
+                chat_id,
+                refs=displayed.refs,
+                created_at=displayed.created_at,
+                selection_id=displayed.selection_id,
+            )
     return _single_displayed_ref_dream_id(getattr(displayed, "refs", []))
 
 
@@ -2035,7 +2034,11 @@ def _single_displayed_ref_dream_id(refs: Any) -> uuid.UUID | None:
 
 
 def _direct_note_requires_context(text: str) -> bool:
-    lowered = text.casefold()
+    lowered = text.strip().casefold()
+    if lowered.startswith("#") or re.match(
+        r"^(?:код[ы]?\s*:|(?:добавь|запиши|сохрани)\s+код[ы]?\b)", lowered
+    ):
+        return True
     return any(
         marker in lowered
         for marker in (
@@ -2115,7 +2118,21 @@ async def _remember_created_dream(
 
 
 def _extract_direct_note_text(text: str) -> str | None:
+    text = text.strip()
     lowered = text.casefold()
+    # A human-written #code is an ordinary note, never automatic taxonomy work.
+    if text.startswith("#") and text.lstrip("#").strip():
+        return text
+    code_match = re.fullmatch(
+        r"(?:код|коды)\s*:\s*(.+)|(?:добавь|запиши|сохрани)\s+код(?:ы)?\b(.*)",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if code_match:
+        label = _normalize_direct_note_tail(code_match.group(1) or code_match.group(2))
+        if label and label.lstrip("#").strip():
+            return "#" + label.lstrip("#").strip()
+        return None
     for prefix in ("note:", "notes:", "заметка:", "заметки:"):
         if lowered.startswith(prefix):
             return text[len(prefix) :].strip()

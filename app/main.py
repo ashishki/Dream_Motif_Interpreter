@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 
 from app.api.dream_memory import router as dream_memory_router
 from app.api.dreams import _get_job_enqueuer, _get_redis_client, is_valid_api_key
@@ -18,6 +20,7 @@ from app.api.research import router as research_router
 from app.api.search import router as search_router
 from app.api.themes import router as themes_router
 from app.api.versioning import router as versioning_router
+from app.api.workspace import router as workspace_router
 from app.shared.config import get_settings
 from app.shared.telegram_auth import is_valid_telegram_web_app_init_data
 from app.shared.tracing import configure_logging, get_logger, get_tracer
@@ -86,6 +89,15 @@ def create_app() -> FastAPI:
     application.include_router(search_router)
     application.include_router(themes_router)
     application.include_router(versioning_router)
+    application.include_router(workspace_router)
+
+    @application.exception_handler(RequestValidationError)
+    async def redact_workspace_validation(request: Request, error: RequestValidationError):
+        # Pydantic may include raw input in validation errors; archive text must
+        # not be reflected into error telemetry or API error details.
+        if request.url.path.startswith("/workspace/"):
+            return JSONResponse(status_code=422, content={"detail": "Invalid workspace request"})
+        return await request_validation_exception_handler(request, error)
 
     @application.middleware("http")
     async def require_authentication(request: Request, call_next):

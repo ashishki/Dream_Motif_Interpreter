@@ -10,7 +10,8 @@ from __future__ import annotations
 import inspect
 import json
 import logging
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -71,6 +72,7 @@ class DisplayedDreamRef:
 class DisplayedDreamSet:
     refs: list[DisplayedDreamRef]
     created_at: datetime
+    selection_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 
 @dataclass(slots=True)
@@ -117,6 +119,44 @@ class RedisOperationalStateStore:
     async def load_displayed_set(self, chat_id: int) -> DisplayedDreamSet | None:
         payload = await self._get(self._key(chat_id, "displayed", "latest"))
         return _displayed_set_from_payload(payload)
+
+    async def save_voice_selection(
+        self,
+        chat_id: int,
+        message_id: int,
+        *,
+        displayed: DisplayedDreamSet,
+        reply_digest: str,
+        preserve: bool,
+    ) -> None:
+        # Stage metadata, not a current selection. Publication follows delivery.
+        await self._set(
+            self._key(chat_id, "voice_selection", str(message_id)),
+            {
+                "displayed": _displayed_set_payload(displayed),
+                "reply_digest": reply_digest,
+                "preserve": preserve,
+            },
+            ttl_seconds=RECENT_DREAM_SET_TTL_MINUTES * 60,
+        )
+
+    async def load_voice_selection(
+        self,
+        chat_id: int,
+        message_id: int,
+        *,
+        reply_digest: str,
+    ) -> tuple[DisplayedDreamSet, bool] | None:
+        payload = await self._get(self._key(chat_id, "voice_selection", str(message_id)))
+        if not payload or payload.get("reply_digest") != reply_digest:
+            return None
+        displayed = _displayed_set_from_payload(payload.get("displayed"))
+        if displayed is None:
+            return None
+        return displayed, payload.get("preserve") is True
+
+    async def delete_voice_selection(self, chat_id: int, message_id: int) -> None:
+        await self._delete(self._key(chat_id, "voice_selection", str(message_id)))
 
     async def check_available(self) -> bool:
         try:
@@ -337,13 +377,13 @@ class RedisOperationalStateStore:
                 ex=ttl_seconds,
             )
         except Exception:
-            LOGGER.warning("Could not persist Telegram operational state", exc_info=True)
+            LOGGER.warning("Could not persist Telegram operational state")
 
     async def _get(self, key: str) -> dict[str, Any] | None:
         try:
             raw = await self._redis.get(key)
         except Exception:
-            LOGGER.warning("Could not load Telegram operational state", exc_info=True)
+            LOGGER.warning("Could not load Telegram operational state")
             return None
         if raw is None:
             return None
@@ -359,7 +399,7 @@ class RedisOperationalStateStore:
         try:
             await self._redis.delete(key)
         except Exception:
-            LOGGER.warning("Could not clear Telegram operational state", exc_info=True)
+            LOGGER.warning("Could not clear Telegram operational state")
 
 
 def _displayed_ref_payload(ref: DisplayedDreamRef) -> dict[str, Any]:
@@ -388,6 +428,7 @@ def _displayed_ref_from_payload(payload: Any) -> DisplayedDreamRef | None:
 def _displayed_set_payload(displayed: DisplayedDreamSet) -> dict[str, Any]:
     return {
         "refs": [_displayed_ref_payload(ref) for ref in displayed.refs],
+        "selection_id": displayed.selection_id,
         "created_at": displayed.created_at.isoformat(),
     }
 
@@ -400,6 +441,7 @@ def _displayed_set_from_payload(payload: Any) -> DisplayedDreamSet | None:
         displayed = DisplayedDreamSet(
             refs=[ref for ref in refs if ref is not None],
             created_at=_parse_utc_datetime(payload["created_at"]),
+            selection_id=str(uuid.UUID(str(payload.get("selection_id") or uuid.uuid4()))),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -594,14 +636,21 @@ def save_displayed_dream_set(
     chat_id: int,
     *,
     refs: list[DisplayedDreamRef],
+    selection_id: str | None = None,
+    created_at: datetime | None = None,
 ) -> DisplayedDreamSet:
     """Store the dream list exactly as it was shown to the user."""
     _evict_expired_displayed_dream_sets()
     displayed = DisplayedDreamSet(
         refs=list(refs),
-        created_at=datetime.now(tz=timezone.utc),
+        created_at=created_at or datetime.now(tz=timezone.utc),
     )
+    if selection_id is not None:
+        displayed.selection_id = str(uuid.UUID(selection_id))
     _displayed_dream_sets[chat_id] = displayed
+    # The visible selection, not intermediate retrieval, governs follow-ups.
+    recent = save_recent_dream_set(chat_id, query="", dream_ids=[ref.dream_id for ref in refs])
+    recent.created_at = displayed.created_at
     _evict_excess_displayed_dream_sets()
     return displayed
 
@@ -611,13 +660,17 @@ def save_displayed_dream_message(
     *,
     message_id: int,
     refs: list[DisplayedDreamRef],
+    selection_id: str | None = None,
+    created_at: datetime | None = None,
 ) -> DisplayedDreamSet:
     """Store dream refs shown in a specific Telegram message for reply context."""
     _evict_expired_displayed_dream_sets()
     displayed = DisplayedDreamSet(
         refs=list(refs),
-        created_at=datetime.now(tz=timezone.utc),
+        created_at=created_at or datetime.now(tz=timezone.utc),
     )
+    if selection_id is not None:
+        displayed.selection_id = str(uuid.UUID(selection_id))
     _displayed_dream_messages[(chat_id, message_id)] = displayed
     _evict_excess_displayed_dream_sets()
     return displayed

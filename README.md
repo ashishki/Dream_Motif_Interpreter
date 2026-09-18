@@ -16,6 +16,21 @@ diagnosis; система не предназначена для психоло�
 Dream Memory Map остаётся design/prototype direction, а не заявленной готовой
 пользовательской поверхностью: `docs/DREAM_MEMORY_MAP.md`.
 
+## Kolia Experience V1 — single-operator release candidate
+
+Рабочий путь: Telegram → поиск → показанная подборка → полный текст → заметка
+или свой #код → проверяемый разбор. В Mini App первым открывается архив, карта
+остаётся дополнительной. Можно выбрать период, сравнить выбранные сны и сохранить
+обзор в текстовый файл. AI не применяет коды автоматически.
+
+Это реализованный код ветки, не подтверждение production rollout или удобства для
+реального пользователя. Масштабирование, полный редактор исходных снов, бессрочные
+исследования и автоматические рассылки не входят в этот выпуск.
+
+[Пользовательский гайд](docs/USER_GUIDE_RU.md) ·
+[Приёмка с Колей](docs/KOLIA_EXPERIENCE_ACCEPTANCE_RU.md) ·
+[Текущий handoff](docs/handoffs/KOLIA_EXPERIENCE_V1_HANDOFF.md)
+
 ## Public reviewer path
 
 Privacy-safe evidence можно воспроизвести без private data, PostgreSQL, provider keys или

@@ -22,20 +22,29 @@ production dependency was introduced.
 
 ## Commit slices
 
-Local verified implementation commits before connector publication:
-- `dc3e2d0`: visible selection and bounded Telegram conversation.
-- `0ec519a`: verified research and voice selection continuity.
-- `47cb329`: archive-first workspace and complete human review queue.
+Published implementation commits (draft PR #7):
+- `81d967e6b8b856e671c7b2bf26c314e331eda1db`: conversational selections,
+  bounded answers, grounded research and delivered voice context.
+- `0f989b440da87a74d06e6d619a10191f7f005955`: archive-first workspace and
+  complete human review queue.
+- `629f848e2cc5ef4bdb9e481d39b54aeb6a147f77`: user journeys and release gates.
+- `4a69e21deeacbc310243785a20d5169397187b37`: cleaned, hash-verified product
+  tree; all temporary transport files/workflows removed.
+- `c1e899e09dc3ebc2efdf3282112c59b408f79b05`: align the existing public shell
+  test with archive-first navigation and server-filtered pagination. Auth,
+  no-store and CSP assertions remain intact.
 
-Publication may preserve patches under different commit IDs because transport
-commits are separate parents. Verify the final branch tree and CI, not old local
-IDs. Temporary source/dependency/patch transport workflows must be absent in the
-final reviewed tree; the existing CI security guard is not relaxed for them.
+The published tree at `4a69e21` was verified byte-for-byte against the locally
+verified tree `41577720ddd0c55f7d2e275cf11c98db9d579f4c`. The later shell-test
+fix was also verified by its exact content blob SHA. No CI security guard was
+relaxed. Use remote commit IDs above, not earlier offline implementation IDs.
 
 ## Verification
 
 Completed locally on Python 3.13.5 using the repository's hash-locked wheels:
-- 341 focused tests passed: conversation/session/selection, research quote and
+- 913 tests passed: the entire local unit suite plus 16 real PTB routing replay
+  tests (synthetic adapters; not a live bot).
+- Earlier 341 focused tests passed: conversation/session/selection, research quote and
   budget contracts, voice publication, Telegram handlers, workspace HTTP auth,
   notes/search/period, motif pagination and PTB conversation routing replay.
 - Ruff check/format, compileall, diff whitespace and inline JavaScript parsing.
@@ -46,9 +55,26 @@ Completed locally on Python 3.13.5 using the repository's hash-locked wheels:
   **not** a live backend/Telegram browser test.
 
 The first whole-unit local collection was blocked by the missing `cl100k_base`
-tokenizer asset and disabled container network. Do not replace the tokenizer
-with a fake to turn this gate green. Full database/container checks belong to
-GitHub CI; record their actual run and conclusion after publication.
+tokenizer asset and disabled container network. This was resolved by retrieving
+the official public tokenizer asset through a temporary branch-only CI artifact,
+verifying its SHA-256 and rerunning the tests with the real tokenizer. No fake
+tokenizer or production credentials were used. Public fixture: 8/8 cases, content
+hash `e92f2925dbe1fa1af305cd1fea328575665b2f93711cab2a0863d168693dd841`.
+
+GitHub Actions CI #296, run `35340039408`, passed for PR head
+`c1e899e09dc3ebc2efdf3282112c59b408f79b05` (test merge
+`d91e181bb2846e0a21a4b0220c50b6e35fc400d9` against the unchanged baseline).
+- Full `pytest tests/`: **1029 passed, 6 skipped, 1 warning** in 71.85 seconds.
+- Install/hash-lock verification, Ruff lint/format and container contract passed.
+- Public fixture 8/8 and the configured retrieval evaluator passed.
+- The warning is the existing SQLAlchemy schema-inspection warning for `vector`.
+- PostgreSQL/pgvector and the production container were actually exercised in CI;
+  model/Google/Telegram credentials were placeholders. The configured retrieval
+  evaluator uses its stub path with placeholder keys, not live embedding quality.
+
+This final handoff-only commit does not change product code or tests. Its own
+CI result is available on draft PR #7; verify the latest head before deployment.
+Run: https://github.com/ashishki/Dream_Motif_Interpreter/actions/runs/35340039408
 
 Useful commands from the repository root:
 

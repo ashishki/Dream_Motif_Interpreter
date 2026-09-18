@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+import json
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -226,7 +227,8 @@ async def test_handle_chat_metadata_returns_search_dream_ids_when_final_text_omi
 
             result = await handle_chat_with_metadata("find flying dreams", facade, chat_id=42)
 
-    assert result.text == "1. 01.03.24, Flying dream: I was flying over a city."
+    assert result.text.startswith("1. 01.03.24, Flying dream: I was flying over a city.")
+    assert "не гарантия полного охвата" in result.text
     assert result.tool_calls_made == ["search_dreams"]
     assert result.dream_ids == [str(dream_id)]
     assert len(result.dream_refs) == 1
@@ -394,7 +396,25 @@ async def test_handle_chat_analyzes_recent_dream_set_without_asking_user() -> No
 
     final_response = _make_response(
         "end_turn",
-        [_text_block("1. Проверка и оценка: Офис, Руководитель.")],
+        [
+            _text_block(
+                json.dumps(
+                    {
+                        "observations": [
+                            {
+                                "label": "Проверка и оценка",
+                                "observation": "Предложение для проверки.",
+                                "evidence": [
+                                    {"dream_id": str(first_id), "quote": "Я пытаюсь работать"},
+                                    {"dream_id": str(second_id), "quote": "проверяет мою работу"},
+                                ],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        ],
     )
 
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
@@ -409,17 +429,20 @@ async def test_handle_chat_analyzes_recent_dream_set_without_asking_user() -> No
                 chat_id=chat_id,
             )
 
-    assert result.text == "1. Проверка и оценка: Офис, Руководитель."
+    assert "Проверка и оценка" in result.text
+    assert "Я пытаюсь работать" in result.text
+    assert "проверяет мою работу" in result.text
+    assert "2 из 2" in result.text
     assert result.tool_calls_made == ["analyze_dream_set_patterns", "get_dream"]
     facade.search_dreams.assert_not_awaited()
     assert facade.get_dream.await_count == 2
     assert (
         "Я пытаюсь работать" in client.messages.create.await_args.kwargs["messages"][0]["content"]
     )
-    assert (
-        "не предлагай варианты"
-        in client.messages.create.await_args.kwargs["messages"][0]["content"].casefold()
-    )
+    prompt = json.loads(client.messages.create.await_args.kwargs["messages"][0]["content"])
+    assert prompt["question"] == "найди общие паттерны в этой подборке"
+    assert {d["dream_id"] for d in prompt["dreams"]} == {str(first_id), str(second_id)}
+    assert "exact contiguous excerpt" in client.messages.create.await_args.kwargs["system"]
 
 
 @pytest.mark.asyncio
@@ -451,7 +474,27 @@ async def test_handle_chat_repeats_search_for_pattern_topic_when_no_recent_set()
         themes=[],
         notes=[],
     )
-    final_response = _make_response("end_turn", [_text_block("1. Затруднение выбора.")])
+    final_response = _make_response(
+        "end_turn",
+        [
+            _text_block(
+                json.dumps(
+                    {
+                        "observations": [
+                            {
+                                "label": "Затруднение выбора",
+                                "observation": "Одна сцена выбора, не повторяющийся мотив.",
+                                "evidence": [
+                                    {"dream_id": str(dream_id), "quote": "не могу выбрать"}
+                                ],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        ],
+    )
 
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
         with patch("app.assistant.chat.AsyncAnthropic") as mock_client_cls:
@@ -465,7 +508,9 @@ async def test_handle_chat_repeats_search_for_pattern_topic_when_no_recent_set()
                 chat_id=880002,
             )
 
-    assert result.text == "1. Затруднение выбора."
+    assert "Затруднение выбора" in result.text
+    assert "не могу выбрать" in result.text
+    assert "1 из 1" in result.text
     assert result.tool_calls_made == ["analyze_dream_set_patterns", "search_dreams", "get_dream"]
     facade.search_dreams.assert_awaited_once_with("работа")
     facade.get_dream.assert_awaited_once_with(dream_id)
@@ -651,7 +696,8 @@ def test_system_prompt_contains_terminology_rules_for_google_docs_sources() -> N
     prompt_lower = SYSTEM_PROMPT.lower()
     assert "## terminology rules".lower() in prompt_lower
     assert "google docs" in prompt_lower
-    assert "not the internal database" in prompt_lower
+    assert "a successful canonical save and a google docs" in prompt_lower
+    assert "copy are different states" in prompt_lower
     assert (
         "manage_archive_source and trigger_sync are operations on google docs sources"
         in prompt_lower

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import os
 import socket
@@ -12,12 +13,24 @@ import uuid
 from collections.abc import Awaitable, Coroutine, MutableMapping
 from pathlib import Path
 from typing import Any, TypeVar
+from types import SimpleNamespace
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.assistant.chat import handle_chat_with_metadata
+from app.assistant.chat import handle_chat_with_metadata, ChatResult, DreamReference
 from app.assistant.facade import AssistantFacade
-from app.assistant.session import HISTORY_TTL_SECONDS
+from app.assistant.session import (
+    HISTORY_TTL_SECONDS,
+    RedisOperationalStateStore,
+    DisplayedDreamSet,
+    DisplayedDreamRef,
+    save_displayed_dream_set,
+    save_displayed_dream_message,
+    load_displayed_dream_set,
+    save_pending_single_dream_note,
+)
+from app.assistant.selection import visible_references
+from datetime import datetime, timezone
 from app.assistant.tools import _has_natural_dream_opening
 from app.assistant.voice_media import (
     VoiceLeaseLost,
@@ -38,6 +51,8 @@ from app.assistant.voice_media import (
 from app.shared.config import get_settings
 from app.telegram.handlers import (
     _extract_direct_note_text,
+    _resolve_direct_note_target_dream_id,
+    _direct_note_requires_context,
     _format_create_dream_reply,
     _maybe_store_pending_dream,
     _split_telegram_text,
@@ -200,6 +215,11 @@ async def run_claimed_voice_event(
                 session_factory=session_factory,
                 lease_owner=lease_owner,
                 lease_lost=lease_lost,
+                **(
+                    {"state_store": bot_data["operational_state_store"]}
+                    if bot_data.get("operational_state_store") is not None
+                    else {}
+                ),
             )
             return
 
@@ -387,6 +407,7 @@ async def transcribe_and_reply(
             session_factory=session_factory,
             lease_owner=lease_owner,
             lease_lost=lease_lost,
+            **({"state_store": state_store} if state_store is not None else {}),
         )
         return
     if state.status == "transcription_failed":
@@ -403,6 +424,7 @@ async def transcribe_and_reply(
             media_dir=media_dir,
             lease_owner=lease_owner,
             lease_lost=lease_lost,
+            **({"state_store": state_store} if state_store is not None else {}),
         )
         return
 
@@ -424,6 +446,7 @@ async def transcribe_and_reply(
                 media_dir=media_dir,
                 lease_owner=lease_owner,
                 lease_lost=lease_lost,
+                **({"state_store": state_store} if state_store is not None else {}),
             )
             return
 
@@ -474,6 +497,7 @@ async def transcribe_and_reply(
                     media_dir=media_dir,
                     lease_owner=lease_owner,
                     lease_lost=lease_lost,
+                    **({"state_store": state_store} if state_store is not None else {}),
                 )
                 return
 
@@ -535,6 +559,7 @@ async def transcribe_and_reply(
         media_dir=media_dir,
         lease_owner=lease_owner,
         lease_lost=lease_lost,
+        **({"state_store": state_store} if state_store is not None else {}),
     )
 
 
@@ -550,7 +575,22 @@ async def _build_voice_reply(
     source_event_key = _telegram_source_event_key(chat_id, source_message_id)
     direct_note_text = _extract_direct_note_text(transcript)
     if direct_note_text is not None:
-        _success, reply = await facade.add_dream_note(direct_note_text, chat_id=chat_id)
+        target = await _resolve_direct_note_target_dream_id(
+            SimpleNamespace(reply_to_message=None), chat_id, state_store=state_store
+        )
+        displayed = load_displayed_dream_set(chat_id)
+        if target is None and (
+            _direct_note_requires_context(transcript)
+            or (displayed is not None and len(displayed.refs) != 1)
+        ):
+            pending = save_pending_single_dream_note(chat_id, note_text=direct_note_text)
+            if isinstance(state_store, RedisOperationalStateStore):
+                await state_store.save_pending_single_note(chat_id, pending)
+            return "К какому сну добавить эту заметку? Откройте нужный сон и ответьте на него: «к этому». Текст заметки сохранён для выбора."
+        kwargs = {"chat_id": chat_id}
+        if target is not None:
+            kwargs["dream_id"] = target
+        _success, reply = await facade.add_dream_note(direct_note_text, **kwargs)
         return reply
 
     if _has_natural_dream_opening(transcript.casefold()):
@@ -558,7 +598,19 @@ async def _build_voice_reply(
         if source_event_key is not None:
             create_kwargs["source_event_key"] = source_event_key
         created = await facade.create_dream(transcript, **create_kwargs)
-        return _format_create_dream_reply(created)
+        reply = _format_create_dream_reply(created)
+        ref = DreamReference(
+            str(getattr(created, "id", "")),
+            str(getattr(created, "date", "") or ""),
+            getattr(created, "title", "") or "без названия",
+        )
+        await _stage_voice_selection(
+            state_store,
+            chat_id,
+            source_message_id,
+            ChatResult(reply, [], dream_refs=[ref], selection_refs=[ref]),
+        )
+        return reply
 
     chat_kwargs: dict[str, Any] = {
         "session_factory": session_factory,
@@ -577,7 +629,66 @@ async def _build_voice_reply(
         source_kind="voice_transcript",
         state_store=state_store,
     )
+    await _stage_voice_selection(state_store, chat_id, source_message_id, result)
     return result.text
+
+
+async def _stage_voice_selection(store, chat_id, message_id, result):
+    if not isinstance(store, RedisOperationalStateStore) or message_id is None:
+        return
+    explicit = getattr(result, "selection_refs", None)
+    preserve = getattr(result, "preserve_selection", False)
+    refs = explicit if explicit is not None else getattr(result, "dream_refs", [])
+    if explicit is None and not preserve:
+        refs = visible_references(result.text, refs)
+    if not refs and explicit is None:
+        return
+    try:
+        valid_refs = [
+            DisplayedDreamRef(i, str(uuid.UUID(ref.dream_id)), ref.date, ref.title)
+            for i, ref in enumerate(refs, start=1)
+        ]
+    except (ValueError, TypeError, AttributeError):
+        LOGGER.warning("voice.selection_metadata_invalid")
+        return
+    displayed = DisplayedDreamSet(
+        refs=valid_refs,
+        created_at=datetime.now(timezone.utc),
+    )
+    await store.save_voice_selection(
+        chat_id,
+        message_id,
+        displayed=displayed,
+        reply_digest=hashlib.sha256(result.text.strip().encode()).hexdigest(),
+        preserve=preserve,
+    )
+
+
+async def _publish_voice_selection(store, state, reply_text, sent_message_id):
+    if not isinstance(store, RedisOperationalStateStore):
+        return
+    context = await store.load_voice_selection(
+        state.chat_id,
+        state.telegram_message_id,
+        reply_digest=hashlib.sha256(reply_text.strip().encode()).hexdigest(),
+    )
+    if context is None:
+        return
+    displayed, preserve = context
+    if not preserve:
+        save_displayed_dream_set(
+            state.chat_id,
+            refs=displayed.refs,
+            selection_id=displayed.selection_id,
+            created_at=displayed.created_at,
+        )
+        await store.save_displayed_set(state.chat_id, displayed)
+    if isinstance(sent_message_id, int):
+        message = save_displayed_dream_message(
+            state.chat_id, message_id=sent_message_id, refs=displayed.refs
+        )
+        await store.save_displayed_message(state.chat_id, sent_message_id, message)
+    await store.delete_voice_selection(state.chat_id, state.telegram_message_id)
 
 
 async def stage_and_deliver_voice_reply(
@@ -591,6 +702,7 @@ async def stage_and_deliver_voice_reply(
     media_dir: str,
     lease_owner: str | None = None,
     lease_lost: asyncio.Event | None = None,
+    state_store: Any = None,
 ) -> bool:
     """Persist a reply first, remove raw media, then attempt delivery."""
     _raise_if_voice_lease_lost(lease_lost, event_id=event_id)
@@ -614,6 +726,7 @@ async def stage_and_deliver_voice_reply(
         session_factory=session_factory,
         lease_owner=lease_owner,
         lease_lost=lease_lost,
+        **({"state_store": state_store} if state_store is not None else {}),
     )
 
 
@@ -625,6 +738,7 @@ async def deliver_pending_voice_reply(
     session_factory: async_sessionmaker[AsyncSession],
     lease_owner: str | None = None,
     lease_lost: asyncio.Event | None = None,
+    state_store: Any = None,
 ) -> bool:
     """Deliver a staged reply with a durable chunk cursor and retry backoff."""
     _raise_if_voice_lease_lost(lease_lost, event_id=event_id)
@@ -648,6 +762,7 @@ async def deliver_pending_voice_reply(
         return False
     chunks = _split_telegram_text(reply_text)
     start_index = min(max(state.reply_chunks_delivered, 0), len(chunks))
+    last_sent_message_id = None
     try:
         for index in range(start_index, len(chunks)):
             _raise_if_voice_lease_lost(lease_lost, event_id=event_id)
@@ -659,7 +774,7 @@ async def deliver_pending_voice_reply(
                 )
                 if owned is None:
                     raise VoiceLeaseLost(f"Voice lease lost before delivery for {event_id}")
-            await _await_while_voice_lease_owned(
+            last_sent_message_id = await _await_while_voice_lease_owned(
                 _send_telegram_message(telegram_bot_token, chat_id, chunks[index]),
                 lease_lost=lease_lost,
                 event_id=event_id,
@@ -689,6 +804,13 @@ async def deliver_pending_voice_reply(
                 lease_owner=lease_owner,
             )
         return False
+    _raise_if_voice_lease_lost(lease_lost, event_id=event_id)
+    # Every chunk has a durable delivery cursor before conversational state changes.
+    # Metadata is short-lived and best effort, never archive truth or a reason to resend.
+    try:
+        await _publish_voice_selection(state_store, state, reply_text, last_sent_message_id)
+    except Exception:
+        LOGGER.warning("voice.selection_publication_unavailable")
     _raise_if_voice_lease_lost(lease_lost, event_id=event_id)
     await mark_voice_reply_delivered(session_factory, event_id, **owner_kwargs)
     return True
@@ -876,9 +998,10 @@ async def _transcribe_file(local_path: str) -> str:
     return await asyncio.wait_for(_request(), timeout=_WHISPER_TIMEOUT_SECONDS)
 
 
-async def _send_telegram_message(bot_token: str, chat_id: int, text: str) -> None:
+async def _send_telegram_message(bot_token: str, chat_id: int, text: str) -> int:
     """Send via Bot API and raise so the durable outbox remains retryable."""
     from telegram import Bot
 
     async with Bot(token=bot_token) as bot:
-        await bot.send_message(chat_id=chat_id, text=text)
+        message = await bot.send_message(chat_id=chat_id, text=text)
+        return message.message_id

@@ -1,0 +1,29 @@
+name: Kolia source snapshot
+
+# Temporary branch-only transport of already-public tracked source for offline review.
+# No production data, environment files, credentials or live provider calls.
+on:
+  push:
+    branches: [codex/kolia-experience-v1]
+    paths: [.github/workflows/kolia-source-snapshot.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Bundle tracked public repository
+        run: git bundle create /tmp/kolia-source.bundle HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kolia-source-${{ github.sha }}
+          path: /tmp/kolia-source.bundle
+          retention-days: 1
+          if-no-files-found: error

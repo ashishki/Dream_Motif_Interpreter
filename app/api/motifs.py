@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.models.annotation import AnnotationVersion
 from app.models.dream import DreamEntry
@@ -74,6 +74,9 @@ class MotifReviewListResponse(BaseModel):
     draft_count: int
     confirmed_count: int
     rejected_count: int
+    total_count: int = 0
+    offset: int = 0
+    next_offset: int | None = None
 
 
 class MotifHistoryItem(BaseModel):
@@ -93,10 +96,12 @@ class MotifHistoryResponse(BaseModel):
 async def list_motifs_for_review(
     status: Literal["draft", "confirmed", "rejected", "all"] = "draft",
     limit: int = 100,
+    offset: int = 0,
 ) -> MotifReviewListResponse:
     """Return an evidence-bearing review inbox for the authenticated mini app."""
 
     bounded_limit = max(1, min(limit, 200))
+    bounded_offset = max(0, offset)
     tracer = get_tracer(__name__)
     async with get_session_factory()() as session:
         stmt = (
@@ -104,19 +109,33 @@ async def list_motifs_for_review(
             .join(DreamEntry, DreamEntry.id == MotifInduction.dream_id)
             .order_by(MotifInduction.created_at.desc(), MotifInduction.id.desc())
             .limit(bounded_limit)
+            .offset(bounded_offset)
         )
         if status != "all":
             stmt = stmt.where(MotifInduction.status == status)
         with tracer.start_as_current_span("db.query.motifs.review"):
             result = await session.execute(stmt)
         rows = list(result.all())
+        with tracer.start_as_current_span("db.query.motifs.review_counts"):
+            count_result = await session.execute(
+                select(MotifInduction.status, func.count())
+                .join(DreamEntry, DreamEntry.id == MotifInduction.dream_id)
+                .group_by(MotifInduction.status)
+            )
+            counts = dict(count_result.all())
 
     items = [_to_review_item(motif, dream) for motif, dream in rows]
+    total = sum(counts.values()) if status == "all" else counts.get(status, 0)
     return MotifReviewListResponse(
         items=items,
-        draft_count=sum(item.status == "draft" for item in items),
-        confirmed_count=sum(item.status == "confirmed" for item in items),
-        rejected_count=sum(item.status == "rejected" for item in items),
+        draft_count=counts.get("draft", 0),
+        confirmed_count=counts.get("confirmed", 0),
+        rejected_count=counts.get("rejected", 0),
+        total_count=total,
+        offset=bounded_offset,
+        next_offset=bounded_offset + len(items)
+        if items and bounded_offset + len(items) < total
+        else None,
     )
 
 

@@ -1,5 +1,17 @@
 # Dream Motif Interpreter — Product Overview
 
+## Current implementation (Kolia Experience V1 branch, 2026-09-18)
+
+The product has a working Telegram conversation/capture surface and an optional
+archive-first Mini App. Current scope is one private operator, not diagnosis.
+See [Kolia release](KOLIA_EXPERIENCE_V1.md), [user guide](USER_GUIDE_RU.md), and
+[acceptance](KOLIA_EXPERIENCE_ACCEPTANCE_RU.md). This is a release candidate;
+production rollout and user acceptance are separate gates.
+
+The numbered sections below are the historical product rationale, not a current
+feature inventory. In particular, the old claim that no conversational interface
+exists is superseded by the implementation above.
+
 ## 1. What This Product Is
 
 Dream Motif Interpreter is a private dream-analysis system for one user.

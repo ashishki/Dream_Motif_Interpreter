@@ -2,6 +2,10 @@
 
 Updated: 2026-09-01
 
+Historical handoff: PR #5 was merged on 2026-09-17. Do not blindly run the old
+branch-switch command below. The subsequent single-operator UX work is tracked
+in [KOLIA_EXPERIENCE_V1_HANDOFF.md](KOLIA_EXPERIENCE_V1_HANDOFF.md).
+
 ## Source goal
 
 Audit the current `Dream_Motif_Interpreter` as a developer, designer, and real user; find and implement the changes that reduce operator test time without lying about persistence, delivery, indexing, or deployment state. Finish through a reviewable branch and draft PR, but never merge or push directly to `main` without separate approval.

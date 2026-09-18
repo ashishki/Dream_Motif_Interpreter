@@ -1,6 +1,6 @@
 # Kolia Experience V1
 
-Status: implementation in progress; not deployed or user-validated.
+Status: code implemented and synthetic verification completed; release candidate, not deployed or user-validated.
 Date: 2026-09-18
 Baseline: main at 1d8b61151556b02a4ad34a60a9b2919f14adad57.
 Branch: codex/kolia-experience-v1. Never merge or change main without explicit approval.
@@ -45,3 +45,24 @@ Tenant scaling, public registration, billing, collaborative archives, a new grap
 Keep the full existing CI suite. Add authored-synthetic regression scenarios for multi-search union, displayed order, empty/ambiguous continuation, cancellation, restart, tool budget exhaustion, partial evidence and review pagination. Use no production credentials in CI. Code-level tests do not certify live search/model quality.
 
 Operator acceptance remains a separate gate: on his phone, Nikolai completes capture, search, full text, follow-up comparison and note addition without being coached on commands. Record task success, interventions, lost context and desire to continue; do not invent a satisfaction score. Deploy only after branch review and an explicit rollout decision, using the existing systemd runbook and backup/restore preflight.
+
+
+## Delivered implementation
+
+S1/S2: explicit ordered selection metadata and read-only continuation commands;
+turn-level candidate accumulation; conservative ordinal binding; restart-safe TTL
+context; final read-only completion after tool budget exhaustion; truncation
+notices; structured archive research with exact quote validation and actual
+coverage; explicit human #codes; staged voice-selection publication after reply
+delivery. Existing capture/durable jobs/interpretation approval stay in place.
+
+S3: archive-first mobile workspace, paged recent/period archive, POST semantic
+search, verbatim reader, separate human notes/codes, preserved draft on unknown
+save outcome, selected-source research and privacy-confirmed text export;
+complete paginated motif review with global counts. Graph is optional. Stale
+requests cannot replace a newer view; requests have bounded waits.
+
+S4: USER_GUIDE_RU, KOLIA_EXPERIENCE_ACCEPTANCE_RU, ADR-012, executable offline
+browser smoke and focused unit/HTTP/PTB scenarios. See the current handoff for
+verification evidence and remaining live acceptance. No real operator results
+or satisfaction claims have been invented.
